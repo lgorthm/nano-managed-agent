@@ -1,0 +1,25 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "nano-console",
+  "main": "src/worker/index.ts",
+  "compatibility_date": "2025-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+
+  // SPA 静态资源:directory 由 @cloudflare/vite-plugin 在构建时自动指向
+  // vite 产物(dist/client),不要手动设置;not_found_handling 负责 SPA 路由回退,
+  // 导航请求未命中资源时由平台直接返回 index.html,不会进入 worker。
+  "assets": {
+    "not_found_handling": "single-page-application"
+  },
+
+  // Cloudflare Access 应用标识(非敏感配置,不是密钥):
+  // Zero Trust → Access → Applications → 对应应用的 Additional settings 里
+  // 复制 Team Domain 与 Application Audience (AUD) Tag,配置步骤见 docs/console.md
+  "vars": {
+    "CF_ACCESS_TEAM_DOMAIN": "https://shiny-butterfly-54b9.cloudflareaccess.com",
+    "CF_ACCESS_AUD": "3c0a97892c424dccf366c362e3f9c1b0d635a7f5cc2adec8e42d4f1f709ebb06"
+  }
+
+  // GLM_API_KEY 走 secret(不进仓库):`wrangler secret put GLM_API_KEY`,
+  // 本地开发写入 .dev.vars(模板见 .dev.vars.example)
+}

@@ -1,0 +1,25 @@
+{
+  "name": "@nano/api",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "types": "wrangler types",
+    "db:migrate:local": "wrangler d1 migrations apply DB --local"
+  },
+  "dependencies": {
+    "@nano/db": "workspace:*",
+    "@nano/shared": "workspace:*",
+    "drizzle-orm": "^0.45.2",
+    "hono": "^4.13.7"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-plugin": "^1.1.6",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.11",
+    "wrangler": "^4.130.0"
+  }
+}

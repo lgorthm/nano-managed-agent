@@ -1,0 +1,29 @@
+# Dependencies
+node_modules/
+
+# Cloudflare / wrangler
+.wrangler/
+.dev.vars
+.dev.vars.*
+
+# Build output
+dist/
+*.tgz
+
+# Test & coverage
+coverage/
+
+# Env & secrets
+.env
+.env.*
+!.env.example
+
+# Misc
+*.log
+.DS_Store
+
+# agent
+.zcode
+
+# references
+references

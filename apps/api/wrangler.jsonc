@@ -1,0 +1,30 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "nano-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+
+  // D1 元数据库。骨架阶段 database_id 为占位:
+  // 运行 `wrangler d1 create nano-api-db` 后把返回的 database_id 填进来
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "nano-api-db",
+      "database_id": "TODO-run-wrangler-d1-create"
+    }
+  ]
+
+  // ---- 二期按需启用,加 DO 时记得在 tsconfig types 加 "wrangler" 并导出类 ----
+
+  // "durable_objects": {
+  //   "bindings": [{ "name": "SESSION_DO", "class_name": "SessionDo" }]
+  // },
+  // "migrations": [{ "tag": "v1", "new_sqlite_classes": ["SessionDo"] }],
+
+  // "workflows": [
+  //   { "name": "agent-loop", "binding": "AGENT_LOOP", "class_name": "AgentLoopWorkflow" }
+  // ],
+
+  // "r2_buckets": [{ "binding": "FILES", "bucket_name": "nano-files" }]
+}

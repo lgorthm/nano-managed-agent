@@ -1,0 +1,8 @@
+packages:
+  - apps/*
+  - packages/*
+
+# pnpm 10+ 默认阻止依赖执行安装脚本,这里放行所需的原生依赖
+allowBuilds:
+  esbuild: true
+  workerd: true

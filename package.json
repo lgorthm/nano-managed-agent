@@ -1,0 +1,20 @@
+{
+  "name": "nano-managed-agent",
+  "private": true,
+  "description": "Minimal managed-agent runtime on Cloudflare Workers",
+  "packageManager": "pnpm@12.3.4",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "pnpm --parallel --filter './apps/*' dev",
+    "dev:api": "pnpm --filter @nano/api dev",
+    "dev:console": "pnpm --filter @nano/console dev",
+    "deploy": "pnpm -r --filter './apps/*' deploy",
+    "typecheck": "pnpm -r --filter '@nano/*' typecheck",
+    "types": "pnpm -r --filter './apps/*' types",
+    "test": "pnpm -r --filter '@nano/*' test",
+    "db:generate": "pnpm --filter @nano/db db:generate",
+    "db:migrate:local": "pnpm --filter @nano/api db:migrate:local"
+  }
+}
