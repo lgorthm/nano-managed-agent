@@ -1,3 +1,5 @@
+import "@fontsource-variable/geist";
+import "@fontsource-variable/geist-mono";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
@@ -8,6 +10,7 @@ import { AgentListPage } from "@/routes/agents/agent-list";
 import { DeploymentDetailPage } from "@/routes/deployments/deployment-detail";
 import { DeploymentListPage } from "@/routes/deployments/deployment-list";
 import { SettingsPage } from "@/routes/settings/settings";
+import { NotFoundPage } from "@/routes/not-found";
 import { SessionDetailPage } from "@/routes/sessions/session-detail";
 import { SessionListPage } from "@/routes/sessions/session-list";
 import "./index.css";
@@ -45,6 +48,7 @@ export const router = createBrowserRouter([
         ],
       },
       { path: "settings", element: <SettingsPage /> },
+      { path: "*", element: <NotFoundPage /> },
     ],
   },
 ]);

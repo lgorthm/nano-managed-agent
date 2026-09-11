@@ -1,28 +1,55 @@
-import { cn } from "@/lib/utils";
 import type { DeploymentStatus, SessionStatus } from "@nano/shared/glm";
-import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 
-const SESSION_STATUS_CLASS: Record<SessionStatus, string> = {
-  idle: "bg-slate-100 text-slate-700",
-  running: "bg-emerald-100 text-emerald-700",
-  rescheduling: "bg-amber-100 text-amber-700",
-  terminated: "bg-zinc-200 text-zinc-600",
-};
-
-export function SessionStatusBadge({ status }: { status: SessionStatus }) {
-  return <Badge variant="secondary" className={cn("font-normal", SESSION_STATUS_CLASS[status])}>{status}</Badge>;
-}
-
-export function DeploymentStatusBadge({ status }: { status: DeploymentStatus }) {
+/**
+ * 状态徽章:圆点 + 语义 tint(tint-* 类统一在 index.css 定义,亮暗主题各自适配)。
+ * 不走 Badge 的 variant,避免 cva 底色和 tint 类互相覆盖。
+ */
+export function StatusBadge({
+  tint,
+  className,
+  children,
+}: {
+  tint: string;
+  className?: string;
+  children: React.ReactNode;
+}) {
   return (
-    <Badge
-      variant="secondary"
+    <span
       className={cn(
-        "font-normal",
-        status === "active" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700",
+        "inline-flex w-fit shrink-0 items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap",
+        tint,
+        className,
       )}
     >
+      <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-current opacity-60" />
+      {children}
+    </span>
+  );
+}
+
+const SESSION_STATUS_TINT: Record<SessionStatus, string> = {
+  idle: "tint-neutral",
+  running: "tint-positive",
+  rescheduling: "tint-warning",
+  terminated: "tint-neutral",
+};
+
+export function SessionStatusBadge({ status, className }: { status: SessionStatus; className?: string }) {
+  return (
+    <StatusBadge tint={SESSION_STATUS_TINT[status]} className={className}>
       {status}
-    </Badge>
+    </StatusBadge>
+  );
+}
+
+export function DeploymentStatusBadge({ status, className }: { status: DeploymentStatus; className?: string }) {
+  return (
+    <StatusBadge
+      tint={status === "active" ? "tint-positive" : "tint-warning"}
+      className={className}
+    >
+      {status}
+    </StatusBadge>
   );
 }

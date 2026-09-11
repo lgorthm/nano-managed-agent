@@ -6,78 +6,88 @@
 :root {
   color-scheme: light;
   --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  /* 暖纸底、墨色主色、单一松绿强调:中性色统一带暖色调(色相 75~85),语义色只出现在状态徽章 */
+  --background: oklch(0.977 0.005 85);
+  --foreground: oklch(0.24 0.012 75);
+  --card: oklch(0.995 0.003 85);
+  --card-foreground: oklch(0.24 0.012 75);
+  --popover: oklch(0.995 0.003 85);
+  --popover-foreground: oklch(0.24 0.012 75);
+  --primary: oklch(0.26 0.014 75);
+  --primary-foreground: oklch(0.98 0.004 85);
+  --secondary: oklch(0.948 0.006 85);
+  --secondary-foreground: oklch(0.28 0.012 75);
+  --muted: oklch(0.948 0.006 85);
+  --muted-foreground: oklch(0.5 0.012 75);
+  --accent: oklch(0.94 0.01 85);
+  --accent-foreground: oklch(0.28 0.012 75);
+  --destructive: oklch(0.55 0.19 25);
+  --border: oklch(0.905 0.008 80);
+  --input: oklch(0.89 0.01 80);
+  --ring: oklch(0.55 0.09 158);
+  --chart-1: oklch(0.55 0.09 158);
+  --chart-2: oklch(0.6 0.08 185);
+  --chart-3: oklch(0.65 0.1 75);
+  --chart-4: oklch(0.55 0.1 45);
+  --chart-5: oklch(0.5 0.06 250);
+  --sidebar: oklch(0.99 0.003 85);
+  --sidebar-foreground: oklch(0.24 0.012 75);
+  --sidebar-primary: oklch(0.26 0.014 75);
+  --sidebar-primary-foreground: oklch(0.98 0.004 85);
+  --sidebar-accent: oklch(0.95 0.007 85);
+  --sidebar-accent-foreground: oklch(0.28 0.012 75);
+  --sidebar-border: oklch(0.91 0.008 80);
+  --sidebar-ring: oklch(0.55 0.09 158);
+  --scrollbar-thumb: oklch(0.82 0.01 80);
+  --scrollbar-thumb-hover: oklch(0.72 0.012 80);
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --background: oklch(0.185 0.006 75);
+  --foreground: oklch(0.93 0.006 85);
+  --card: oklch(0.225 0.007 78);
+  --card-foreground: oklch(0.93 0.006 85);
+  --popover: oklch(0.235 0.007 78);
+  --popover-foreground: oklch(0.93 0.006 85);
+  --primary: oklch(0.92 0.006 85);
+  --primary-foreground: oklch(0.21 0.01 75);
+  --secondary: oklch(0.27 0.008 78);
+  --secondary-foreground: oklch(0.93 0.006 85);
+  --muted: oklch(0.27 0.008 78);
+  --muted-foreground: oklch(0.68 0.01 80);
+  --accent: oklch(0.28 0.008 78);
+  --accent-foreground: oklch(0.93 0.006 85);
+  --destructive: oklch(0.68 0.17 25);
+  --border: oklch(1 0 0 / 9%);
+  --input: oklch(1 0 0 / 13%);
+  --ring: oklch(0.7 0.09 158);
+  --chart-1: oklch(0.7 0.09 158);
+  --chart-2: oklch(0.72 0.08 185);
+  --chart-3: oklch(0.75 0.1 75);
+  --chart-4: oklch(0.68 0.1 45);
+  --chart-5: oklch(0.65 0.07 250);
+  --sidebar: oklch(0.21 0.007 78);
+  --sidebar-foreground: oklch(0.93 0.006 85);
+  --sidebar-primary: oklch(0.92 0.006 85);
+  --sidebar-primary-foreground: oklch(0.21 0.01 75);
+  --sidebar-accent: oklch(0.27 0.008 78);
+  --sidebar-accent-foreground: oklch(0.93 0.006 85);
+  --sidebar-border: oklch(1 0 0 / 9%);
+  --sidebar-ring: oklch(0.7 0.09 158);
+  --scrollbar-thumb: oklch(0.42 0.01 78);
+  --scrollbar-thumb-hover: oklch(0.52 0.01 78);
 }
 
 @theme inline {
+  --font-sans: "Geist Variable", ui-sans-serif, system-ui, -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+  --font-mono: "Geist Mono Variable", ui-monospace, "SF Mono", "Cascadia Mono", "PingFang SC", "Microsoft YaHei", monospace;
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+  --color-pine-500: oklch(0.66 0.1 158);
+  --color-pine-600: oklch(0.55 0.09 158);
+  --color-pine-700: oklch(0.44 0.08 158);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -115,7 +125,96 @@
   * {
     @apply border-border outline-ring/50;
   }
-  body {
-    @apply bg-background text-foreground;
+  html {
+    scroll-behavior: smooth;
   }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  ::selection {
+    background-color: color-mix(in oklab, var(--ring) 22%, transparent);
+  }
+  /* 统一滚动条：Firefox 走标准属性（支持 ::-webkit-scrollbar 的浏览器不生效，避免覆盖自定义样式） */
+  @supports not selector(::-webkit-scrollbar) {
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: var(--scrollbar-thumb) transparent;
+    }
+  }
+}
+
+/* 微噪点覆盖层:打破纯色底的数码平坦感,密度极低,不影响可读性 */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  opacity: 0.022;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+.dark body::after {
+  opacity: 0.035;
+}
+
+/*
+ * 状态徽章统一色板:全站语义色只在这里定义一次(此前散落 7 种硬编码 Tailwind 色相)。
+ * 配合无底色的 Badge variant="ghost" 或 StatusBadge 使用,避免与 cva 的 bg-* 冲突。
+ */
+@layer components {
+  .tint-positive {
+    background-color: oklch(0.93 0.05 155);
+    color: oklch(0.43 0.1 158);
+  }
+  .tint-warning {
+    background-color: oklch(0.94 0.05 80);
+    color: oklch(0.45 0.1 65);
+  }
+  .tint-negative {
+    background-color: oklch(0.93 0.035 25);
+    color: oklch(0.5 0.17 27);
+  }
+  .tint-neutral {
+    background-color: oklch(0.93 0.007 85);
+    color: oklch(0.47 0.012 75);
+  }
+}
+.dark .tint-positive {
+  background-color: oklch(0.36 0.05 155);
+  color: oklch(0.8 0.09 155);
+}
+.dark .tint-warning {
+  background-color: oklch(0.37 0.05 75);
+  color: oklch(0.83 0.09 80);
+}
+.dark .tint-negative {
+  background-color: oklch(0.35 0.05 25);
+  color: oklch(0.8 0.1 25);
+}
+.dark .tint-neutral {
+  background-color: oklch(0.3 0.008 78);
+  color: oklch(0.72 0.01 80);
+}
+
+/* Chromium / Safari：细圆角滚动条，透明轨道，无箭头 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 9999px;
+  background-color: var(--scrollbar-thumb);
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover,
+::-webkit-scrollbar-thumb:active {
+  background-color: var(--scrollbar-thumb-hover);
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
 }

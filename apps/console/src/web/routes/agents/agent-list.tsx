@@ -1,11 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Agent, GlmModelId, ModelEffort } from "@nano/shared/glm";
-import { Archive, Plus, RefreshCw } from "lucide-react";
+import { Bot, Plus } from "lucide-react";
 import { Link, useNavigate } from "react-router";
 import { createAgent, listAgents } from "@/api/agents";
 import { QueryError } from "@/components/query-error";
+import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
-import { Badge } from "@/components/ui/badge";
+import { RefreshButton } from "@/components/refresh-button";
+import { StatusBadge } from "@/components/status-badges";
+import { TableSkeleton } from "@/components/table-skeleton";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -26,14 +29,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { formatTime, formatTimeShort } from "@/lib/format";
 import { useState } from "react";
 
-function CreateAgentDialog() {
-  const [open, setOpen] = useState(false);
+function CreateAgentDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const [name, setName] = useState("");
   const [model, setModel] = useState<GlmModelId>("glm-5.3");
   const [effort, setEffort] = useState<ModelEffort>("max");
@@ -50,7 +51,7 @@ function CreateAgentDialog() {
         tools: withToolset ? [{ type: "agent_toolset_20260601" }] : [],
       }),
     onSuccess: () => {
-      setOpen(false);
+      onOpenChange(false);
       setName("");
       setSystem("");
       void queryClient.invalidateQueries({ queryKey: ["agents"] });
@@ -58,7 +59,7 @@ function CreateAgentDialog() {
   });
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger asChild>
         <Button size="sm">
           <Plus /> 新建 Agent
@@ -132,31 +133,43 @@ function CreateAgentDialog() {
 export function AgentListPage() {
   const query = useQuery({ queryKey: ["agents"], queryFn: () => listAgents() });
   const navigate = useNavigate();
+  const [createOpen, setCreateOpen] = useState(false);
+  const agents = query.data?.data ?? [];
 
   return (
     <div>
+      <title>nano console — Agents</title>
       <PageHeader
         title="Agents"
         description="可复用、带版本的 Agent 配置:模型、系统提示词、工具、MCP 与 Skills。"
         actions={
           <>
-            <Button size="sm" variant="outline" onClick={() => void query.refetch()}>
-              <RefreshCw /> 刷新
-            </Button>
-            <CreateAgentDialog />
+            <RefreshButton isFetching={query.isFetching} onClick={() => void query.refetch()}>
+              刷新
+            </RefreshButton>
+            <CreateAgentDialog open={createOpen} onOpenChange={setCreateOpen} />
           </>
         }
       />
       {query.isPending ? (
-        <div className="space-y-2">
-          <Skeleton className="h-10 w-full" />
-          <Skeleton className="h-10 w-full" />
-          <Skeleton className="h-10 w-full" />
-        </div>
+        <TableSkeleton rows={6} />
       ) : query.isError ? (
         <QueryError error={query.error} />
+      ) : agents.length === 0 ? (
+        <div className="rounded-lg border bg-card">
+          <EmptyState
+            icon={Bot}
+            title="还没有 Agent"
+            description="创建第一个 Agent:选定模型、写好系统提示词,之后所有会话和 Deployment 都从这里引用。"
+            action={
+              <Button size="sm" onClick={() => setCreateOpen(true)}>
+                <Plus /> 新建 Agent
+              </Button>
+            }
+          />
+        </div>
       ) : (
-        <div className="rounded-lg border">
+        <div className="rounded-lg border bg-card">
           <Table>
             <TableHeader>
               <TableRow>
@@ -168,7 +181,7 @@ export function AgentListPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {query.data.data.map((agent: Agent) => (
+              {agents.map((agent: Agent) => (
                 <TableRow
                   key={agent.id}
                   className="cursor-pointer"
@@ -186,36 +199,25 @@ export function AgentListPage() {
                     </div>
                   </TableCell>
                   <TableCell className="hidden md:table-cell">
-                    <Badge variant="secondary" className="font-normal">
+                    <span className="text-muted-foreground font-mono text-xs">
                       {agent.model.id}
                       {agent.model.effort ? ` · ${agent.model.effort}` : ""}
-                    </Badge>
+                    </span>
                   </TableCell>
-                  <TableCell className="hidden md:table-cell">v{agent.version}</TableCell>
+                  <TableCell className="hidden font-mono text-xs tabular-nums md:table-cell">v{agent.version}</TableCell>
                   <TableCell>
                     {agent.archived_at ? (
-                      <Badge variant="outline" className="font-normal text-muted-foreground">
-                        <Archive /> archived
-                      </Badge>
+                      <StatusBadge tint="tint-neutral">archived</StatusBadge>
                     ) : (
-                      <Badge variant="secondary" className="bg-emerald-100 font-normal text-emerald-700">
-                        active
-                      </Badge>
+                      <StatusBadge tint="tint-positive">active</StatusBadge>
                     )}
                   </TableCell>
-                  <TableCell className="text-right">
-                    <span className="text-xs sm:hidden">{formatTimeShort(agent.updated_at)}</span>
-                    <span className="hidden sm:inline">{formatTime(agent.updated_at)}</span>
+                  <TableCell className="text-right text-muted-foreground">
+                    <span className="text-xs tabular-nums sm:hidden">{formatTimeShort(agent.updated_at)}</span>
+                    <span className="hidden text-sm tabular-nums sm:inline">{formatTime(agent.updated_at)}</span>
                   </TableCell>
                 </TableRow>
               ))}
-              {query.data.data.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="text-muted-foreground h-24 text-center">
-                    还没有 Agent,点右上角「新建 Agent」创建第一个。
-                  </TableCell>
-                </TableRow>
-              ) : null}
             </TableBody>
           </Table>
         </div>

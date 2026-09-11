@@ -1,16 +1,18 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { PersistedEvent, StreamEvent } from "@nano/shared/glm";
-import { Radio, RefreshCw, Send } from "lucide-react";
+import { Inbox, Send } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useParams } from "react-router";
+import { useParams } from "react-router";
 import { getSession, listSessionEvents, sendSessionEvents, subscribeSessionEvents } from "@/api/sessions";
+import { BackLink } from "@/components/back-link";
+import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
 import { QueryError } from "@/components/query-error";
-import { SessionStatusBadge } from "@/components/status-badges";
+import { RefreshButton } from "@/components/refresh-button";
+import { SectionCard } from "@/components/section-card";
+import { SessionStatusBadge, StatusBadge } from "@/components/status-badges";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
@@ -41,12 +43,17 @@ function summarizeEvent(event: EventLike): string {
   return "";
 }
 
-function eventBadgeClass(type: string | undefined): string {
-  if (!type) return "bg-slate-100 text-slate-600";
-  if (type === "session.error") return "bg-red-100 text-red-700";
-  if (type.startsWith("user.")) return "bg-blue-100 text-blue-700";
-  if (type.startsWith("agent.")) return "bg-violet-100 text-violet-700";
-  return "bg-slate-100 text-slate-600";
+/** 事件类型徽章:user 消息走描边、agent 走正向 tint、错误走负向 tint,其余中性 */
+function EventBadge({ type }: { type: string | undefined }) {
+  if (!type) return <StatusBadge tint="tint-neutral">event</StatusBadge>;
+  if (type === "session.error") return <StatusBadge tint="tint-negative">{type}</StatusBadge>;
+  if (type.startsWith("user.")) {
+    return <Badge variant="outline" className="font-mono text-[11px] font-normal">{type}</Badge>;
+  }
+  if (type.startsWith("agent.")) {
+    return <StatusBadge tint="tint-positive" className="font-mono text-[11px] font-normal">{type}</StatusBadge>;
+  }
+  return <StatusBadge tint="tint-neutral" className="font-mono text-[11px] font-normal">{type}</StatusBadge>;
 }
 
 function EventItem({ event }: { event: EventLike }) {
@@ -55,26 +62,38 @@ function EventItem({ event }: { event: EventLike }) {
   const time = formatTime(record.processed_at as string | null | undefined);
   const shortTime = formatTimeShort(record.processed_at as string | null | undefined);
   return (
-    <li className="flex flex-col gap-1 py-2 text-sm sm:flex-row sm:items-start sm:gap-3">
-      <div className="flex w-full items-center justify-between gap-3 sm:w-44 sm:shrink-0 sm:justify-start">
-        <Badge variant="secondary" className={cn("font-mono text-[11px] font-normal", eventBadgeClass(record.type as string | undefined))}>
-          {String(record.type ?? "event")}
-        </Badge>
-        <span className="text-muted-foreground text-xs whitespace-nowrap sm:hidden">{shortTime}</span>
+    <li className="flex flex-col gap-1.5 py-3 text-sm sm:flex-row sm:items-start sm:gap-4">
+      <div className="flex w-full items-center justify-between gap-3 sm:w-48 sm:shrink-0 sm:justify-start">
+        <EventBadge type={record.type as string | undefined} />
+        <span className="text-muted-foreground text-xs whitespace-nowrap tabular-nums sm:hidden">{shortTime}</span>
       </div>
       <div className="min-w-0 flex-1">
-        {summary ? <p className="whitespace-pre-wrap break-words">{summary}</p> : null}
-        <details className="mt-1">
-          <summary className="text-muted-foreground cursor-pointer text-xs">原始载荷</summary>
-          <pre className="bg-muted mt-1 max-h-64 overflow-auto rounded-md p-2 font-mono text-xs">
+        {summary ? <p className="whitespace-pre-wrap break-words leading-relaxed">{summary}</p> : null}
+        <details className="mt-1 group">
+          <summary className="text-muted-foreground hover:text-foreground cursor-pointer text-xs transition-colors select-none">
+            原始载荷
+          </summary>
+          <pre className="bg-muted mt-1.5 max-h-64 overflow-auto rounded-md p-2.5 font-mono text-xs leading-relaxed">
             {JSON.stringify(event, null, 2)}
           </pre>
         </details>
       </div>
-      <div className="text-muted-foreground hidden w-36 shrink-0 text-right text-xs sm:block">
+      <div className="text-muted-foreground hidden w-40 shrink-0 text-right text-xs tabular-nums sm:block">
         {time}
       </div>
     </li>
+  );
+}
+
+function StatCell({ label, value, unit }: { label: string; value: string; unit?: string }) {
+  return (
+    <div className="bg-card px-5 py-4">
+      <div className="text-muted-foreground text-xs">{label}</div>
+      <div className="mt-1 font-mono text-lg font-medium tabular-nums">
+        {value}
+        {unit ? <span className="text-muted-foreground ml-0.5 text-sm font-normal">{unit}</span> : null}
+      </div>
+    </div>
   );
 }
 
@@ -151,9 +170,8 @@ export function SessionDetailPage() {
 
   return (
     <div className="space-y-4">
-      <Link to="/sessions" className="text-muted-foreground inline-flex items-center gap-1 text-sm hover:underline md:hidden">
-        ← 返回 Sessions
-      </Link>
+      <title>nano console — {session.title ?? shortId(session.id)}</title>
+      <BackLink to="/sessions" label="返回 Sessions" />
       <PageHeader
         title={session.title ?? shortId(session.id)}
         description={`Agent: ${session.agent.name} · environment: ${shortId(session.environment_id)}`}
@@ -161,7 +179,13 @@ export function SessionDetailPage() {
           <>
             <SessionStatusBadge status={session.status} />
             <label className="text-muted-foreground flex items-center gap-2 text-sm">
-              <Radio className={cn("size-4", live && "text-emerald-600")} />
+              <span
+                aria-hidden
+                className={cn(
+                  "size-2 rounded-full",
+                  live ? "bg-pine-600 animate-pulse dark:bg-pine-500" : "bg-muted-foreground/40",
+                )}
+              />
               实时
               <Switch checked={live} onCheckedChange={setLive} />
             </label>
@@ -169,91 +193,86 @@ export function SessionDetailPage() {
         }
       />
 
-      <div className="grid gap-4 md:grid-cols-4">
-        {[
-          ["输入 tokens", formatNumber(session.usage.input_tokens)],
-          ["输出 tokens", formatNumber(session.usage.output_tokens)],
-          ["缓存命中", formatNumber(session.usage.cache_read_input_tokens)],
-          ["活跃时长", `${session.stats.active_seconds.toFixed(1)}s`],
-        ].map(([label, value]) => (
-          <Card key={label}>
-            <CardContent className="pt-0">
-              <div className="text-muted-foreground text-xs">{label}</div>
-              <div className="mt-1 text-lg font-semibold tabular-nums">{value}</div>
-            </CardContent>
-          </Card>
-        ))}
+      {/* 单块指标条:发丝线分隔,避免四张等宽小卡片碎 */}
+      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border bg-border md:grid-cols-4">
+        <StatCell label="输入 tokens" value={formatNumber(session.usage.input_tokens)} />
+        <StatCell label="输出 tokens" value={formatNumber(session.usage.output_tokens)} />
+        <StatCell label="缓存命中" value={formatNumber(session.usage.cache_read_input_tokens)} />
+        <StatCell label="活跃时长" value={session.stats.active_seconds.toFixed(1)} unit="s" />
       </div>
 
-      <Card>
-        <CardHeader className="flex-row items-center justify-between">
-          <CardTitle className="text-sm">事件流</CardTitle>
-          <Button
-            size="sm"
-            variant="outline"
+      <SectionCard
+        title="事件流"
+        action={
+          <RefreshButton
+            isFetching={eventsQuery.isFetching}
             onClick={() => void queryClient.invalidateQueries({ queryKey: ["sessions", sessionId, "events"] })}
           >
-            <RefreshCw /> 刷新历史
-          </Button>
-        </CardHeader>
-        <CardContent>
-          {streamError ? <p className="text-destructive mb-2 text-sm">实时流断开:{streamError}</p> : null}
-          {eventsQuery.isError ? (
-            <QueryError error={eventsQuery.error} />
-          ) : (
-            <ul className="divide-y">
-              {history.map((event) => (
-                <EventItem key={event.id} event={event} />
-              ))}
-              {mergedLive.map((event, i) => (
-                <EventItem key={(event as Record<string, unknown>).id as string | undefined ?? `live-${i}`} event={event} />
-              ))}
-              {history.length === 0 && mergedLive.length === 0 ? (
-                <li className="text-muted-foreground py-8 text-center text-sm">
-                  {eventsQuery.isPending ? "加载事件中…" : "暂无事件"}
-                </li>
-              ) : null}
-            </ul>
-          )}
-          <div ref={bottomRef} />
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardContent className="space-y-3">
-          <Textarea
-            rows={3}
-            value={draft}
-            placeholder="发送 user.message 给会话…"
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && draft.trim()) {
-                sendMutation.mutate(draft.trim());
-              }
-            }}
+            刷新历史
+          </RefreshButton>
+        }
+      >
+        {streamError ? (
+          <p className="text-destructive mb-3 rounded-md border border-border bg-muted/50 px-3 py-2 text-sm">
+            实时流断开:{streamError}
+          </p>
+        ) : null}
+        {eventsQuery.isError ? (
+          <QueryError error={eventsQuery.error} />
+        ) : history.length === 0 && mergedLive.length === 0 && !eventsQuery.isPending ? (
+          <EmptyState
+            icon={Inbox}
+            title="暂无事件"
+            description="这个会话还没有任何事件;在下方发送一条 user.message 就能看到事件流跑起来。"
           />
-          <div className="flex items-center justify-between">
-            <span className="text-muted-foreground hidden text-xs sm:inline">⌘/Ctrl + Enter 发送</span>
-            <Button
-              size="sm"
-              disabled={!draft.trim() || sendMutation.isPending}
-              onClick={() => sendMutation.mutate(draft.trim())}
-            >
-              <Send /> {sendMutation.isPending ? "发送中…" : "发送"}
-            </Button>
+        ) : eventsQuery.isPending ? (
+          <div className="space-y-4 py-2">
+            <Skeleton className="h-12 w-full" />
+            <Skeleton className="h-12 w-full" />
+            <Skeleton className="h-12 w-full" />
           </div>
-          {sendMutation.isError ? (
-            <p className="text-destructive text-sm">{(sendMutation.error as Error).message}</p>
-          ) : null}
-        </CardContent>
-      </Card>
+        ) : (
+          <ul className="divide-y divide-border/70">
+            {history.map((event) => (
+              <EventItem key={event.id} event={event} />
+            ))}
+            {mergedLive.map((event, i) => (
+              <EventItem key={(event as Record<string, unknown>).id as string | undefined ?? `live-${i}`} event={event} />
+            ))}
+          </ul>
+        )}
+        <div ref={bottomRef} />
+      </SectionCard>
 
-      <Separator />
+      <SectionCard title="发送消息" contentClassName="space-y-3">
+        <Textarea
+          rows={3}
+          value={draft}
+          placeholder="发送 user.message 给会话…"
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && draft.trim()) {
+              sendMutation.mutate(draft.trim());
+            }
+          }}
+        />
+        <div className="flex items-center justify-between">
+          <span className="text-muted-foreground hidden font-mono text-xs sm:inline">⌘/Ctrl + Enter 发送</span>
+          <Button
+            size="sm"
+            disabled={!draft.trim() || sendMutation.isPending}
+            onClick={() => sendMutation.mutate(draft.trim())}
+          >
+            <Send /> {sendMutation.isPending ? "发送中…" : "发送"}
+          </Button>
+        </div>
+        {sendMutation.isError ? (
+          <p className="text-destructive text-sm">{(sendMutation.error as Error).message}</p>
+        ) : null}
+      </SectionCard>
 
       <div className="hidden md:block">
-        <Link to="/sessions" className="text-muted-foreground text-sm hover:underline">
-          ← 返回 Sessions
-        </Link>
+        <BackLink to="/sessions" label="返回 Sessions" desktopOnly />
       </div>
     </div>
   );
