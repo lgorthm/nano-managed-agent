@@ -11,6 +11,7 @@ import { QueryError } from "@/components/query-error";
 import { KeyValueRow, SectionCard } from "@/components/section-card";
 import { StatusBadge } from "@/components/status-badges";
 import { TableSkeleton } from "@/components/table-skeleton";
+import { UpdateAgentDialog } from "@/components/update-agent-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatTime } from "@/lib/format";
@@ -71,12 +72,15 @@ export function AgentDetailPage() {
           agent.archived_at ? (
             <StatusBadge tint="tint-neutral">archived</StatusBadge>
           ) : (
-            <ArchiveAgentDialog
-              agentName={agent.name}
-              pending={archiveMutation.isPending}
-              error={archiveMutation.isError ? (archiveMutation.error as Error).message : null}
-              onConfirm={() => archiveMutation.mutate()}
-            />
+            <>
+              <UpdateAgentDialog agent={agent} />
+              <ArchiveAgentDialog
+                agentName={agent.name}
+                pending={archiveMutation.isPending}
+                error={archiveMutation.isError ? (archiveMutation.error as Error).message : null}
+                onConfirm={() => archiveMutation.mutate()}
+              />
+            </>
           )
         }
       />
