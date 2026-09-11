@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Agent, GlmModelId, ModelEffort } from "@nano/shared/glm";
 import { Bot, Plus } from "lucide-react";
-import { Link, useNavigate } from "react-router";
+import { Link } from "react-router";
 import { createAgent, listAgents } from "@/api/agents";
 import { QueryError } from "@/components/query-error";
 import { EmptyState } from "@/components/empty-state";
@@ -132,7 +132,6 @@ function CreateAgentDialog({ open, onOpenChange }: { open: boolean; onOpenChange
 
 export function AgentListPage() {
   const query = useQuery({ queryKey: ["agents"], queryFn: () => listAgents() });
-  const navigate = useNavigate();
   const [createOpen, setCreateOpen] = useState(false);
   const agents = query.data?.data ?? [];
 
@@ -182,11 +181,7 @@ export function AgentListPage() {
             </TableHeader>
             <TableBody>
               {agents.map((agent: Agent) => (
-                <TableRow
-                  key={agent.id}
-                  className="cursor-pointer"
-                  onClick={() => navigate(`/agents/${agent.id}`)}
-                >
+                <TableRow key={agent.id}>
                   <TableCell>
                     <Link
                       to={`/agents/${agent.id}`}

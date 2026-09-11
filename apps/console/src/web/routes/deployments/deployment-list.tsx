@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import type { Deployment } from "@nano/shared/glm";
 import { CalendarClock } from "lucide-react";
-import { Link, useNavigate } from "react-router";
+import { Link } from "react-router";
 import { listDeployments } from "@/api/deployments";
 import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
@@ -14,7 +14,6 @@ import { formatTime, formatTimeShort } from "@/lib/format";
 
 export function DeploymentListPage() {
   const query = useQuery({ queryKey: ["deployments"], queryFn: () => listDeployments({ limit: 50 }) });
-  const navigate = useNavigate();
   const deployments = query.data?.data ?? [];
 
   return (
@@ -55,11 +54,7 @@ export function DeploymentListPage() {
             </TableHeader>
             <TableBody>
               {deployments.map((deployment: Deployment) => (
-                <TableRow
-                  key={deployment.id}
-                  className="cursor-pointer"
-                  onClick={() => navigate(`/deployments/${deployment.id}`)}
-                >
+                <TableRow key={deployment.id}>
                   <TableCell>
                     <Link
                       to={`/deployments/${deployment.id}`}

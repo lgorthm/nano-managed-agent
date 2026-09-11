@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import type { Session } from "@nano/shared/glm";
 import { MessagesSquare } from "lucide-react";
-import { Link, useNavigate } from "react-router";
+import { Link } from "react-router";
 import { listSessions } from "@/api/sessions";
 import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
@@ -14,7 +14,6 @@ import { formatNumber, formatTime, formatTimeShort, shortId } from "@/lib/format
 
 export function SessionListPage() {
   const query = useQuery({ queryKey: ["sessions"], queryFn: () => listSessions({ limit: 50 }) });
-  const navigate = useNavigate();
   const sessions = query.data?.data ?? [];
 
   return (
@@ -55,11 +54,7 @@ export function SessionListPage() {
             </TableHeader>
             <TableBody>
               {sessions.map((session: Session) => (
-                <TableRow
-                  key={session.id}
-                  className="cursor-pointer"
-                  onClick={() => navigate(`/sessions/${session.id}`)}
-                >
+                <TableRow key={session.id}>
                   <TableCell>
                     <Link
                       to={`/sessions/${session.id}`}
