@@ -11,6 +11,7 @@ import { DeploymentDetailPage } from "@/routes/deployments/deployment-detail";
 import { DeploymentListPage } from "@/routes/deployments/deployment-list";
 import { EnvironmentDetailPage } from "@/routes/environments/environment-detail";
 import { EnvironmentListPage } from "@/routes/environments/environment-list";
+import { FileListPage } from "@/routes/files/file-list";
 import { SettingsPage } from "@/routes/settings/settings";
 import { NotFoundPage } from "@/routes/not-found";
 import { SessionDetailPage } from "@/routes/sessions/session-detail";
@@ -65,6 +66,7 @@ export const router = createBrowserRouter([
           { path: ":skillId", element: <SkillDetailPage /> },
         ],
       },
+      { path: "files", element: <FileListPage /> },
       { path: "settings", element: <SettingsPage /> },
       { path: "*", element: <NotFoundPage /> },
     ],

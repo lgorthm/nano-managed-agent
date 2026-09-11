@@ -1,8 +1,9 @@
 import { useState } from "react";
 
 /**
- * 游标分页状态。接口只返回 next_page(不透明游标),没有 prev_page,
- * "上一页"靠记录每一页的起始游标来回退。
+ * 游标分页状态,兼容两种翻页协议:opaque page 游标(sessions/environments 的
+ * next_page)与资源 ID 游标(files 的 last_id/first_id,配 after_id/before_id)。
+ * "上一页"靠记录每一页的起始游标来回退;筛选条件变化时用 reset 回到第一页。
  */
 export function useCursorPage() {
   const [cursor, setCursor] = useState<string | null>(null);
@@ -22,5 +23,10 @@ export function useCursorPage() {
     setHistory((prev) => prev.slice(0, -1));
   }
 
-  return { cursor, page, goNext, goPrev };
+  function reset() {
+    setCursor(null);
+    setHistory([]);
+  }
+
+  return { cursor, page, goNext, goPrev, reset };
 }

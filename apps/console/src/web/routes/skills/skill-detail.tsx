@@ -24,15 +24,7 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { formatTime } from "@/lib/format";
-
-function saveBlob(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-}
+import { saveBlob } from "@/lib/save-blob";
 
 /** 下载某个版本的 ZIP:带文字的 outline 形态用于页头,图标形态用于版本行 */
 function DownloadZipButton({

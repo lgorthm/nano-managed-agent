@@ -8,7 +8,7 @@ import type {
   SkillVersion,
   SkillVersionDeleted,
 } from "@nano/shared/glm";
-import { glmFetch, glmFetchPage, glmFetchRaw, qs } from "./client";
+import { filenameFromDisposition, glmFetch, glmFetchPage, glmFetchRaw, qs } from "./client";
 
 const BASE = "/agent/managed/v1/skills";
 
@@ -66,12 +66,4 @@ export function deleteSkillVersion(skillId: string, version: string) {
   return glmFetch<SkillVersionDeleted>(`${BASE}/${skillId}/versions/${version}`, {
     method: "DELETE",
   });
-}
-
-function filenameFromDisposition(header: string | null): string | null {
-  if (!header) return null;
-  const extended = /filename\*=(?:UTF-8'')?([^;]+)/i.exec(header);
-  if (extended) return decodeURIComponent(extended[1]?.replace(/^"|"$/g, "").trim() ?? "");
-  const plain = /filename=("?)([^";]+)\1/i.exec(header);
-  return plain ? (plain[2] ?? null) : null;
 }

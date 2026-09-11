@@ -81,6 +81,15 @@ export function glmFetchPage<T>(path: string, params: object = {}): Promise<Page
   return glmFetch<Page<T>>(`${path}${qs(params)}`);
 }
 
+/** 从 content-disposition 解析文件名;支持 RFC 5987 扩展写法,缺失时返回 null */
+export function filenameFromDisposition(header: string | null): string | null {
+  if (!header) return null;
+  const extended = /filename\*=(?:UTF-8'')?([^;]+)/i.exec(header);
+  if (extended) return decodeURIComponent(extended[1]?.replace(/^"|"$/g, "").trim() ?? "");
+  const plain = /filename=("?)([^";]+)\1/i.exec(header);
+  return plain ? (plain[2] ?? null) : null;
+}
+
 export interface SseMessage {
   event?: string;
   data: string;
