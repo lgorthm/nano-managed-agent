@@ -28,6 +28,37 @@ export async function applyMigrations(): Promise<void> {
   applied = true;
 }
 
+/** res.json() 在 workers 类型下返回 unknown,这里统一做类型断言 */
+export async function jsonBody<T>(res: Response): Promise<T> {
+  return (await res.json()) as T;
+}
+
+/** Agent 响应的断言形状 */
+export interface AgentJson {
+  id: string;
+  type: string;
+  name: string;
+  description: string | null;
+  model: { id: string; effort: string; speed: string };
+  system: string | null;
+  tools: unknown[];
+  skills: unknown[];
+  mcp_servers: unknown[];
+  metadata: Record<string, string>;
+  multiagent: null;
+  version: number;
+  created_at: string;
+  updated_at: string;
+  archived_at: string | null;
+}
+
+/** 错误信封的断言形状 */
+export interface ErrorEnvelope {
+  type: string;
+  error: { type: string; message: string; details?: { issues?: Array<{ path: string; message: string }> } };
+  request_id: string;
+}
+
 /** POST /v1/agents,默认带认证 */
 export function postAgent(body: unknown, headers: Record<string, string> = {}): Promise<Response> {
   return exports.default.fetch("http://example.com/v1/agents", {
@@ -37,9 +68,76 @@ export function postAgent(body: unknown, headers: Record<string, string> = {}): 
   });
 }
 
-/** 读取错误信封的公共断言结构 */
-export interface ErrorEnvelope {
-  type: string;
-  error: { type: string; message: string; details?: { issues?: Array<{ path: string; message: string }> } };
-  request_id: string;
+/** GET /v1/agents/{agentId},默认带认证 */
+export function getAgent(id: string, headers: Record<string, string> = {}): Promise<Response> {
+  return exports.default.fetch(`http://example.com/v1/agents/${encodeURIComponent(id)}`, {
+    headers: authed(headers),
+  });
+}
+
+/** GET /v1/agents?{query},默认带认证 */
+export function listAgents(query = "", headers: Record<string, string> = {}): Promise<Response> {
+  return exports.default.fetch(`http://example.com/v1/agents${query}`, { headers: authed(headers) });
+}
+
+/** POST /v1/agents/{agentId},默认带认证 */
+export function updateAgent(id: string, body: unknown, headers: Record<string, string> = {}): Promise<Response> {
+  return exports.default.fetch(`http://example.com/v1/agents/${encodeURIComponent(id)}`, {
+    method: "POST",
+    headers: { "content-type": "application/json", ...authed(headers) },
+    body: typeof body === "string" ? body : JSON.stringify(body),
+  });
+}
+
+/** GET /v1/agents/{agentId}/versions?{query},默认带认证 */
+export function listAgentVersions(id: string, query = "", headers: Record<string, string> = {}): Promise<Response> {
+  return exports.default.fetch(`http://example.com/v1/agents/${encodeURIComponent(id)}/versions${query}`, {
+    headers: authed(headers),
+  });
+}
+
+/** POST /v1/agents/{agentId}/archive,默认带认证 */
+export function archiveAgentViaApi(id: string, headers: Record<string, string> = {}): Promise<Response> {
+  return exports.default.fetch(`http://example.com/v1/agents/${encodeURIComponent(id)}/archive`, {
+    method: "POST",
+    headers: authed(headers),
+  });
+}
+
+/** 分页响应的断言形状 */
+export interface PageJson<T> {
+  data: T[];
+  next_page: string | null;
+}
+
+/** 测试夹具:绕过接口直改库,把 Agent 置为已归档 */
+export async function archiveAgentInDb(agentId: string): Promise<void> {
+  await env.DB.prepare("UPDATE agents SET archived_at = ? WHERE id = ?")
+    .bind(Date.now(), agentId)
+    .run();
+}
+
+/** 测试夹具:绕过接口直改库,把 current_version 推高一位并补一行占位版本,模拟"期间已被他人改过" */
+export async function bumpAgentVersionInDb(agentId: string): Promise<number> {
+  const row = await env.DB.prepare("SELECT current_version FROM agents WHERE id = ?")
+    .bind(agentId)
+    .first<{ current_version: number }>();
+  const nextVersion = (row?.current_version ?? 0) + 1;
+  const now = Date.now();
+  await env.DB.batch([
+    env.DB.prepare(
+      "INSERT INTO agent_versions (agent_id, version, name, model_id, model_effort, model_speed, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+    ).bind(agentId, nextVersion, "raced-write", "glm-5.3", "max", "standard", now, now),
+    env.DB.prepare("UPDATE agents SET current_version = ? WHERE id = ?").bind(nextVersion, agentId),
+  ]);
+  return nextVersion;
+}
+
+/** 创建一个最小 Agent 并返回其响应(测试数据工厂) */
+export async function createDefaultAgent(body?: Record<string, unknown>): Promise<AgentJson> {
+  const res = await postAgent(body ?? { name: "test-agent", model: "glm-5.3" });
+  if (res.status !== 201) {
+    throw new Error(`fixture create failed: ${res.status} ${await res.text()}`);
+  }
+  return jsonBody<AgentJson>(res);
 }

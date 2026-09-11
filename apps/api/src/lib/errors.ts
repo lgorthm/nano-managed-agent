@@ -19,17 +19,21 @@ const STATUS_BY_ERROR_TYPE: Record<ErrorType, ContentfulStatusCode> = {
 
 /** 服务内唯一允许抛出的错误类型;handler 与 service 不自行构造错误响应 */
 export class ApiError extends Error {
+  readonly status: ContentfulStatusCode;
+
+  /**
+   * status 可覆盖默认映射:GLM 的 409 版本冲突用的 error.type 仍是 invalid_request_error,
+   * 同一错误类型在不同上下文可能对应不同状态码。
+   */
   constructor(
     readonly errorType: ErrorType,
     message: string,
     readonly details?: Record<string, unknown>,
+    status?: ContentfulStatusCode,
   ) {
     super(message);
     this.name = "ApiError";
-  }
-
-  get status(): ContentfulStatusCode {
-    return STATUS_BY_ERROR_TYPE[this.errorType];
+    this.status = status ?? STATUS_BY_ERROR_TYPE[errorType];
   }
 }
 
@@ -39,6 +43,11 @@ export function invalidRequestError(message: string, details?: Record<string, un
 
 export function notFoundError(message: string, details?: Record<string, unknown>): ApiError {
   return new ApiError("not_found_error", message, details);
+}
+
+/** 乐观并发冲突:携带的 version 与当前版本不一致,HTTP 409 */
+export function conflictError(message: string, details?: Record<string, unknown>): ApiError {
+  return new ApiError("invalid_request_error", message, details, 409);
 }
 
 /** 把任意抛出物渲染成统一错误信封;未预期的错误归为 api_error,不泄露内部细节 */

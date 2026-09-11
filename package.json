@@ -13,7 +13,8 @@
     "deploy": "pnpm -r --filter './apps/*' deploy",
     "typecheck": "pnpm -r --filter '@nano/*' typecheck",
     "types": "pnpm -r --filter './apps/*' types",
-    "test": "pnpm -r --filter '@nano/*' test",
+    "lint:deps": "bash scripts/check-deps.sh",
+    "test": "pnpm lint:deps && pnpm -r --filter '@nano/*' test",
     "db:generate": "pnpm --filter @nano/db db:generate",
     "db:migrate:local": "pnpm --filter @nano/api db:migrate:local"
   }

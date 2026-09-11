@@ -1,32 +1,8 @@
 import { exports } from "cloudflare:workers";
 import { beforeAll, describe, expect, it } from "vitest";
-import { applyMigrations, postAgent, type ErrorEnvelope } from "./helpers";
+import { applyMigrations, jsonBody, postAgent, type AgentJson, type ErrorEnvelope } from "./helpers";
 
 beforeAll(applyMigrations);
-
-/** res.json() 在 workers 类型下返回 unknown,这里统一做类型断言 */
-async function jsonBody<T>(res: Response): Promise<T> {
-  return (await res.json()) as T;
-}
-
-/** 创建接口响应的断言形状 */
-interface AgentJson {
-  id: string;
-  type: string;
-  name: string;
-  description: string | null;
-  model: { id: string; effort: string; speed: string };
-  system: string | null;
-  tools: unknown[];
-  skills: unknown[];
-  mcp_servers: unknown[];
-  metadata: Record<string, string>;
-  multiagent: null;
-  version: number;
-  created_at: string;
-  updated_at: string;
-  archived_at: string | null;
-}
 
 const docExample = {
   name: "Coding Assistant",

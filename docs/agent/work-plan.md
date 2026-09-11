@@ -108,10 +108,10 @@ M0 → M1 → M2 → M3 → M4 → M5 → M6 → M7
 
 在 M1 骨架上补第一个只读端点，主要工作是一个 join 查询和一个 handler。
 
-- [ ] `repo.ts` 新增 `findCurrentAgent(db, agentId)`：按 id 取 `agents` 行并以 `current_version` 关联取当前快照，查不到返回 null。
-- [ ] `service.ts` 新增 `getAgent`：取不到抛 404 的 `ApiError`。
-- [ ] 新建 `handlers/get-agent.ts` 并在 `routes.ts` 注册路由。
-- [ ] 集成测试 `get-agent.test.ts`：创建后按返回的 id 获取，字段与创建响应完全一致；不存在的 id 返回 404 且响应是完整错误信封；path 参数格式任意（不存在的合法字符串）同样 404 而不是 500；不带凭证 401。
+- [x] `repo.ts` 新增 `findCurrentAgent(db, agentId)`：按 id 取 `agents` 行并以 `current_version` 关联取当前快照，查不到返回 null。
+- [x] `service.ts` 新增 `getAgent`：取不到抛 404 的 `ApiError`。
+- [x] 新建 `handlers/get-agent.ts` 并在 `routes.ts` 注册路由。
+- [x] 集成测试 `get-agent.test.ts`：创建后按返回的 id 获取，字段与创建响应完全一致；不存在的 id 返回 404 且响应是完整错误信封；path 参数格式任意（不存在的合法字符串）同样 404 而不是 500；不带凭证 401。
 
 **验收**：响应形状与 [get-agent.md](api/get-agent.md) 的示例一致；404 行为符合文档"无权限与不存在同返回 404"的语义（单租户下即不存在 → 404）。
 
@@ -121,10 +121,10 @@ M0 → M1 → M2 → M3 → M4 → M5 → M6 → M7
 
 本里程碑的新增重点在传输层的分页设施，它是所有未来列表端点（sessions、versions 等）的公共基础。
 
-- [ ] 新建 `apps/api/src/lib/pagination.ts`：解析 `limit/order/page`（limit 大于 100 截断、小于 1 抛 400，order 只接受 asc/desc）；游标 base64url 编解码，payload 带类型前缀（如 `agents:{createdAt}:{id}`），防止不同列表端点的游标被混用；解码失败抛 400。
-- [ ] `repo.ts` 新增 `listAgentsPage(db, {limit, order, cursor})`：按 `(created_at, id)` keyset 查询，join 出每个 Agent 的当前版本快照，返回本页数据与下一页游标。
-- [ ] `service.ts` 新增 `listAgents`；新建 `handlers/list-agent.ts`；响应体为 `{ data, next_page }`。
-- [ ] 集成测试 `list-agent.test.ts`：造 25 个 Agent，默认参数返回 20 条、按创建时间倒序、`next_page` 非空；携带游标翻到第 2 页拿到剩余 5 条且 `next_page` 为 null；`limit=5` 生效；`limit=200` 被截断为 100；`limit=0` 返回 400；`order=asc` 正序；篡改游标内容返回 400；已归档的 Agent（用 helpers 直改库造一个）仍出现在列表中。
+- [x] 新建 `apps/api/src/lib/pagination.ts`：解析 `limit/order/page`（limit 大于 100 截断、小于 1 抛 400，order 只接受 asc/desc）；游标 base64url 编解码，payload 带类型前缀（如 `agents:{createdAt}:{id}`），防止不同列表端点的游标被混用；解码失败抛 400。
+- [x] `repo.ts` 新增 `listAgentsPage(db, {limit, order, cursor})`：按 `(created_at, id)` keyset 查询，join 出每个 Agent 的当前版本快照，返回本页数据与下一页游标。
+- [x] `service.ts` 新增 `listAgents`；新建 `handlers/list-agent.ts`；响应体为 `{ data, next_page }`。
+- [x] 集成测试 `list-agent.test.ts`：造 25 个 Agent，默认参数返回 20 条、按创建时间倒序、`next_page` 非空；携带游标翻到第 2 页拿到剩余 5 条且 `next_page` 为 null；`limit=5` 生效；`limit=200` 被截断为 100；`limit=0` 返回 400；`order=asc` 正序；篡改游标内容返回 400；已归档的 Agent（用 helpers 直改库造一个）仍出现在列表中。
 
 **验收**：分页行为逐条对照 [list-agent.md](api/list-agent.md) 与 [README.md](api/README.md) 的分页约定。
 
@@ -136,51 +136,51 @@ M0 → M1 → M2 → M3 → M4 → M5 → M6 → M7
 
 **协议层（先行）：**
 
-- [ ] `schemas.ts` 补充 `AgentUpdateRequest`：`version` 可选正整数；标量字段可空语义（system/description 传 null 清空）；三个数组字段 nullable（null 即清空）；`MetadataPatch`（值为 null 表示删键）。superRefine 补规则：请求包含 mcp_toolset 时必须同请求提交 mcp_servers。
-- [ ] 新建 `packages/shared/src/agent/merge.ts`：实现 `mergeAgentConfig(current, patch)` 与 `agentConfigEquals(a, b)`。
-- [ ] `merge.test.ts` 穷举单测：省略字段保持不变；标量整体替换；system/description 传 null 清空而 name/model 不可清空；数组传新值整体替换、传 null 与空数组等价清空；metadata 新键新增、旧键覆盖、null 值删键、未提及键保留；合并结果与当前一致时 `agentConfigEquals` 为真；任何一处不同则为假。
+- [x] `schemas.ts` 补充 `AgentUpdateRequest`：`version` 可选正整数；标量字段可空语义（system/description 传 null 清空）；三个数组字段 nullable（null 即清空）；`MetadataPatch`（值为 null 表示删键）。superRefine 补规则：请求包含 mcp_toolset 时必须同请求提交 mcp_servers。
+- [x] 新建 `packages/shared/src/agent/merge.ts`：实现 `mergeAgentConfig(current, patch)` 与 `agentConfigEquals(a, b)`。
+- [x] `merge.test.ts` 穷举单测：省略字段保持不变；标量整体替换；system/description 传 null 清空而 name/model 不可清空；数组传新值整体替换、传 null 与空数组等价清空；metadata 新键新增、旧键覆盖、null 值删键、未提及键保留；合并结果与当前一致时 `agentConfigEquals` 为真；任何一处不同则为假。
 
 **存储层：**
 
-- [ ] `repo.ts` 新增 `insertNextVersionAndAdvance(db, {agentId, expectedVersion, config, now})`：同一 D1 batch 内插入 `expectedVersion + 1` 的版本行，并以 `WHERE id = ? AND current_version = ? AND archived_at IS NULL` 前移指针；受影响行为零时返回 false。
+- [x] `repo.ts` 新增 `insertNextVersionAndAdvance(db, {agentId, expectedVersion, config, now})`：同一 D1 batch 内插入 `expectedVersion + 1` 的版本行，并以 `WHERE id = ? AND current_version = ? AND archived_at IS NULL` 前移指针；受影响行为零时返回 false。
 
 **传输层：**
 
-- [ ] `service.ts` 新增 `updateAgent`，判定链按 structure.md 的顺序实现：取当前版本（null → 404）→ 已归档（400）→ 合并补丁 → 无变化则直接返回现有版本（不写库、version 不变）→ 请求带 version 时以该值为期望做 CAS，失败抛 409；不带 version 时先读当前值再走同一 CAS（覆盖式更新）。
-- [ ] 新建 `handlers/update-agent.ts` 并注册路由。
+- [x] `service.ts` 新增 `updateAgent`，判定链按 structure.md 的顺序实现：取当前版本（null → 404）→ 已归档（400）→ 合并补丁 → 无变化则直接返回现有版本（不写库、version 不变）→ 请求带 version 时以该值为期望做 CAS，失败抛 409；不带 version 时先读当前值再走同一 CAS（覆盖式更新）。
+- [x] 新建 `handlers/update-agent.ts` 并注册路由。
 
 **测试与验收：**
 
-- [ ] 集成测试 `update-agent.test.ts`：只改 system 其余不变；改 model 字符串简写后 effort 按新模型默认值补全；system 传 null 清空；tools 传 `[]` 清空且 skills 非空时被校验拒绝（联动规则）；metadata 合并与删键；提交与当前完全相同的配置不升版本、`version` 不变、`updated_at` 不变；携带旧 version 在二次更新后重放返回 409；省略 version 时覆盖式更新成功；已归档 Agent 更新返回 400（用 helpers 直改库造归档状态）；请求带 mcp_toolset 但不带 mcp_servers 返回 400；不存在 的 id 返回 404。
-- [ ] 并发冲突的测试技巧：集成测试里无法真并发，用"先取 expectedVersion，绕过接口直改库把 current_version 推高，再以旧值调更新"来模拟冲突路径。
-- [ ] curl 冒烟：按 [update-agent.md](api/update-agent.md) 的请求示例走一遍携带 version 的更新。
+- [x] 集成测试 `update-agent.test.ts`：只改 system 其余不变；改 model 字符串简写后 effort 按新模型默认值补全；system 传 null 清空；tools 传 `[]` 清空且 skills 非空时被校验拒绝（联动规则）；metadata 合并与删键；提交与当前完全相同的配置不升版本、`version` 不变、`updated_at` 不变；携带旧 version 在二次更新后重放返回 409；省略 version 时覆盖式更新成功；已归档 Agent 更新返回 400（用 helpers 直改库造归档状态）；请求带 mcp_toolset 但不带 mcp_servers 返回 400；不存在 的 id 返回 404。
+- [x] 并发冲突的测试技巧：集成测试里无法真并发，用"先取 expectedVersion，绕过接口直改库把 current_version 推高，再以旧值调更新"来模拟冲突路径。
+- [x] curl 冒烟：按 [update-agent.md](api/update-agent.md) 的请求示例走一遍携带 version 的更新。
 
 ---
 
 ## M5 列出 Agent 版本 — `GET /v1/agents/{agentId}/versions`
 
-- [ ] `repo.ts` 新增 `listAgentVersionsPage(db, agentId, {limit, order, cursor})`：按 `version` keyset 扫描 `agent_versions`。
-- [ ] `service.ts` 新增 `listAgentVersions`（Agent 不存在抛 404）；新建 `handlers/list-agent-versions.ts`。
-- [ ] 序列化注意：每个条目的 `created_at/updated_at` 取版本行自身的时间戳，`archived_at` 取 `agents` 行的 Agent 级时间戳——这是 [list-agent-versions.md](api/list-agent-versions.md) 里"版本级时间戳、Agent 级归档"语义的落点。
-- [ ] 集成测试 `list-agent-versions.test.ts`：对一个更新过两次的 Agent 列版本，得到 3 条、按 version 倒序；逐条断言是当时的完整配置快照（各版本的 system 与当时提交一致）；各版本时间戳不同；归档后（helpers 造）所有条目的 `archived_at` 回显同一个值；游标翻页；不存在的 Agent 返回 404。
+- [x] `repo.ts` 新增 `listAgentVersionsPage(db, agentId, {limit, order, cursor})`：按 `version` keyset 扫描 `agent_versions`。
+- [x] `service.ts` 新增 `listAgentVersions`（Agent 不存在抛 404）；新建 `handlers/list-agent-versions.ts`。
+- [x] 序列化注意：每个条目的 `created_at/updated_at` 取版本行自身的时间戳，`archived_at` 取 `agents` 行的 Agent 级时间戳——这是 [list-agent-versions.md](api/list-agent-versions.md) 里"版本级时间戳、Agent 级归档"语义的落点。
+- [x] 集成测试 `list-agent-versions.test.ts`：对一个更新过两次的 Agent 列版本，得到 3 条、按 version 倒序；逐条断言是当时的完整配置快照（各版本的 system 与当时提交一致）；各版本时间戳不同；归档后（helpers 造）所有条目的 `archived_at` 回显同一个值；游标翻页；不存在的 Agent 返回 404。
 
 ---
 
 ## M6 归档 Agent — `POST /v1/agents/{agentId}/archive`
 
-- [ ] `repo.ts` 新增 `archiveAgent(db, agentId, now)`：`WHERE archived_at IS NULL` 写入归档时间，天然幂等。
-- [ ] `service.ts` 新增 `archiveAgent`：归档后返回当前完整 Agent（`archived_at` 已填充）；重复调用返回相同结果。
-- [ ] 新建 `handlers/archive-agent.ts` 并注册路由。
-- [ ] 集成测试 `archive-agent.test.ts`：归档后 `archived_at` 填充且后续获取不再变化；重复归档返回相同响应；归档后 `GET` 与 `GET /versions` 仍可读；列表中仍出现该 Agent；**端到端回归**：归档后调用更新接口返回 400（补上 M4 留下的真实路径验证）；不存在的 id 返回 404。
+- [x] `repo.ts` 新增 `archiveAgent(db, agentId, now)`：`WHERE archived_at IS NULL` 写入归档时间，天然幂等。
+- [x] `service.ts` 新增 `archiveAgent`：归档后返回当前完整 Agent（`archived_at` 已填充）；重复调用返回相同结果。
+- [x] 新建 `handlers/archive-agent.ts` 并注册路由。
+- [x] 集成测试 `archive-agent.test.ts`：归档后 `archived_at` 填充且后续获取不再变化；重复归档返回相同响应；归档后 `GET` 与 `GET /versions` 仍可读；列表中仍出现该 Agent；**端到端回归**：归档后调用更新接口返回 400（补上 M4 留下的真实路径验证）；不存在的 id 返回 404。
 
 ---
 
 ## M7 收尾与验收
 
-- [ ] 对照六份接口文档做一次系统核对：每个端点的响应字段与 OpenAPI 的 required 列表一致；`type: "agent"` 与 `multiagent: null` 在所有响应中恒定；错误信封在所有非 2xx 中格式一致且带 `request_id`。
-- [ ] 用 curl 按真实顺序走一遍生命周期：创建 → 获取 → 列表 → 更新（含一次 409）→ 列版本 → 归档 → 再次归档，全程对照文档示例。
-- [ ] 全量 `pnpm test` 与 `pnpm typecheck`；确认迁移在全新本地库上从零应用成功。
-- [ ] 复查 structure.md 中"依赖规则"三条约束未被违反（modules 无横向引用、shared 零内部依赖、db 不 import api），可以用一次 grep 或加 lint 规则固化。
+- [x] 对照六份接口文档做一次系统核对：每个端点的响应字段与 OpenAPI 的 required 列表一致；`type: "agent"` 与 `multiagent: null` 在所有响应中恒定；错误信封在所有非 2xx 中格式一致且带 `request_id`。
+- [x] 用 curl 按真实顺序走一遍生命周期：创建 → 获取 → 列表 → 更新（含一次 409）→ 列版本 → 归档 → 再次归档，全程对照文档示例。
+- [x] 全量 `pnpm test` 与 `pnpm typecheck`；确认迁移在全新本地库上从零应用成功。
+- [x] 复查 structure.md 中"依赖规则"三条约束未被违反（modules 无横向引用、shared 零内部依赖、db 不 import api），可以用一次 grep 或加 lint 规则固化。
 
 ---
 
