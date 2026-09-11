@@ -1,4 +1,4 @@
-import type { DeploymentStatus, SessionStatus } from "@nano/shared/glm";
+import type { DeploymentStatus, EnvironmentState, SessionStatus } from "@nano/shared/glm";
 import { cn } from "@/lib/utils";
 
 /**
@@ -50,6 +50,14 @@ export function DeploymentStatusBadge({ status, className }: { status: Deploymen
       className={className}
     >
       {status}
+    </StatusBadge>
+  );
+}
+
+export function EnvironmentStateBadge({ state, className }: { state: EnvironmentState; className?: string }) {
+  return (
+    <StatusBadge tint={state === "active" ? "tint-positive" : "tint-neutral"} className={className}>
+      {state}
     </StatusBadge>
   );
 }

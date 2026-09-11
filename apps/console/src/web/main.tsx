@@ -9,6 +9,8 @@ import { AgentDetailPage } from "@/routes/agents/agent-detail";
 import { AgentListPage } from "@/routes/agents/agent-list";
 import { DeploymentDetailPage } from "@/routes/deployments/deployment-detail";
 import { DeploymentListPage } from "@/routes/deployments/deployment-list";
+import { EnvironmentDetailPage } from "@/routes/environments/environment-detail";
+import { EnvironmentListPage } from "@/routes/environments/environment-list";
 import { SettingsPage } from "@/routes/settings/settings";
 import { NotFoundPage } from "@/routes/not-found";
 import { SessionDetailPage } from "@/routes/sessions/session-detail";
@@ -47,6 +49,13 @@ export const router = createBrowserRouter([
         children: [
           { index: true, element: <DeploymentListPage /> },
           { path: ":deploymentId", element: <DeploymentDetailPage /> },
+        ],
+      },
+      {
+        path: "environments",
+        children: [
+          { index: true, element: <EnvironmentListPage /> },
+          { path: ":environmentId", element: <EnvironmentDetailPage /> },
         ],
       },
       {

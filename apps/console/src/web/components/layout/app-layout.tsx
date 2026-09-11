@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Bot, CalendarClock, Menu, MessagesSquare, Puzzle, Settings } from "lucide-react";
+import { Bot, CalendarClock, Container, Menu, MessagesSquare, Puzzle, Settings } from "lucide-react";
 import { useState } from "react";
 import { NavLink, Outlet } from "react-router";
 import { getIdentity } from "@/auth/identity";
@@ -18,6 +18,7 @@ const NAV_ITEMS = [
   { to: "/agents", label: "Agents", icon: Bot },
   { to: "/sessions", label: "Sessions", icon: MessagesSquare },
   { to: "/deployments", label: "Deployments", icon: CalendarClock },
+  { to: "/environments", label: "Environments", icon: Container },
   { to: "/skills", label: "Skills", icon: Puzzle },
   { to: "/settings", label: "Settings", icon: Settings },
 ];
