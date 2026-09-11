@@ -1,8 +1,11 @@
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import type { Deployment } from "@nano/shared/glm";
 import { CalendarClock } from "lucide-react";
 import { Link } from "react-router";
 import { listDeployments } from "@/api/deployments";
+import { DataPager } from "@/components/data-pager";
+import { useCursorPage } from "@/hooks/use-cursor-page";
+import { TableCard } from "@/components/table-card";
 import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
 import { QueryError } from "@/components/query-error";
@@ -12,9 +15,17 @@ import { TableSkeleton } from "@/components/table-skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatTime, formatTimeShort } from "@/lib/format";
 
+const PAGE_SIZE = 20;
+
 export function DeploymentListPage() {
-  const query = useQuery({ queryKey: ["deployments"], queryFn: () => listDeployments({ limit: 50 }) });
+  const pager = useCursorPage();
+  const query = useQuery({
+    queryKey: ["deployments", pager.cursor],
+    queryFn: () => listDeployments({ limit: PAGE_SIZE, ...(pager.cursor ? { page: pager.cursor } : {}) }),
+    placeholderData: keepPreviousData,
+  });
   const deployments = query.data?.data ?? [];
+  const hasNext = query.data?.next_page != null;
 
   return (
     <div>
@@ -41,9 +52,9 @@ export function DeploymentListPage() {
           />
         </div>
       ) : (
-        <div className="rounded-lg border bg-card">
+        <TableCard>
           <Table>
-            <TableHeader>
+            <TableHeader className="sticky top-0 z-10 bg-card">
               <TableRow>
                 <TableHead>名称</TableHead>
                 <TableHead className="hidden md:table-cell">调度</TableHead>
@@ -83,8 +94,15 @@ export function DeploymentListPage() {
               ))}
             </TableBody>
           </Table>
-        </div>
+        </TableCard>
       )}
+      <DataPager
+        page={pager.page}
+        hasNext={hasNext}
+        isFetching={query.isFetching}
+        onPrev={pager.goPrev}
+        onNext={() => pager.goNext(query.data?.next_page ?? null)}
+      />
     </div>
   );
 }

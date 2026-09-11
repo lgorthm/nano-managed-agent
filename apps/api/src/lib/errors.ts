@@ -50,6 +50,11 @@ export function conflictError(message: string, details?: Record<string, unknown>
   return new ApiError("invalid_request_error", message, details, 409);
 }
 
+/** 上传体超过尺寸上限(单文件或总量),HTTP 413 */
+export function requestTooLargeError(message: string, details?: Record<string, unknown>): ApiError {
+  return new ApiError("request_too_large", message, details);
+}
+
 /** 把任意抛出物渲染成统一错误信封;未预期的错误归为 api_error,不泄露内部细节 */
 export function toErrorResponse(err: unknown, requestId: string): ErrorResponse {
   if (err instanceof ApiError) {

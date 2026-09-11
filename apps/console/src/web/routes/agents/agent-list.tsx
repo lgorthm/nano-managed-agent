@@ -1,8 +1,11 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Agent, GlmModelId, ModelEffort } from "@nano/shared/glm";
 import { Bot, Plus } from "lucide-react";
 import { Link } from "react-router";
 import { createAgent, listAgents } from "@/api/agents";
+import { DataPager } from "@/components/data-pager";
+import { useCursorPage } from "@/hooks/use-cursor-page";
+import { TableCard } from "@/components/table-card";
 import { QueryError } from "@/components/query-error";
 import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
@@ -130,10 +133,18 @@ function CreateAgentDialog({ open, onOpenChange }: { open: boolean; onOpenChange
   );
 }
 
+const PAGE_SIZE = 20;
+
 export function AgentListPage() {
-  const query = useQuery({ queryKey: ["agents"], queryFn: () => listAgents() });
+  const pager = useCursorPage();
+  const query = useQuery({
+    queryKey: ["agents", pager.cursor],
+    queryFn: () => listAgents({ limit: PAGE_SIZE, ...(pager.cursor ? { page: pager.cursor } : {}) }),
+    placeholderData: keepPreviousData,
+  });
   const [createOpen, setCreateOpen] = useState(false);
   const agents = query.data?.data ?? [];
+  const hasNext = query.data?.next_page != null;
 
   return (
     <div>
@@ -168,9 +179,9 @@ export function AgentListPage() {
           />
         </div>
       ) : (
-        <div className="rounded-lg border bg-card">
+        <TableCard>
           <Table>
-            <TableHeader>
+            <TableHeader className="sticky top-0 z-10 bg-card">
               <TableRow>
                 <TableHead>名称</TableHead>
                 <TableHead className="hidden md:table-cell">模型</TableHead>
@@ -215,8 +226,15 @@ export function AgentListPage() {
               ))}
             </TableBody>
           </Table>
-        </div>
+        </TableCard>
       )}
+      <DataPager
+        page={pager.page}
+        hasNext={hasNext}
+        isFetching={query.isFetching}
+        onPrev={pager.goPrev}
+        onNext={() => pager.goNext(query.data?.next_page ?? null)}
+      />
     </div>
   );
 }

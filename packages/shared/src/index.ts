@@ -7,5 +7,8 @@ export * from "./api/pagination";
 export * from "./agent/schemas";
 export * from "./agent/normalize";
 export * from "./agent/merge";
+export * from "./skill/schemas";
+export * from "./skill/tree";
+export * from "./skill/frontmatter";
 
 export const API_VERSION = "v1";

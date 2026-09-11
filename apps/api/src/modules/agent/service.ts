@@ -3,17 +3,20 @@ import {
   createAgentWithFirstVersion,
   findAgentRow,
   findCurrentAgent,
+  findMissingSkillVersionPairs,
   getDb,
   insertNextVersionAndAdvance,
   listAgentsPage,
   listAgentVersionsPage,
   newAgentId,
+  type Db,
 } from "@nano/db";
 import type {
   AgentCreateRequestInput,
   AgentResponse,
   AgentUpdateRequestInput,
   Page,
+  SkillReference,
 } from "@nano/shared";
 import { agentConfigIssues, normalizeAgentConfig } from "@nano/shared";
 import type { Env } from "../../env";
@@ -29,6 +32,31 @@ const AGENTS_CURSOR_KIND = "agents";
 const AGENT_VERSIONS_CURSOR_KIND = "agent-versions";
 
 /**
+ * 校验 skills 引用可解析(docs/skills/schema.md 的引用一致性规则):
+ * zai 平台内置 Skill 在 nano 不存在,直接拒绝;custom 引用逐个点查 (skill_id, version)。
+ * 跨资源的查询走 @nano/db 的 skill 仓储,两个模块之间没有横向 import。
+ */
+async function assertSkillReferencesResolvable(db: Db, skills: SkillReference[]): Promise<void> {
+  const unsupported = skills.filter((reference) => reference.type !== "custom");
+  if (unsupported.length > 0) {
+    throw invalidRequestError(
+      'Skill references with type "zai" are not supported: nano has no platform built-in skills.',
+      { references: unsupported },
+    );
+  }
+  if (skills.length === 0) return;
+  const missing = await findMissingSkillVersionPairs(db, skills);
+  if (missing.size > 0) {
+    throw invalidRequestError("Skill references are not resolvable.", {
+      missing: [...missing].map((key) => {
+        const [type, skill_id, version] = key.split("|");
+        return { type, skill_id, version };
+      }),
+    });
+  }
+}
+
+/**
  * Agent 资源的业务编排层。
  * createAgent:校验(handler 已完成)→ 归一化 → 生成 ID → 落库 → 以落库形态回显。
  */
@@ -36,6 +64,7 @@ export const agentService = {
   async createAgent(env: Env, input: AgentCreateRequestInput): Promise<AgentResponse> {
     const config = normalizeAgentConfig(input);
     const db = getDb(env);
+    await assertSkillReferencesResolvable(db, config.skills);
     const id = newAgentId();
     const now = new Date();
     await createAgentWithFirstVersion(db, { id, config, now });
@@ -102,6 +131,11 @@ export const agentService = {
           })),
         },
       );
+    }
+
+    // 提交了 skills(含传 null 清空)才校验;未提交时保持现状,不必重查
+    if (patch.skills !== undefined) {
+      await assertSkillReferencesResolvable(db, merged.skills);
     }
 
     if (agentConfigEquals(merged, currentConfig)) {

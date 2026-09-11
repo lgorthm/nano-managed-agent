@@ -1,6 +1,7 @@
 import { exports } from "cloudflare:workers";
 import { beforeAll, describe, expect, it } from "vitest";
 import { applyMigrations, jsonBody, postAgent, type AgentJson, type ErrorEnvelope } from "./helpers";
+import { createDefaultSkill } from "../skills/helpers";
 
 beforeAll(applyMigrations);
 
@@ -50,6 +51,8 @@ describe("POST /v1/agents 成功路径", () => {
   });
 
   it("全特性配置(内置工具集 + MCP + 自定义工具 + skills)成功并正确回显", async () => {
+    // skills 引用必须可解析(M8 联动规则):先建真实 Skill 再引用
+    const skill = await createDefaultSkill();
     const res = await postAgent({
       name: "full",
       model: { id: "glm-5.3", effort: "low" },
@@ -68,7 +71,7 @@ describe("POST /v1/agents 成功路径", () => {
           input_schema: { type: "object", properties: { q: { type: "string" } }, required: ["q"] },
         },
       ],
-      skills: [{ type: "zai", skill_id: "skl_1", version: "3" }],
+      skills: [{ type: "custom", skill_id: skill.id, version: "1" }],
       mcp_servers: [{ type: "url", name: "kb", url: "https://mcp.example.com/mcp" }],
       metadata: { team: "infra" },
     });
@@ -94,7 +97,7 @@ describe("POST /v1/agents 成功路径", () => {
         input_schema: { type: "object", properties: { q: { type: "string" } }, required: ["q"] },
       },
     ]);
-    expect(body.skills).toEqual([{ type: "zai", skill_id: "skl_1", version: "3" }]);
+    expect(body.skills).toEqual([{ type: "custom", skill_id: skill.id, version: "1" }]);
     expect(body.mcp_servers).toEqual([{ type: "url", name: "kb", url: "https://mcp.example.com/mcp" }]);
     expect(body.metadata).toEqual({ team: "infra" });
   });

@@ -11,16 +11,18 @@ import {
   type AgentJson,
   type ErrorEnvelope,
 } from "./helpers";
+import { createDefaultSkill } from "../skills/helpers";
 
 beforeAll(applyMigrations);
 
-/** 创建一个带 skills + 内置工具集的 Agent,用于联动规则用例 */
+/** 创建一个带 skills + 内置工具集的 Agent,用于联动规则用例;引用真实 Skill(M8 后必须可解析) */
 async function createWithSkills(): Promise<AgentJson> {
+  const skill = await createDefaultSkill();
   return createDefaultAgent({
     name: "with-skills",
     model: "glm-5.3",
     tools: [{ type: "agent_toolset_20260601" }],
-    skills: [{ type: "zai", skill_id: "skl_1", version: "1" }],
+    skills: [{ type: "custom", skill_id: skill.id, version: "1" }],
   });
 }
 

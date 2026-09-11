@@ -33,35 +33,48 @@ export function qs(params: object = {}): string {
   return s ? `?${s}` : "";
 }
 
+/** 非 2xx 响应统一解析 GLM 错误信封后抛出;解析失败(如 Access 拦截页)保留兜底信息 */
+async function throwIfError(res: Response): Promise<void> {
+  if (res.ok) return;
+  let type = `http_${res.status}`;
+  let message = `请求失败(HTTP ${res.status})`;
+  try {
+    const body = (await res.json()) as {
+      error?: { type?: string; message?: string };
+    };
+    if (body.error?.message) {
+      type = body.error.type ?? type;
+      message = body.error.message;
+    }
+  } catch {
+    // 非 JSON 错误体(如 Access 拦截页),保留默认信息
+  }
+  throw new GlmApiError(res.status, type, message);
+}
+
 export async function glmFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${GLM_PROXY_BASE}${path}`, {
     ...init,
     headers: {
       accept: "application/json",
-      ...(init?.body != null ? { "content-type": "application/json" } : {}),
+      // FormData 的 multipart boundary 由浏览器生成,不能手动指定 content-type
+      ...(init?.body != null && !(init.body instanceof FormData)
+        ? { "content-type": "application/json" }
+        : {}),
       ...init?.headers,
     },
   });
-
-  if (!res.ok) {
-    let type = `http_${res.status}`;
-    let message = `请求失败(HTTP ${res.status})`;
-    try {
-      const body = (await res.json()) as {
-        error?: { type?: string; message?: string };
-      };
-      if (body.error?.message) {
-        type = body.error.type ?? type;
-        message = body.error.message;
-      }
-    } catch {
-      // 非 JSON 错误体(如 Access 拦截页),保留默认信息
-    }
-    throw new GlmApiError(res.status, type, message);
-  }
+  await throwIfError(res);
 
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
+}
+
+/** 同 glmFetch 的错误处理,但返回原始 Response——ZIP 下载等二进制响应用 */
+export async function glmFetchRaw(path: string, init?: RequestInit): Promise<Response> {
+  const res = await fetch(`${GLM_PROXY_BASE}${path}`, { ...init, headers: init?.headers });
+  await throwIfError(res);
+  return res;
 }
 
 export function glmFetchPage<T>(path: string, params: object = {}): Promise<Page<T>> {

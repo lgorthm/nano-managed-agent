@@ -13,6 +13,8 @@ import { SettingsPage } from "@/routes/settings/settings";
 import { NotFoundPage } from "@/routes/not-found";
 import { SessionDetailPage } from "@/routes/sessions/session-detail";
 import { SessionListPage } from "@/routes/sessions/session-list";
+import { SkillDetailPage } from "@/routes/skills/skill-detail";
+import { SkillListPage } from "@/routes/skills/skill-list";
 import "./index.css";
 
 const queryClient = new QueryClient({
@@ -45,6 +47,13 @@ export const router = createBrowserRouter([
         children: [
           { index: true, element: <DeploymentListPage /> },
           { path: ":deploymentId", element: <DeploymentDetailPage /> },
+        ],
+      },
+      {
+        path: "skills",
+        children: [
+          { index: true, element: <SkillListPage /> },
+          { path: ":skillId", element: <SkillDetailPage /> },
         ],
       },
       { path: "settings", element: <SettingsPage /> },

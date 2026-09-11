@@ -8,6 +8,13 @@
       "when": 1789060124923,
       "tag": "0000_curious_leper_queen",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1789107879714,
+      "tag": "0001_cuddly_arclight",
+      "breakpoints": true
     }
   ]
 }

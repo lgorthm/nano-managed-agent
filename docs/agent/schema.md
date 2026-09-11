@@ -136,6 +136,7 @@ UPDATE agents SET archived_at = :now
 | `name` 1–256 字符； | 创建必填 |
 | `system` ≤ 100000；`description` ≤ 2048，均可为 null | — |
 | `tools` ≤ 128 项；`skills` ≤ 20 项且 `(skill_id, version)` 不重复；`mcp_servers` ≤ 20 项 | — |
+| `skills[]` 引用的 `(skill_id, version)` 必须存在于 `skill_versions`（见 [Skill schema](../skills/schema.md)）；`type` 仅 `custom`，nano 无平台内置（`zai`）Skill | 引用一致性 |
 | `metadata` ≤ 16 键，键 ≤ 64 字符，值 ≤ 512 字符 | — |
 | `mcp_servers[].name` 数组内唯一，且每个必须与**恰好一个** `mcp_toolset.mcp_server_name` 同名对应；提交 `mcp_toolset` 时必须同请求提交 `mcp_servers` | 引用一致性 |
 | 配置 `skills` 非空时，`tools` 必须包含 `agent_toolset_20260601` | Skill 依赖内置工具集 |

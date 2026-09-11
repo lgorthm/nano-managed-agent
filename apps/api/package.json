@@ -6,7 +6,7 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "vitest run --no-file-parallelism",
     "types": "wrangler types",
     "db:migrate:local": "wrangler d1 migrations apply DB --local"
   },
@@ -14,6 +14,7 @@
     "@nano/db": "workspace:*",
     "@nano/shared": "workspace:*",
     "drizzle-orm": "^0.45.2",
+    "fflate": "^0.8.3",
     "hono": "^4.13.7"
   },
   "devDependencies": {
