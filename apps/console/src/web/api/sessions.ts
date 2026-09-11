@@ -6,6 +6,10 @@ import type {
   Session,
   SessionCreateInput,
   SessionEventListQuery,
+  SessionFileResource,
+  SessionFileResourceInput,
+  SessionResourceDeleted,
+  SessionResourceResponse,
   SessionUpdateInput,
   StreamEvent,
 } from "@nano/shared/glm";
@@ -31,6 +35,34 @@ export function updateSession(sessionId: string, input: SessionUpdateInput) {
 
 export function deleteSession(sessionId: string) {
   return glmFetch<void>(`${BASE}/${sessionId}`, { method: "DELETE" });
+}
+
+/** 标记只读;重复归档返回 409 session_archived */
+export function archiveSession(sessionId: string) {
+  return glmFetch<Session>(`${BASE}/${sessionId}/archive`, { method: "POST" });
+}
+
+/** 列出已挂载的资源(文件 + memory store) */
+export function listSessionResources(sessionId: string, query: ListQuery = {}) {
+  return glmFetchPage<SessionResourceResponse>(`${BASE}/${sessionId}/resources`, query);
+}
+
+/** 挂载已上传的托管文件;mount_path 省略时默认 /mnt/session/uploads/{file_id} */
+export function addSessionFileResource(sessionId: string, input: SessionFileResourceInput) {
+  return glmFetch<SessionFileResource>(`${BASE}/${sessionId}/resources`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function getSessionFileResource(sessionId: string, resourceId: string) {
+  return glmFetch<SessionFileResource>(`${BASE}/${sessionId}/resources/${resourceId}`);
+}
+
+export function deleteSessionFileResource(sessionId: string, resourceId: string) {
+  return glmFetch<SessionResourceDeleted>(`${BASE}/${sessionId}/resources/${resourceId}`, {
+    method: "DELETE",
+  });
 }
 
 /** 历史事件;断线重连时先拉列表再订阅,按事件 id 去重 */

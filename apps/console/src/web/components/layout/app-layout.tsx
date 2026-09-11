@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Bot, CalendarClock, Container, Files, Menu, MessagesSquare, Puzzle, Settings } from "lucide-react";
+import { Bot, Brain, CalendarClock, Container, Files, KeyRound, Menu, MessagesSquare, Puzzle, Settings } from "lucide-react";
 import { useState } from "react";
 import { NavLink, Outlet } from "react-router";
 import { getIdentity } from "@/auth/identity";
@@ -21,6 +21,8 @@ const NAV_ITEMS = [
   { to: "/environments", label: "Environments", icon: Container },
   { to: "/skills", label: "Skills", icon: Puzzle },
   { to: "/files", label: "Files", icon: Files },
+  { to: "/memories", label: "Memories", icon: Brain },
+  { to: "/vaults", label: "Vaults", icon: KeyRound },
   { to: "/settings", label: "Settings", icon: Settings },
 ];
 

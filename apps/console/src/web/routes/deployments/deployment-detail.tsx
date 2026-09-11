@@ -1,8 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Inbox, Pause, Play, Zap } from "lucide-react";
+import { Archive, Inbox, Pause, Play, Zap } from "lucide-react";
+import { useState } from "react";
 import { Link, useParams } from "react-router";
 import {
+  archiveDeployment,
   getDeployment,
+  getDeploymentRun,
   listDeploymentRuns,
   pauseDeployment,
   resumeDeployment,
@@ -10,6 +13,7 @@ import {
 } from "@/api/deployments";
 import { BackLink } from "@/components/back-link";
 import { EmptyState } from "@/components/empty-state";
+import { UpdateDeploymentDialog } from "@/components/deployment-form-dialog";
 import { PageHeader } from "@/components/page-header";
 import { QueryError } from "@/components/query-error";
 import { KeyValueRow, SectionCard } from "@/components/section-card";
@@ -17,12 +21,142 @@ import { DeploymentStatusBadge, StatusBadge } from "@/components/status-badges";
 import { TableSkeleton } from "@/components/table-skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatTime, shortId } from "@/lib/format";
+
+/** 归档是幂等的终态操作:归档后不再触发调度,运行记录保留 */
+function ArchiveDeploymentDialog({ deploymentId }: { deploymentId: string }) {
+  const [open, setOpen] = useState(false);
+  const queryClient = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: () => archiveDeployment(deploymentId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["deployments"] });
+      setOpen(false);
+    },
+  });
+  return (
+    <Dialog open={open} onOpenChange={mutation.isPending ? undefined : setOpen}>
+      <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
+        <Archive /> 归档
+      </Button>
+      <DialogContent showCloseButton={false} className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>归档 Deployment?</DialogTitle>
+          <DialogDescription>归档后不再触发调度,也无法恢复;已有运行记录与会话不受影响。</DialogDescription>
+        </DialogHeader>
+        {mutation.isError ? <p className="text-destructive text-sm">{(mutation.error as Error).message}</p> : null}
+        <DialogFooter>
+          <Button variant="outline" size="sm" disabled={mutation.isPending} onClick={() => setOpen(false)}>
+            取消
+          </Button>
+          <Button variant="destructive" size="sm" disabled={mutation.isPending} onClick={() => mutation.mutate()}>
+            {mutation.isPending ? "归档中…" : "确认归档"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** 单次运行详情:列表行数据不含错误信息,点开后拉全量 */
+function RunDetailDialog({
+  deploymentId,
+  runId,
+  open,
+  onOpenChange,
+}: {
+  deploymentId: string;
+  runId: string | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const runQuery = useQuery({
+    queryKey: ["deployments", deploymentId, "runs", runId],
+    queryFn: () => getDeploymentRun(runId!),
+    enabled: open && runId !== null,
+  });
+  const run = runQuery.data;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>运行详情</DialogTitle>
+          <DialogDescription className="font-mono">{runId}</DialogDescription>
+        </DialogHeader>
+        {run ? (
+          <div className="space-y-2.5 text-sm">
+            <KeyValueRow label="触发方式">
+              <span className="font-mono text-xs">
+                {run.trigger_context.type}
+                {run.trigger_context.scheduled_at
+                  ? ` · 计划于 ${formatTime(run.trigger_context.scheduled_at)}`
+                  : ""}
+              </span>
+            </KeyValueRow>
+            <KeyValueRow label="Agent 版本">
+              <span className="font-mono text-xs">
+                {shortId(run.agent.id)} @ v{run.agent.version}
+              </span>
+            </KeyValueRow>
+            <KeyValueRow label="创建时间">
+              <span className="text-xs tabular-nums">{formatTime(run.created_at)}</span>
+            </KeyValueRow>
+            <KeyValueRow label="会话">
+              {run.session_id ? (
+                <Link
+                  to={`/sessions/${run.session_id}`}
+                  className="font-mono text-xs hover:underline"
+                  onClick={() => onOpenChange(false)}
+                >
+                  {run.session_id}
+                </Link>
+              ) : (
+                <span className="text-muted-foreground text-xs">未创建(运行失败)</span>
+              )}
+            </KeyValueRow>
+            <div className="text-sm">
+              <div className="text-muted-foreground mb-1.5 text-xs">结果</div>
+              {run.error ? (
+                <div className="border-destructive/40 bg-destructive/5 rounded-md border p-3">
+                  <Badge variant="destructive" className="mb-1.5 font-normal">
+                    {run.error.type}
+                  </Badge>
+                  <p className="text-destructive text-xs break-words">{run.error.message}</p>
+                </div>
+              ) : (
+                <StatusBadge tint="tint-positive">ok</StatusBadge>
+              )}
+            </div>
+          </div>
+        ) : runQuery.isError ? (
+          <p className="text-destructive text-sm">{String(runQuery.error)}</p>
+        ) : (
+          <p className="text-muted-foreground text-sm">加载中…</p>
+        )}
+        <DialogFooter>
+          <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>
+            关闭
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 export function DeploymentDetailPage() {
   const { deploymentId } = useParams();
   const queryClient = useQueryClient();
+  const [openRunId, setOpenRunId] = useState<string | null>(null);
   const deploymentQuery = useQuery({
     queryKey: ["deployments", deploymentId],
     queryFn: () => getDeployment(deploymentId!),
@@ -58,6 +192,8 @@ export function DeploymentDetailPage() {
         actions={
           <>
             <DeploymentStatusBadge status={deployment.status} />
+            {!deployment.archived_at ? <UpdateDeploymentDialog deployment={deployment} /> : null}
+            {!deployment.archived_at ? <ArchiveDeploymentDialog deploymentId={deployment.id} /> : null}
             {deployment.status === "active" ? (
               <Button
                 size="sm"
@@ -174,8 +310,10 @@ export function DeploymentDetailPage() {
               </TableHeader>
               <TableBody>
                 {runsQuery.data.data.map((run) => (
-                  <TableRow key={run.id}>
-                    <TableCell className="max-w-24 truncate font-mono text-xs md:max-w-none">{shortId(run.id)}</TableCell>
+                  <TableRow key={run.id} className="cursor-pointer" onClick={() => setOpenRunId(run.id)}>
+                    <TableCell className="max-w-24 truncate font-mono text-xs underline-offset-2 hover:underline md:max-w-none">
+                      {shortId(run.id)}
+                    </TableCell>
                     <TableCell className="hidden md:table-cell">
                       <Badge variant="secondary" className="font-mono text-[11px] font-normal">
                         {run.trigger_context.type}
@@ -186,6 +324,7 @@ export function DeploymentDetailPage() {
                         <Link
                           to={`/sessions/${run.session_id}`}
                           className="inline-block max-w-24 truncate font-mono text-xs hover:underline md:max-w-none"
+                          onClick={(e) => e.stopPropagation()}
                         >
                           {shortId(run.session_id)}
                         </Link>
@@ -212,6 +351,15 @@ export function DeploymentDetailPage() {
           )}
         </SectionCard>
       </div>
+
+      <RunDetailDialog
+        deploymentId={deployment.id}
+        runId={openRunId}
+        open={openRunId !== null}
+        onOpenChange={(open) => {
+          if (!open) setOpenRunId(null);
+        }}
+      />
 
       <div className="hidden md:block">
         <BackLink to="/deployments" label="返回 Deployments" desktopOnly />

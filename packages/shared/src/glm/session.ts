@@ -132,6 +132,41 @@ export interface SessionResource {
   mount_path?: string | null;
 }
 
+/** 已挂载的文件资源(响应侧,平台分配 id;移除挂载用) */
+export interface SessionFileResource {
+  type: "file";
+  id: string;
+  file_id: string;
+  mount_path: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/** 已挂载的 memory store 资源:无独立 id,以 memory_store_id 标识,不可单独移除 */
+export interface SessionMemoryStoreResource {
+  type: "memory_store";
+  memory_store_id: string;
+  name: string;
+  description: string | null;
+  access: "read_only" | "read_write";
+  instructions: string | null;
+  mount_path: string;
+}
+
+export type SessionResourceResponse = SessionFileResource | SessionMemoryStoreResource;
+
+/** 挂载新文件;mount_path 省略时默认 /mnt/session/uploads/{file_id},不能逃逸该目录 */
+export interface SessionFileResourceInput {
+  type: "file";
+  file_id: string;
+  mount_path?: string | null;
+}
+
+export interface SessionResourceDeleted {
+  id: string;
+  type: "session_resource_deleted";
+}
+
 export interface Session {
   id: string;
   type: "session";

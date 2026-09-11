@@ -12,12 +12,16 @@ import { DeploymentListPage } from "@/routes/deployments/deployment-list";
 import { EnvironmentDetailPage } from "@/routes/environments/environment-detail";
 import { EnvironmentListPage } from "@/routes/environments/environment-list";
 import { FileListPage } from "@/routes/files/file-list";
+import { MemoryStoreDetailPage } from "@/routes/memories/memory-store-detail";
+import { MemoryStoreListPage } from "@/routes/memories/memory-store-list";
 import { SettingsPage } from "@/routes/settings/settings";
 import { NotFoundPage } from "@/routes/not-found";
 import { SessionDetailPage } from "@/routes/sessions/session-detail";
 import { SessionListPage } from "@/routes/sessions/session-list";
 import { SkillDetailPage } from "@/routes/skills/skill-detail";
 import { SkillListPage } from "@/routes/skills/skill-list";
+import { VaultDetailPage } from "@/routes/vaults/vault-detail";
+import { VaultListPage } from "@/routes/vaults/vault-list";
 import "./index.css";
 
 const queryClient = new QueryClient({
@@ -67,6 +71,20 @@ export const router = createBrowserRouter([
         ],
       },
       { path: "files", element: <FileListPage /> },
+      {
+        path: "memories",
+        children: [
+          { index: true, element: <MemoryStoreListPage /> },
+          { path: ":memoryStoreId", element: <MemoryStoreDetailPage /> },
+        ],
+      },
+      {
+        path: "vaults",
+        children: [
+          { index: true, element: <VaultListPage /> },
+          { path: ":vaultId", element: <VaultDetailPage /> },
+        ],
+      },
       { path: "settings", element: <SettingsPage /> },
       { path: "*", element: <NotFoundPage /> },
     ],

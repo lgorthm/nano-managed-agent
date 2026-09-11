@@ -1,10 +1,8 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import type { Deployment } from "@nano/shared/glm";
-import { CalendarClock } from "lucide-react";
+import { KeyRound, Plus } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router";
-import { listDeployments } from "@/api/deployments";
-import { CreateDeploymentDialog } from "@/components/deployment-form-dialog";
+import { listVaults } from "@/api/vaults";
 import { DataPager } from "@/components/data-pager";
 import { useCursorPage } from "@/hooks/use-cursor-page";
 import { TableCard } from "@/components/table-card";
@@ -12,36 +10,50 @@ import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
 import { QueryError } from "@/components/query-error";
 import { RefreshButton } from "@/components/refresh-button";
-import { DeploymentStatusBadge } from "@/components/status-badges";
+import { StatusBadge } from "@/components/status-badges";
 import { TableSkeleton } from "@/components/table-skeleton";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { formatTime, formatTimeShort } from "@/lib/format";
+import { formatTime } from "@/lib/format";
+import { CreateVaultDialog } from "@/components/vault-form-dialog";
 
 const PAGE_SIZE = 20;
 
-export function DeploymentListPage() {
+export function VaultListPage() {
   const pager = useCursorPage();
+  const [includeArchived, setIncludeArchived] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const query = useQuery({
-    queryKey: ["deployments", pager.cursor],
-    queryFn: () => listDeployments({ limit: PAGE_SIZE, ...(pager.cursor ? { page: pager.cursor } : {}) }),
+    queryKey: ["vaults", pager.cursor, includeArchived],
+    queryFn: () =>
+      listVaults({
+        limit: PAGE_SIZE,
+        include_archived: includeArchived || undefined,
+        ...(pager.cursor ? { page: pager.cursor } : {}),
+      }),
     placeholderData: keepPreviousData,
   });
-  const deployments = query.data?.data ?? [];
+  const vaults = query.data?.data ?? [];
   const hasNext = query.data?.next_page != null;
 
   return (
     <div>
-      <title>nano console — Deployments</title>
+      <title>nano console — Vaults</title>
       <PageHeader
-        title="Deployments"
-        description="定时或手动运行的 Deployment 及其运行记录。"
+        title="Vaults"
+        description="凭据金库:集中保管 API token、OAuth 凭据与环境变量,会话与部署通过引用安全注入,secret 永不回显。"
         actions={
           <>
+            <Label className="text-muted-foreground flex items-center gap-2 text-sm font-normal">
+              <Switch checked={includeArchived} onCheckedChange={setIncludeArchived} />
+              含已归档
+            </Label>
             <RefreshButton isFetching={query.isFetching} onClick={() => void query.refetch()}>
               刷新
             </RefreshButton>
-            <CreateDeploymentDialog open={createOpen} onOpenChange={setCreateOpen} />
+            <CreateVaultDialog open={createOpen} onOpenChange={setCreateOpen} />
           </>
         }
       />
@@ -49,12 +61,17 @@ export function DeploymentListPage() {
         <TableSkeleton rows={6} />
       ) : query.isError ? (
         <QueryError error={query.error} />
-      ) : deployments.length === 0 ? (
+      ) : vaults.length === 0 ? (
         <div className="rounded-lg border bg-card">
           <EmptyState
-            icon={CalendarClock}
-            title="暂无 Deployment"
-            description="Deployment 把某个版本的 Agent 按 cron 定时跑起来;创建后每次运行都会在这里留下记录。"
+            icon={KeyRound}
+            title="还没有 Vault"
+            description="创建一个 Vault 并添加凭据,然后在会话或部署里通过 vault_ids 引用。"
+            action={
+              <Button size="sm" onClick={() => setCreateOpen(true)}>
+                <Plus /> 新建 Vault
+              </Button>
+            }
           />
         </div>
       ) : (
@@ -63,38 +80,33 @@ export function DeploymentListPage() {
             <TableHeader className="sticky top-0 z-10 bg-card">
               <TableRow>
                 <TableHead>名称</TableHead>
-                <TableHead className="hidden md:table-cell">调度</TableHead>
                 <TableHead>状态</TableHead>
-                <TableHead className="hidden md:table-cell">上次运行</TableHead>
+                <TableHead className="hidden md:table-cell">创建时间</TableHead>
                 <TableHead className="text-right">更新时间</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {deployments.map((deployment: Deployment) => (
-                <TableRow key={deployment.id}>
+              {vaults.map((vault) => (
+                <TableRow key={vault.id}>
                   <TableCell>
                     <Link
-                      to={`/deployments/${deployment.id}`}
+                      to={`/vaults/${vault.id}`}
                       className="inline-block max-w-28 truncate font-medium hover:underline md:max-w-none"
                     >
-                      {deployment.name}
+                      {vault.display_name}
                     </Link>
-                    <div className="text-muted-foreground hidden font-mono text-xs md:block">
-                      {deployment.id}
-                    </div>
-                  </TableCell>
-                  <TableCell className="hidden font-mono text-xs md:table-cell">
-                    {deployment.schedule ? deployment.schedule.expression : <span className="text-muted-foreground">仅手动</span>}
+                    <div className="text-muted-foreground hidden font-mono text-xs md:block">{vault.id}</div>
                   </TableCell>
                   <TableCell>
-                    <DeploymentStatusBadge status={deployment.status} />
+                    <StatusBadge tint={vault.archived_at ? "tint-neutral" : "tint-positive"}>
+                      {vault.archived_at ? "archived" : "active"}
+                    </StatusBadge>
                   </TableCell>
                   <TableCell className="text-muted-foreground hidden text-sm tabular-nums md:table-cell">
-                    {formatTime(deployment.schedule?.last_run_at)}
+                    {formatTime(vault.created_at)}
                   </TableCell>
                   <TableCell className="text-right text-muted-foreground">
-                    <span className="text-xs tabular-nums sm:hidden">{formatTimeShort(deployment.updated_at)}</span>
-                    <span className="hidden text-sm tabular-nums sm:inline">{formatTime(deployment.updated_at)}</span>
+                    <span className="text-xs tabular-nums">{formatTime(vault.updated_at)}</span>
                   </TableCell>
                 </TableRow>
               ))}

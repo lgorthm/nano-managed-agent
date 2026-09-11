@@ -1,9 +1,19 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { PersistedEvent, StreamEvent } from "@nano/shared/glm";
-import { Inbox, Send } from "lucide-react";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { PersistedEvent, SessionFileResource, SessionResourceResponse, StreamEvent } from "@nano/shared/glm";
+import { Archive, Inbox, Paperclip, Send, Unlink } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router";
-import { getSession, listSessionEvents, sendSessionEvents, subscribeSessionEvents } from "@/api/sessions";
+import { listFiles } from "@/api/files";
+import {
+  addSessionFileResource,
+  archiveSession,
+  deleteSessionFileResource,
+  getSession,
+  listSessionEvents,
+  listSessionResources,
+  sendSessionEvents,
+  subscribeSessionEvents,
+} from "@/api/sessions";
 import { BackLink } from "@/components/back-link";
 import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
@@ -13,9 +23,27 @@ import { SectionCard } from "@/components/section-card";
 import { SessionStatusBadge, StatusBadge } from "@/components/status-badges";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatNumber, formatTime, formatTimeShort, shortId } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -94,6 +122,250 @@ function StatCell({ label, value, unit }: { label: string; value: string; unit?:
         {unit ? <span className="text-muted-foreground ml-0.5 text-sm font-normal">{unit}</span> : null}
       </div>
     </div>
+  );
+}
+
+/** 归档后会话只读;重复归档服务端返回 409 session_archived */
+function ArchiveSessionDialog({ sessionId }: { sessionId: string }) {
+  const [open, setOpen] = useState(false);
+  const queryClient = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: () => archiveSession(sessionId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["sessions"] });
+      setOpen(false);
+    },
+  });
+  return (
+    <Dialog open={open} onOpenChange={mutation.isPending ? undefined : setOpen}>
+      <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
+        <Archive /> 归档
+      </Button>
+      <DialogContent showCloseButton={false} className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>归档会话?</DialogTitle>
+          <DialogDescription>
+            归档后会话变为只读:不能再发送消息或改动资源,该操作不可恢复。
+          </DialogDescription>
+        </DialogHeader>
+        {mutation.isError ? <p className="text-destructive text-sm">{(mutation.error as Error).message}</p> : null}
+        <DialogFooter>
+          <Button variant="outline" size="sm" disabled={mutation.isPending} onClick={() => setOpen(false)}>
+            取消
+          </Button>
+          <Button variant="destructive" size="sm" disabled={mutation.isPending} onClick={() => mutation.mutate()}>
+            {mutation.isPending ? "归档中…" : "确认归档"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** 挂载已上传的托管文件到会话;mount_path 省略时默认 /mnt/session/uploads/{file_id} */
+function AddSessionFileDialog({ sessionId, disabled }: { sessionId: string; disabled: boolean }) {
+  const [open, setOpen] = useState(false);
+  const [fileId, setFileId] = useState("");
+  const [mountPath, setMountPath] = useState("");
+  const [attempted, setAttempted] = useState(false);
+  const queryClient = useQueryClient();
+
+  const filesQuery = useQuery({
+    queryKey: ["files", "for-mount"],
+    queryFn: () => listFiles({ limit: 50 }),
+    enabled: open,
+    placeholderData: keepPreviousData,
+  });
+  const files = filesQuery.data?.data ?? [];
+
+  function close() {
+    setOpen(false);
+    setFileId("");
+    setMountPath("");
+    setAttempted(false);
+  }
+
+  const mutation = useMutation({
+    mutationFn: () =>
+      addSessionFileResource(sessionId, {
+        type: "file",
+        file_id: fileId,
+        ...(mountPath.trim() ? { mount_path: mountPath.trim() } : {}),
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["sessions", sessionId, "resources"] });
+      close();
+    },
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={close}>
+      <Button size="sm" variant="outline" disabled={disabled} onClick={() => setOpen(true)}>
+        <Paperclip /> 挂载文件
+      </Button>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>挂载文件</DialogTitle>
+          <DialogDescription>
+            文件会出现在沙箱的 /mnt/session/uploads 下,会话内只读。
+          </DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-4">
+          <div className="grid gap-2">
+            <Label>托管文件</Label>
+            <Select value={fileId} onValueChange={setFileId}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder={files.length === 0 ? "暂无可选文件" : "选择文件"} />
+              </SelectTrigger>
+              <SelectContent>
+                {files.map((file) => (
+                  <SelectItem key={file.id} value={file.id}>
+                    {file.filename} ({shortId(file.id)})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {files.length === 0 && !filesQuery.isPending ? (
+              <p className="text-muted-foreground text-xs">请先在 Files 页面上传文件。</p>
+            ) : null}
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="mount-path">挂载路径(可选)</Label>
+            <Input
+              id="mount-path"
+              className="font-mono"
+              value={mountPath}
+              onChange={(e) => setMountPath(e.target.value)}
+              placeholder="/mnt/session/uploads/…(留空用默认)"
+            />
+          </div>
+        </div>
+        {attempted && !fileId ? <p className="text-destructive text-sm">请选择要挂载的文件</p> : null}
+        {mutation.isError ? <p className="text-destructive text-sm">{(mutation.error as Error).message}</p> : null}
+        <DialogFooter>
+          <Button variant="outline" size="sm" disabled={mutation.isPending} onClick={close}>
+            取消
+          </Button>
+          <Button
+            size="sm"
+            disabled={mutation.isPending}
+            onClick={() => {
+              setAttempted(true);
+              if (fileId) mutation.mutate();
+            }}
+          >
+            {mutation.isPending ? "挂载中…" : "挂载"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** 资源挂载卡片:列出已挂载的文件与 memory store;文件可移除,memory store 随会话 */
+function ResourcesSection({ sessionId, archived }: { sessionId: string; archived: boolean }) {
+  const queryClient = useQueryClient();
+  const query = useQuery({
+    queryKey: ["sessions", sessionId, "resources"],
+    queryFn: () => listSessionResources(sessionId, { limit: 200 }),
+  });
+  const removeMutation = useMutation({
+    mutationFn: (resourceId: string) => deleteSessionFileResource(sessionId, resourceId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["sessions", sessionId, "resources"] });
+    },
+  });
+
+  const resources = query.data?.data ?? [];
+  const fileResources = resources.filter((item): item is SessionFileResource => item.type === "file");
+  const memoryResources = resources.filter(
+    (item): item is Extract<SessionResourceResponse, { type: "memory_store" }> => item.type === "memory_store",
+  );
+
+  return (
+    <SectionCard
+      title="资源挂载"
+      action={
+        <RefreshButton isFetching={query.isFetching} onClick={() => void query.refetch()}>
+          刷新
+        </RefreshButton>
+      }
+    >
+      {query.isPending ? (
+        <p className="text-muted-foreground text-sm">加载中…</p>
+      ) : query.isError ? (
+        <QueryError error={query.error} />
+      ) : resources.length === 0 ? (
+        <EmptyState
+          icon={Paperclip}
+          title="暂无挂载资源"
+          description="挂载托管文件后,会话可在沙箱的 /mnt/session/uploads 下读取它。"
+        />
+      ) : (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>资源</TableHead>
+              <TableHead className="hidden md:table-cell">挂载路径</TableHead>
+              <TableHead className="text-right">操作</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {memoryResources.map((resource) => (
+              <TableRow key={resource.memory_store_id}>
+                <TableCell>
+                  <span className="flex items-center gap-2">
+                    <Badge variant="outline" className="font-mono text-[11px] font-normal">
+                      memory_store
+                    </Badge>
+                    <span className="truncate text-sm">{resource.name}</span>
+                  </span>
+                  <span className="text-muted-foreground mt-0.5 block text-xs">
+                    {resource.access === "read_write" ? "可读写" : "只读"} · 随会话挂载,不可单独移除
+                  </span>
+                </TableCell>
+                <TableCell className="text-muted-foreground hidden font-mono text-xs md:table-cell">
+                  {resource.mount_path}
+                </TableCell>
+                <TableCell className="text-right text-muted-foreground text-xs">—</TableCell>
+              </TableRow>
+            ))}
+            {fileResources.map((resource) => (
+              <TableRow key={resource.id}>
+                <TableCell>
+                  <span className="flex items-center gap-2">
+                    <Badge variant="outline" className="font-mono text-[11px] font-normal">
+                      file
+                    </Badge>
+                    <span className="font-mono text-xs">{shortId(resource.file_id)}</span>
+                  </span>
+                  <span className="text-muted-foreground mt-0.5 block text-xs tabular-nums">
+                    挂载于 {formatTime(resource.created_at)}
+                  </span>
+                </TableCell>
+                <TableCell className="text-muted-foreground hidden font-mono text-xs md:table-cell">
+                  {resource.mount_path}
+                </TableCell>
+                <TableCell className="text-right">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-destructive"
+                    disabled={archived || removeMutation.isPending}
+                    onClick={() => removeMutation.mutate(resource.id)}
+                  >
+                    <Unlink /> 移除
+                  </Button>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+      {removeMutation.isError ? (
+        <p className="text-destructive mt-2 text-sm">{(removeMutation.error as Error).message}</p>
+      ) : null}
+    </SectionCard>
   );
 }
 
@@ -178,6 +450,7 @@ export function SessionDetailPage() {
         actions={
           <>
             <SessionStatusBadge status={session.status} />
+            {!session.archived_at ? <ArchiveSessionDialog sessionId={session.id} /> : null}
             <label className="text-muted-foreground flex items-center gap-2 text-sm">
               <span
                 aria-hidden
@@ -200,6 +473,8 @@ export function SessionDetailPage() {
         <StatCell label="缓存命中" value={formatNumber(session.usage.cache_read_input_tokens)} />
         <StatCell label="活跃时长" value={session.stats.active_seconds.toFixed(1)} unit="s" />
       </div>
+
+      <ResourcesSection sessionId={session.id} archived={session.archived_at !== null} />
 
       <SectionCard
         title="事件流"

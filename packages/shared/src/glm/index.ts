@@ -5,3 +5,5 @@ export * from "./deployment";
 export * from "./environment";
 export * from "./skill";
 export * from "./file";
+export * from "./memory";
+export * from "./vault";

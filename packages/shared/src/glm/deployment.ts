@@ -76,6 +76,20 @@ export interface DeploymentCreateInput {
   resources?: SessionResource[];
 }
 
+/** 更新至少带一个字段(minProperties: 1);agent 只能重新固定同一个 Agent */
+export interface DeploymentUpdateInput {
+  name?: string;
+  agent?: SessionAgentInput;
+  environment_id?: string | null;
+  /** null = 改为仅手动运行,省略 = 保持不变 */
+  schedule?: CronScheduleInput | null;
+  initial_events?: InitialUserMessageEventInput[];
+  description?: string | null;
+  metadata?: Metadata | null;
+  vault_ids?: string[];
+  resources?: SessionResource[] | null;
+}
+
 export interface DeploymentRun {
   id: string;
   type: "deployment_run";
