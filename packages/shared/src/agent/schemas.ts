@@ -148,29 +148,46 @@ export const MetadataSchema = z
 
 // ---------- 跨字段校验 ----------
 
+/** 跨字段校验产出的问题描述 */
+export interface AgentConfigIssue {
+  path: (string | number)[];
+  message: string;
+}
+
+/** 结构化的配置形态:请求输入形态与归一化形态都满足 */
+interface ToolsetLike {
+  type: string;
+  name?: string;
+  mcp_server_name?: string;
+  configs?: Array<{ name: string }>;
+}
+
+export interface AgentConfigLike {
+  tools: ToolsetLike[];
+  skills: SkillReference[];
+  mcp_servers: McpServer[];
+  metadata?: Record<string, string | null>;
+}
+
 /**
- * 跨字段规则,创建与更新(M4)共用:
+ * 完整配置的跨字段规则,创建 schema 与更新后的合并结果共用:
  * - mcp_servers 名称唯一,且每个 Server 与每个 mcp_toolset 按名称一一对应
  * - skills 非空时必须包含 agent_toolset_20260601
  * - 同一 (type, skill_id, version) 组合不得重复
  * - custom 工具名不以 mcp__ 开头且配置内唯一
  * - 同一工具集内 configs[].name 不得重复
+ * - metadata 不超过 16 个键
  */
-export function refineAgentToolConfig(
-  config: { tools: AgentToolsetInput[]; skills: SkillReference[]; mcp_servers: McpServer[] },
-  ctx: z.RefinementCtx,
-): void {
-  const addIssue = (path: (string | number)[], message: string) =>
-    ctx.addIssue({ code: "custom", path, message });
+export function agentConfigIssues(config: AgentConfigLike): AgentConfigIssue[] {
+  const issues: AgentConfigIssue[] = [];
+  const addIssue = (path: (string | number)[], message: string) => issues.push({ path, message });
 
   const serverNames = config.mcp_servers.map((server) => server.name);
   if (new Set(serverNames).size !== serverNames.length) {
     addIssue(["mcp_servers"], "mcp_servers names must be unique within the configuration");
   }
 
-  const mcpToolsets = config.tools.filter(
-    (toolset): toolset is z.infer<typeof McpToolsetInputSchema> => toolset.type === "mcp_toolset",
-  );
+  const mcpToolsets = config.tools.filter((toolset) => toolset.type === "mcp_toolset");
   for (const name of new Set(serverNames)) {
     const count = mcpToolsets.filter((toolset) => toolset.mcp_server_name === name).length;
     if (count !== 1) {
@@ -181,7 +198,7 @@ export function refineAgentToolConfig(
     }
   }
   for (const toolset of mcpToolsets) {
-    if (!serverNames.includes(toolset.mcp_server_name)) {
+    if (!serverNames.includes(toolset.mcp_server_name ?? "")) {
       addIssue(
         ["tools"],
         `mcp_toolset references unknown mcp_server_name "${toolset.mcp_server_name}"`,
@@ -204,7 +221,7 @@ export function refineAgentToolConfig(
 
   const customNames = new Set<string>();
   for (const toolset of config.tools) {
-    if (toolset.type !== "custom") continue;
+    if (toolset.type !== "custom" || toolset.name === undefined) continue;
     if (toolset.name.startsWith("mcp__")) {
       addIssue(["tools"], `custom tool name "${toolset.name}" must not start with "mcp__"`);
     }
@@ -216,7 +233,7 @@ export function refineAgentToolConfig(
 
   for (const toolset of config.tools) {
     if (toolset.type === "custom") continue;
-    const names = toolset.configs.map((config) => config.name);
+    const names = (toolset.configs ?? []).map((config) => config.name);
     if (new Set(names).size !== names.length) {
       addIssue(
         ["tools"],
@@ -224,6 +241,12 @@ export function refineAgentToolConfig(
       );
     }
   }
+
+  if (config.metadata && Object.keys(config.metadata).length > 16) {
+    addIssue(["metadata"], "metadata must have at most 16 keys");
+  }
+
+  return issues;
 }
 
 // ---------- 请求 schema ----------
@@ -240,6 +263,55 @@ export const AgentCreateRequestSchema = z
     mcp_servers: z.array(McpServerSchema).max(20).default([]),
     metadata: MetadataSchema.default({}),
   })
-  .superRefine(refineAgentToolConfig);
+  .superRefine((config, ctx) => {
+    for (const issue of agentConfigIssues(config)) {
+      ctx.addIssue({ code: "custom", path: issue.path, message: issue.message });
+    }
+  });
 
 export type AgentCreateRequestInput = z.output<typeof AgentCreateRequestSchema>;
+
+// ---------- 更新请求 ----------
+
+/** 元数据补丁:值为 null 表示删除对应键;省略整个字段时保持不变 */
+export const MetadataPatchSchema = z
+  .record(z.string().max(64), z.string().max(512).nullable())
+  .refine((patch) => Object.keys(patch).length <= 16, {
+    message: "metadata patch must have at most 16 keys",
+  });
+
+/**
+ * 更新 Agent 的请求体。语义(docs/agent/api/update-agent.md):
+ * - version 可选,携带时作为乐观并发期望值,不一致返回 409
+ * - 标量字段整体替换;system/description 传 null 清空
+ * - 数组字段整体替换;null 与空数组等价(清空)
+ * - metadata 按键合并,null 删键
+ * - 请求 tools 含 mcp_toolset 时必须同请求提交 mcp_servers
+ */
+export const AgentUpdateRequestSchema = z
+  .strictObject({
+    version: z.number().int().min(1).optional(),
+    name: z.string().min(1).max(256).optional(),
+    model: ModelInputSchema.optional(),
+    system: z.string().max(100000).nullish(),
+    description: z.string().max(2048).nullish(),
+    tools: z.array(AgentToolsetInputSchema).max(128).nullish(),
+    skills: z.array(SkillReferenceSchema).max(20).nullish(),
+    mcp_servers: z.array(McpServerSchema).max(20).nullish(),
+    metadata: MetadataPatchSchema.nullish(),
+  })
+  .superRefine((patch, ctx) => {
+    const hasMcpToolset =
+      patch.tools !== null &&
+      patch.tools !== undefined &&
+      patch.tools.some((toolset) => toolset.type === "mcp_toolset");
+    if (hasMcpToolset && patch.mcp_servers === undefined) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["tools"],
+        message: "submitting mcp_toolset requires replacing mcp_servers in the same request",
+      });
+    }
+  });
+
+export type AgentUpdateRequestInput = z.infer<typeof AgentUpdateRequestSchema>;

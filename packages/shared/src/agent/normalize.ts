@@ -86,7 +86,8 @@ export interface AgentResponse {
   archived_at: string | null;
 }
 
-function normalizeModel(model: ModelInput): NormalizedModel {
+/** 模型输入归一化:简写展开、默认 effort 按模型补全、speed 补为 standard(merge 也会复用) */
+export function normalizeModel(model: ModelInput): NormalizedModel {
   if (typeof model === "string") {
     return { id: model, effort: DEFAULT_MODEL_EFFORT[model], speed: "standard" };
   }
@@ -121,7 +122,8 @@ function inheritDefault(
   };
 }
 
-function normalizeToolset(toolset: AgentToolsetInput): NormalizedAgentToolset {
+/** 工具集归一化:补全 default_config、解析 configs 继承(merge 也会复用) */
+export function normalizeToolset(toolset: AgentToolsetInput): NormalizedAgentToolset {
   if (toolset.type === "custom") {
     return {
       type: "custom",
