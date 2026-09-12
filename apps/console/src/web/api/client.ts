@@ -1,10 +1,14 @@
 import type { GlmErrorBody, Page } from "@nano/shared/glm";
+import { getProvider } from "@/lib/provider";
 
 /**
- * 浏览器侧 GLM client:统一打同域 /glm 代理,不携带任何鉴权头——
- * Access cookie 由平台自动带上,worker 校验 JWT 后注入 GLM API Key。
+ * 浏览器侧后端 client:统一打同域代理(/glm 或 /nano,由 sidebar 底部 Select 切换),
+ * 不携带任何鉴权头——Access cookie 由平台自动带上,
+ * worker 校验 JWT 后注入对应后端的 API Key。
  */
-const GLM_PROXY_BASE = "/glm";
+function proxyBase(): string {
+  return getProvider() === "nano" ? "/nano" : "/glm";
+}
 
 export class GlmApiError extends Error {
   constructor(
@@ -53,7 +57,7 @@ async function throwIfError(res: Response): Promise<void> {
 }
 
 export async function glmFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${GLM_PROXY_BASE}${path}`, {
+  const res = await fetch(`${proxyBase()}${path}`, {
     ...init,
     headers: {
       accept: "application/json",
@@ -72,7 +76,7 @@ export async function glmFetch<T>(path: string, init?: RequestInit): Promise<T> 
 
 /** 同 glmFetch 的错误处理,但返回原始 Response——ZIP 下载等二进制响应用 */
 export async function glmFetchRaw(path: string, init?: RequestInit): Promise<Response> {
-  const res = await fetch(`${GLM_PROXY_BASE}${path}`, { ...init, headers: init?.headers });
+  const res = await fetch(`${proxyBase()}${path}`, { ...init, headers: init?.headers });
   await throwIfError(res);
   return res;
 }
@@ -105,7 +109,7 @@ export async function subscribeGlmStream(
   onMessage: (msg: SseMessage) => void,
   signal: AbortSignal,
 ): Promise<void> {
-  const res = await fetch(`${GLM_PROXY_BASE}${path}`, {
+  const res = await fetch(`${proxyBase()}${path}`, {
     signal,
     headers: { accept: "text/event-stream" },
   });

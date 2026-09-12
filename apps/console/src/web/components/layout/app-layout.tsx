@@ -5,6 +5,7 @@ import { NavLink, Outlet } from "react-router";
 import { getIdentity } from "@/auth/identity";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ProviderSelect } from "@/components/layout/provider-select";
 import {
   Sheet,
   SheetContent,
@@ -87,7 +88,8 @@ export function AppLayout() {
           <BrandMark />
         </div>
         <SidebarNav />
-        <div className="border-t px-3 py-3">
+        <div className="space-y-2 border-t px-3 py-3">
+          <ProviderSelect />
           <IdentityTag />
         </div>
       </aside>
@@ -105,7 +107,8 @@ export function AppLayout() {
             </SheetTitle>
             <SheetDescription className="sr-only">主导航菜单</SheetDescription>
             <SidebarNav onNavigate={() => setNavOpen(false)} />
-            <div className="shrink-0 border-t p-3">
+            <div className="space-y-2 shrink-0 border-t p-3">
+              <ProviderSelect />
               <IdentityTag />
             </div>
           </SheetContent>

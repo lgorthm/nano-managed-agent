@@ -1,6 +1,6 @@
 # nano console 部署与 Cloudflare Access 配置
 
-`apps/console` 是 GLM Managed Agents 的管理后台:SPA(`src/web`)+ 极小的 worker 代理(`src/worker`),部署为同一个 Worker(静态资源 + `main` 脚本)。登录由 Cloudflare Access 完成,worker 只做两件事:校验 Access JWT、把 `/glm/*` 转发到 `https://agent-api.bigmodel.cn/api/*` 并注入 GLM API Key。
+`apps/console` 是 Managed Agents 的管理后台:SPA(`src/web`)+ 极小的 worker 代理(`src/worker`),部署为同一个 Worker(静态资源 + `main` 脚本)。登录由 Cloudflare Access 完成,worker 只做两件事:校验 Access JWT、把浏览器请求转发到所选后端并注入对应的 API Key——`/glm/*` → `https://agent-api.bigmodel.cn/api/*`(GLM),`/nano/*` → `NANO_API_BASE` + `/v1/*`(自建 nano API,即本仓库 `apps/api`)。用哪个后端由 sidebar 底部的 Select 切换,见下文「双后端切换」。
 
 ## 本地开发
 
@@ -11,6 +11,15 @@ pnpm dev                         # vite(5173),worker 由 @cloudflare/vite-plugin
 ```
 
 本地没有 Access 登录页,`.dev.vars` 里的 `ACCESS_DEV_BYPASS=1` 会让 worker 跳过 JWT 校验——**这个值只允许出现在 .dev.vars,永远不要配置到生产**(wrangler.jsonc vars 或 `wrangler secret put`)。
+
+要用 nano 后端,先在仓库根目录跑 `pnpm dev:api` 把 apps/api 跑在 `:8787`;`.dev.vars` 里的 `NANO_API_BASE=http://127.0.0.1:8787` 与 `NANO_API_KEY`(与 `apps/api/.dev.vars` 的 `API_KEY` 一致)即可开箱可用。
+
+## 双后端切换(GLM / nano)
+
+sidebar 底部的 Select 决定所有 API 请求走哪个后端,选择存 localStorage(缺省 nano),刷新后保持。切换会整库清空 React Query 缓存,不会串数据。
+
+- **GLM**:九个资源全部可用,协议头(`zai-version`/`zai-beta`)与分页均为 GLM 原生。
+- **nano**:目前实现了 agents / environments / skills / files 四个资源;Sessions、Deployments、Memories、Vaults 的请求会得到 404,页面显示错误态属预期。浏览器侧始终发 GLM 形状的路径(`/agent/managed/v1/*`)与参数,协议差异全部由 worker 的 `/nano` 分支消化:路径改写为 `/v1/*`、鉴权换成 `NANO_API_KEY`、不带 zai 头;files 列表分页是唯一的 wire 差异点,GLM 的 `after_id`/`has_more`/`last_id` 与 nano 的 opaque `page` 游标/`next_page` 在代理层互转(`src/worker/proxy.ts` 的 `proxyToNano`)。
 
 ## 上线步骤
 
@@ -24,6 +33,10 @@ pnpm exec wrangler login             # 首次使用先登录 Cloudflare 账号
 pnpm exec wrangler deploy            # secret 绑定要求 Worker 已存在,先部署一次
 pnpm exec wrangler secret put GLM_API_KEY   # 粘贴 https://bigmodel.cn/usercenter/proj-mgmt/apikeys 的 Key
 ```
+
+### 1b. 配置 nano 后端(可选)
+
+要用 nano 后端:`wrangler.jsonc` 的 `vars` 里加 `NANO_API_BASE`(nano API Worker 的公网地址,如 `https://nano-api.<子域>.workers.dev`),再 `pnpm exec wrangler secret put NANO_API_KEY`(与 nano API 侧配置的 `API_KEY` 相同值)。改完 `wrangler.jsonc` 重跑 `pnpm types` 同步生成类型。
 
 ### 2. 配置 Cloudflare Access(登录)
 
@@ -51,7 +64,7 @@ pnpm deploy        # vite build && wrangler deploy
 | 第一层 | Cloudflare Access 挡在域名前 | 未登录者拿不到任何页面/JS |
 | 第二层 | worker 校验 `Cf-Access-Jwt-Assertion`(jose + JWKS,issuer/audience 校验) | Access 策略误配(如 workers.dev 未关)时代理仍拒绝出网 |
 
-GLM API Key 只存在于 worker secret,永远不会到达浏览器。
+GLM 与 nano 的 API Key 都只存在于 worker secret,永远不会到达浏览器;两个代理分支(`/glm/*`、`/nano/*`)受同一层 Access JWT 校验保护。
 
 ## 浏览器与移动端支持
 
