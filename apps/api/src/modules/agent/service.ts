@@ -3,7 +3,6 @@ import {
   createAgentWithFirstVersion,
   findAgentRow,
   findCurrentAgent,
-  findMissingSkillVersionPairs,
   getDb,
   insertNextVersionAndAdvance,
   listAgentsPage,
@@ -16,12 +15,12 @@ import type {
   AgentResponse,
   AgentUpdateRequestInput,
   Page,
-  SkillReference,
 } from "@nano/shared";
 import { agentConfigIssues, normalizeAgentConfig } from "@nano/shared";
 import type { Env } from "../../env";
 import { conflictError, invalidRequestError, notFoundError } from "../../lib/errors";
 import { cursorNumberField, cursorStringField, encodeCursor, type ListParams } from "../../lib/pagination";
+import { assertSkillReferencesResolvable } from "../../lib/skill-refs";
 import { mergeAgentConfig, agentConfigEquals } from "@nano/shared";
 import { serializeAgent, serializeAgentRow, versionRowToConfig } from "./serialize";
 
@@ -30,31 +29,6 @@ const AGENTS_CURSOR_KIND = "agents";
 
 /** agent 版本列表游标的 kind 前缀 */
 const AGENT_VERSIONS_CURSOR_KIND = "agent-versions";
-
-/**
- * 校验 skills 引用可解析(docs/skills/schema.md 的引用一致性规则):
- * zai 平台内置 Skill 在 nano 不存在,直接拒绝;custom 引用逐个点查 (skill_id, version)。
- * 跨资源的查询走 @nano/db 的 skill 仓储,两个模块之间没有横向 import。
- */
-async function assertSkillReferencesResolvable(db: Db, skills: SkillReference[]): Promise<void> {
-  const unsupported = skills.filter((reference) => reference.type !== "custom");
-  if (unsupported.length > 0) {
-    throw invalidRequestError(
-      'Skill references with type "zai" are not supported: nano has no platform built-in skills.',
-      { references: unsupported },
-    );
-  }
-  if (skills.length === 0) return;
-  const missing = await findMissingSkillVersionPairs(db, skills);
-  if (missing.size > 0) {
-    throw invalidRequestError("Skill references are not resolvable.", {
-      missing: [...missing].map((key) => {
-        const [type, skill_id, version] = key.split("|");
-        return { type, skill_id, version };
-      }),
-    });
-  }
-}
 
 /**
  * Agent 资源的业务编排层。

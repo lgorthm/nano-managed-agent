@@ -32,6 +32,8 @@ packages/
 
 资源模块内部的代码目录结构与分层规则见 [docs/agent/structure.md](docs/agent/structure.md)(以 Agent 模块为样板),按接口推进的实现计划见 [docs/agent/work-plan.md](docs/agent/work-plan.md)。
 
+Session 资源(一期元数据控制面,事件与运行时属二期)的设计文档见 [docs/session/](docs/session/):[schema.md](docs/session/schema.md)(表结构)、[structure.md](docs/session/structure.md)(模块结构)、[api/](docs/session/api/)(10 个端点)、[work-plan.md](docs/session/work-plan.md)(实现计划)。
+
 管理后台的部署与 Cloudflare Access 配置见 [docs/console.md](docs/console.md)。
 
 ## 开发

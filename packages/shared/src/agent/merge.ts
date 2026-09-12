@@ -35,7 +35,7 @@ export function mergeAgentConfig(
 }
 
 /** metadata 整个字段省略或传 null 时保持不变;按键合并,null 删键 */
-function mergeMetadata(
+export function mergeMetadata(
   current: Record<string, string>,
   patch: Record<string, string | null> | null | undefined,
 ): Record<string, string> {
@@ -52,7 +52,7 @@ function mergeMetadata(
 }
 
 /** 语义化深度相等:键序无关,数组按序比较 */
-function deepEqual(a: unknown, b: unknown): boolean {
+export function deepEqual(a: unknown, b: unknown): boolean {
   if (a === b) return true;
   if (typeof a !== "object" || typeof b !== "object" || a === null || b === null) return false;
   if (Array.isArray(a) || Array.isArray(b)) {

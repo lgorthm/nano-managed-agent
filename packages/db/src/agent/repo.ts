@@ -3,7 +3,7 @@
  * 事务边界收敛在这里——多条语句放进同一个 D1 batch(隐式事务)。
  */
 import { and, asc, desc, eq, gt, isNull, lt, or, sql } from "drizzle-orm";
-import type { NormalizedAgentConfig } from "@nano/shared";
+import type { ModelEffort, ModelId, NormalizedAgentConfig } from "@nano/shared";
 import type { Db } from "../client";
 import { agentVersions, agents } from "../schema";
 
@@ -14,6 +14,28 @@ export type AgentVersionRow = typeof agentVersions.$inferSelect;
 export interface CurrentAgent {
   agent: AgentRow;
   version: AgentVersionRow;
+}
+
+/**
+ * 版本行 → 归一化配置。模型三列以文本存储,断言回协议枚举:
+ * 落库的值都经过归一化,只会是合法取值。
+ * agent 模块的序列化与会话模块的引用解析共用此映射(单一出处)。
+ */
+export function agentVersionRowToConfig(row: AgentVersionRow): NormalizedAgentConfig {
+  return {
+    name: row.name,
+    description: row.description,
+    system: row.system,
+    model: {
+      id: row.modelId as ModelId,
+      effort: row.modelEffort as ModelEffort,
+      speed: row.modelSpeed as "standard",
+    },
+    tools: row.tools,
+    skills: row.skills,
+    mcp_servers: row.mcpServers,
+    metadata: row.metadata,
+  };
 }
 
 /** 归一化配置 → agent_versions 列值 */
@@ -121,6 +143,19 @@ export async function listAgentsPage(
 /** 按 id 取 agents 行(不含版本快照),用于存在性检查与 Agent 级字段(如 archived_at) */
 export async function findAgentRow(db: Db, agentId: string): Promise<AgentRow | null> {
   const rows = await db.select().from(agents).where(eq(agents.id, agentId)).limit(1);
+  return rows[0] ?? null;
+}
+
+/** 点查指定版本快照(会话钉版本用);不存在(版本号越界或 Agent 不存在)返回 null */
+export async function findAgentVersion(
+  db: Db,
+  keys: { agentId: string; version: number },
+): Promise<AgentVersionRow | null> {
+  const rows = await db
+    .select()
+    .from(agentVersions)
+    .where(and(eq(agentVersions.agentId, keys.agentId), eq(agentVersions.version, keys.version)))
+    .limit(1);
   return rows[0] ?? null;
 }
 

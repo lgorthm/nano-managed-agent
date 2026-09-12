@@ -14,6 +14,10 @@
  * Environment 资源的一张表,设计见 docs/environment/schema.md:
  * - environments: 单表当前态(无版本快照,config 以归一化形态存储)
  *
+ * Session 资源的两张表,设计见 docs/session/schema.md:
+ * - sessions: 会话当前态(agent_config / environment_snapshot 创建时固化)
+ * - session_resources: 会话挂载的 File 资源(随会话删除级联清理)
+ *
  * JSON 列存归一化后的形态(与 API 响应一致),类型由 @nano/shared 提供。
  */
 import { sql } from "drizzle-orm";
@@ -30,6 +34,8 @@ import type {
   McpServer,
   NormalizedAgentToolset,
   NormalizedEnvironmentConfig,
+  SessionAgentConfig,
+  SessionStatus,
   SkillReference,
 } from "@nano/shared";
 
@@ -184,4 +190,72 @@ export const environments = sqliteTable(
     updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
   },
   (t) => [index("idx_environments_created_at_id").on(t.createdAt, t.id)],
+);
+
+/**
+ * Session 当前态:单表无版本,agent_config / environment_snapshot 是创建时固化的
+ * 解析快照(docs/session/schema.md 的"创建即冻结");status 一期恒 idle,
+ * running/rescheduling/terminated 由二期运行时驱动;type/vault_ids/outcome_evaluations/
+ * stats/budget 是一期固定回显,不落库,序列化时注入。
+ */
+export const sessions = sqliteTable(
+  "sessions",
+  {
+    id: text("id").primaryKey(), // sess_ + UUIDv7
+    agentId: text("agent_id").notNull(),
+    agentVersion: integer("agent_version").notNull(),
+    agentConfig: text("agent_config", { mode: "json" }).$type<SessionAgentConfig>().notNull(),
+    environmentId: text("environment_id").notNull(), // 仅回显;配置以 environment_snapshot 为准
+    environmentSnapshot: text("environment_snapshot", { mode: "json" })
+      .$type<NormalizedEnvironmentConfig>()
+      .notNull(),
+    status: text("status")
+      .$type<SessionStatus>()
+      .notNull()
+      .default("idle"),
+    title: text("title"),
+    metadata: text("metadata", { mode: "json" })
+      .$type<Record<string, string>>()
+      .notNull()
+      .default(sql`'{}'`),
+    inputTokens: integer("input_tokens").notNull().default(0),
+    outputTokens: integer("output_tokens").notNull().default(0),
+    cacheReadInputTokens: integer("cache_read_input_tokens").notNull().default(0),
+    archivedAt: integer("archived_at", { mode: "timestamp_ms" }),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (t) => [
+    index("idx_sessions_created_at_id").on(t.createdAt, t.id),
+    index("idx_sessions_agent_version").on(t.agentId, t.agentVersion, t.createdAt, t.id),
+  ],
+);
+
+/**
+ * 会话挂载的 File 资源(一期 type 恒 file,列值为二期 memory_store 预留)。
+ * file_id 是软引用,写入时校验存在;挂载记录随会话删除级联清理,File 本体不删。
+ * UNIQUE(session_id, mount_path) 只兜底"完全相同"的前缀重叠竞争,
+ * "前缀包含"类重叠仍由服务层在写入前检查。
+ */
+export const sessionResources = sqliteTable(
+  "session_resources",
+  {
+    id: text("id").primaryKey(), // sres_ + UUIDv7
+    sessionId: text("session_id")
+      .notNull()
+      .references(() => sessions.id),
+    type: text("type")
+      .$type<"file">()
+      .notNull()
+      .default("file"),
+    fileId: text("file_id").notNull(),
+    mountPath: text("mount_path").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (t) => [
+    index("idx_session_resources_session").on(t.sessionId, t.createdAt, t.id),
+    index("idx_session_resources_file_id").on(t.fileId),
+    uniqueIndex("uq_session_resources_mount_path").on(t.sessionId, t.mountPath),
+  ],
 );

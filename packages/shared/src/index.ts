@@ -14,5 +14,8 @@ export * from "./file/schemas";
 export * from "./environment/schemas";
 export * from "./environment/normalize";
 export * from "./environment/merge";
+export * from "./session/schemas";
+export * from "./session/resolve";
+export * from "./session/mount-path";
 
 export const API_VERSION = "v1";

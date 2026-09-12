@@ -1,10 +1,8 @@
-import type { AgentRow, AgentVersionRow } from "@nano/db";
-import type {
-  AgentResponse,
-  ModelEffort,
-  ModelId,
-  NormalizedAgentConfig,
-} from "@nano/shared";
+import { agentVersionRowToConfig, type AgentRow, type AgentVersionRow } from "@nano/db";
+import type { AgentResponse, NormalizedAgentConfig } from "@nano/shared";
+
+/** 行 → 配置的映射上提到 @nano/db(与会话模块的引用解析共用),此处保留原导入名 */
+export const versionRowToConfig = agentVersionRowToConfig;
 
 /**
  * 版本配置到 API JSON 的唯一序列化出口:
@@ -35,28 +33,6 @@ export function serializeAgent(meta: {
     created_at: meta.createdAt.toISOString(),
     updated_at: meta.updatedAt.toISOString(),
     archived_at: meta.archivedAt?.toISOString() ?? null,
-  };
-}
-
-/**
- * 数据库行 → 归一化配置。
- * 模型三列以文本存储,断言回协议枚举:落库的值都经过归一化,只会是合法取值。
- * service 的更新链路也用它把当前版本行还原成合并基线。
- */
-export function versionRowToConfig(row: AgentVersionRow): NormalizedAgentConfig {
-  return {
-    name: row.name,
-    description: row.description,
-    system: row.system,
-    model: {
-      id: row.modelId as ModelId,
-      effort: row.modelEffort as ModelEffort,
-      speed: row.modelSpeed as "standard",
-    },
-    tools: row.tools,
-    skills: row.skills,
-    mcp_servers: row.mcpServers,
-    metadata: row.metadata,
   };
 }
 
