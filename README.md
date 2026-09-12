@@ -14,6 +14,8 @@ API 定义 Agent → 启动有状态 Session → 平台驱动 Agent 循环 → �
 | D1 | 元数据:agents / skills / files(内容在 R2)/ environments / sessions |
 | R2 | File 资源内容存储(`FILES` 绑定,见 [docs/files/schema.md](docs/files/schema.md));会话产出文件(二期) |
 
+整体架构图、API 请求链路与 D1 数据模型的 Mermaid 图见 [docs/architecture-diagrams.md](docs/architecture-diagrams.md)。
+
 ## 目录结构
 
 ```
