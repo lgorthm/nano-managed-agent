@@ -53,7 +53,7 @@ M0 → M1 → M2 → M3 → M4 → M5 → M6 → M7 → M8 → M9
 
 **协议层（含单测，本里程碑的主体）：**
 
-- [x] 新建 `packages/shared/src/skill/tree.ts`：实现路径校验、单根剥离、`SKILL.md` 在根检查、文件数 / 单文件 / 总量上限裁决、逐文件 SHA-256 与规范树哈希；导出上限常量（`MAX_FILES`、`MAX_FILE_BYTES`、`MAX_TOTAL_BYTES`、`MAX_PATH_LENGTH` 等）。
+- [x] 新建 `packages/shared/src/skill/tree.ts`：实现路径校验、单根剥离、`SKILL.md` 在根检查、文件数 / 单文件 / 总量上限裁决、逐文件 SHA-256 与规范树哈希；导出上限常量（`MAX_FILES`、`MAX_SKILL_FILE_BYTES`、`MAX_TOTAL_BYTES`、`MAX_PATH_LENGTH` 等）。
 - [x] 新建 `packages/shared/src/skill/frontmatter.ts`：实现 `SKILL.md` frontmatter 提取与 `name` / `description` 校验，多余键忽略。
 - [x] 新建 `packages/shared/src/skill/schemas.ts`：`SkillResponse` / `SkillVersionResponse` / 删除回执类型（`SkillReference` 复用 `agent/schemas.ts`）。
 - [x] 单测 `tree.test.ts`：穷举路径非法形态（绝对路径、`..` 段、反斜杠、控制字符、`.git`、超长、段数超限）；单根剥离四种情形（有前缀 / 无前缀 / 前缀下无 SKILL.md / 多根）；上限边界（恰好等于 / 超过）；重复路径；哈希对 (path, sha256) 排序的确定性（打乱输入顺序结果不变）。

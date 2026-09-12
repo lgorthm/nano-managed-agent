@@ -13,7 +13,11 @@
       "database_name": "nano-api-db",
       "database_id": "TODO-run-wrangler-d1-create"
     }
-  ]
+  ],
+
+  // File 内容存储(docs/files/schema.md)。bucket_name 为占位:
+  // 运行 `wrangler r2 bucket create nano-files` 后即可本地/线上一致使用
+  "r2_buckets": [{ "binding": "FILES", "bucket_name": "nano-files" }]
 
   // ---- 二期按需启用,加 DO 时记得在 tsconfig types 加 "wrangler" 并导出类 ----
 
@@ -24,7 +28,5 @@
 
   // "workflows": [
   //   { "name": "agent-loop", "binding": "AGENT_LOOP", "class_name": "AgentLoopWorkflow" }
-  // ],
-
-  // "r2_buckets": [{ "binding": "FILES", "bucket_name": "nano-files" }]
+  // ]
 }

@@ -11,8 +11,8 @@ API 定义 Agent → 启动有状态 Session → 平台驱动 Agent 循环 → �
 | Durable Objects | 每个 Session 一个:事件历史 + SSE 推流(二期) |
 | Workflows | 每轮 Agent 循环的持久执行(二期) |
 | Sandbox SDK | 会话沙箱:bash / 文件工具(二期) |
-| D1 | 元数据:agents / environments / sessions |
-| R2 | 产出文件(二期) |
+| D1 | 元数据:agents / skills / files(内容在 R2)/ environments / sessions |
+| R2 | File 资源内容存储(`FILES` 绑定,见 [docs/files/schema.md](docs/files/schema.md));会话产出文件(二期) |
 
 ## 目录结构
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   MAX_FILES,
-  MAX_FILE_BYTES,
+  MAX_SKILL_FILE_BYTES,
   MAX_PATH_LENGTH,
   MAX_PATH_SEGMENTS,
   MAX_SEGMENT_LENGTH,
@@ -121,18 +121,18 @@ describe("normalizeSkillTree 上限裁决", () => {
   it("单文件恰好 1 MiB 通过,超出报 file_too_large", async () => {
     const atLimit = [
       { path: "SKILL.md", bytes: new TextEncoder().encode(SKILL_MD) },
-      { path: "big.bin", bytes: new Uint8Array(MAX_FILE_BYTES) },
+      { path: "big.bin", bytes: new Uint8Array(MAX_SKILL_FILE_BYTES) },
     ];
     expect((await normalize(atLimit)).ok).toBe(true);
     expect(
-      (await normalize([{ path: "SKILL.md", bytes: new Uint8Array(MAX_FILE_BYTES + 1) }])),
+      (await normalize([{ path: "SKILL.md", bytes: new Uint8Array(MAX_SKILL_FILE_BYTES + 1) }])),
     ).toMatchObject({ ok: false, error: { code: "file_too_large", param: "SKILL.md" } });
   });
 
   it("总量超出 20 MiB 报 total_too_large", async () => {
     const files = Array.from({ length: 21 }, (_, i) => ({
       path: i === 0 ? "SKILL.md" : `f${i}.bin`,
-      bytes: new Uint8Array(MAX_FILE_BYTES),
+      bytes: new Uint8Array(MAX_SKILL_FILE_BYTES),
     }));
     expect((await normalize(files))).toMatchObject({ ok: false, error: { code: "total_too_large" } });
   });

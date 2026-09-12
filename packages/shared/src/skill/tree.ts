@@ -6,7 +6,7 @@
 /** 目录内文件数上限(含 SKILL.md);超出属请求形态错误(400) */
 export const MAX_FILES = 256;
 /** 单文件字节数上限;超出属请求体过大(413) */
-export const MAX_FILE_BYTES = 1024 * 1024;
+export const MAX_SKILL_FILE_BYTES = 1024 * 1024;
 /** 上传总量上限;超出属请求体过大(413) */
 export const MAX_TOTAL_BYTES = 20 * 1024 * 1024;
 /** 路径总长上限(字符) */
@@ -123,10 +123,10 @@ export async function normalizeSkillTree(files: RawSkillFile[]): Promise<Normali
       return error("duplicate_path", `Duplicate path "${file.path}".`, file.path);
     }
     seen.add(file.path);
-    if (file.bytes.length > MAX_FILE_BYTES) {
+    if (file.bytes.length > MAX_SKILL_FILE_BYTES) {
       return error(
         "file_too_large",
-        `File "${file.path}" is ${file.bytes.length} bytes; at most ${MAX_FILE_BYTES} are allowed.`,
+        `File "${file.path}" is ${file.bytes.length} bytes; at most ${MAX_SKILL_FILE_BYTES} are allowed.`,
         file.path,
       );
     }

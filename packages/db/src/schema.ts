@@ -8,6 +8,9 @@
  * - skill_versions: 不可变的目录快照(frontmatter 元数据)
  * - skill_files: 不可变的目录快照(规范树文件内容)
  *
+ * File 资源的一张表,设计见 docs/files/schema.md:
+ * - files: 元数据(内容在 R2,对象键恒为 files/{id},由 id 派生不落库)
+ *
  * JSON 列存归一化后的形态(与 API 响应一致),类型由 @nano/shared 提供。
  */
 import { sql } from "drizzle-orm";
@@ -127,4 +130,22 @@ export const skillFiles = sqliteTable(
     sha256: text("sha256").notNull(),
   },
   (t) => [primaryKey({ columns: [t.skillId, t.version, t.path] })],
+);
+
+/**
+ * File 元数据;内容在 R2(对象键恒为 files/{id},由 id 派生不落库)。
+ * 行存在 ⇔ 内容可读(由上传/删除顺序保证,见 docs/files/schema.md);
+ * 写入后不可变,删除是唯一生命周期变更。
+ */
+export const files = sqliteTable(
+  "files",
+  {
+    id: text("id").primaryKey(), // file_ + UUIDv7
+    filename: text("filename").notNull(),
+    mimeType: text("mime_type").notNull(),
+    sizeBytes: integer("size_bytes").notNull(),
+    etag: text("etag").notNull(), // R2 put 返回的对象 ETag,下载时回显
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (t) => [index("idx_files_created_at_id").on(t.createdAt, t.id)],
 );

@@ -81,7 +81,7 @@ nano-managed-agent/
 
 Skill 的请求不走 JSON，所以这里没有 Agent 那样的 `AgentCreateRequest` 型请求 schema；`schemas.ts` 只定义响应侧的 `SkillResponse`、`SkillVersionResponse` 类型与删除回执类型，供传输层序列化与前端共用。`SkillReference` 已在 `agent/schemas.ts` 定义，此处不重复。
 
-**`tree.ts`** 是规范树的唯一权威。输入是「字段名 → 字节」的原始上传映射，输出是规范树：校验每条路径（相对、长度与段数上限、无 `..` / `\` / 控制字符 / `.git`）、执行单根剥离、确认 `SKILL.md` 在根、裁决文件数与总字节数上限、计算逐文件 SHA-256 与整树 `content_sha256`。上限常量（`MAX_FILES = 256`、`MAX_FILE_BYTES = 1 MiB`、`MAX_TOTAL_BYTES = 20 MiB`、`MAX_PATH_LENGTH = 256` 等）从这里导出，传输层的预检、集成测试的构造、文档的数字都引用同一处。
+**`tree.ts`** 是规范树的唯一权威。输入是「字段名 → 字节」的原始上传映射，输出是规范树：校验每条路径（相对、长度与段数上限、无 `..` / `\` / 控制字符 / `.git`）、执行单根剥离、确认 `SKILL.md` 在根、裁决文件数与总字节数上限、计算逐文件 SHA-256 与整树 `content_sha256`。上限常量（`MAX_FILES = 256`、`MAX_SKILL_FILE_BYTES = 1 MiB`、`MAX_TOTAL_BYTES = 20 MiB`、`MAX_PATH_LENGTH = 256` 等）从这里导出，传输层的预检、集成测试的构造、文档的数字都引用同一处。
 
 **`frontmatter.ts`** 解析 `SKILL.md` 开头的 YAML frontmatter：必须以 `---` 行开始、存在闭合的 `---`；只提取 `name` 与 `description` 两个键做校验（`^[a-z0-9][a-z0-9-]{0,63}$` / 1–1024），其余键原样留在文件内容中。这里刻意不引入完整 YAML 库——frontmatter 的这两个键都是单行标量，一个十行的行解析器足够，也避免把任意 YAML 解析的攻击面带进 Worker。
 
