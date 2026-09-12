@@ -11,6 +11,9 @@
  * File 资源的一张表,设计见 docs/files/schema.md:
  * - files: 元数据(内容在 R2,对象键恒为 files/{id},由 id 派生不落库)
  *
+ * Environment 资源的一张表,设计见 docs/environment/schema.md:
+ * - environments: 单表当前态(无版本快照,config 以归一化形态存储)
+ *
  * JSON 列存归一化后的形态(与 API 响应一致),类型由 @nano/shared 提供。
  */
 import { sql } from "drizzle-orm";
@@ -23,7 +26,12 @@ import {
   text,
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
-import type { McpServer, NormalizedAgentToolset, SkillReference } from "@nano/shared";
+import type {
+  McpServer,
+  NormalizedAgentToolset,
+  NormalizedEnvironmentConfig,
+  SkillReference,
+} from "@nano/shared";
 
 /** BLOB ↔ Uint8Array:D1 的绑定参数与返回值原生使用二进制形态 */
 const uint8Blob = customType<{ data: Uint8Array; driverData: ArrayBuffer }>({
@@ -148,4 +156,32 @@ export const files = sqliteTable(
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
   },
   (t) => [index("idx_files_created_at_id").on(t.createdAt, t.id)],
+);
+
+/**
+ * Environment 单表当前态:无版本快照(GLM 的 Environment 无 version 字段,
+ * 快照固化发生在 Session 侧),更新是就地覆盖。
+ * 不变式:archived_at IS NULL ⟺ state = 'active';
+ * type/scope 是响应固定字段,不落库,序列化时注入。
+ */
+export const environments = sqliteTable(
+  "environments",
+  {
+    id: text("id").primaryKey(), // env_ + UUIDv7
+    name: text("name").notNull(),
+    description: text("description"),
+    config: text("config", { mode: "json" }).$type<NormalizedEnvironmentConfig>().notNull(),
+    metadata: text("metadata", { mode: "json" })
+      .$type<Record<string, string>>()
+      .notNull()
+      .default(sql`'{}'`),
+    state: text("state")
+      .$type<"active" | "archived">()
+      .notNull()
+      .default("active"),
+    archivedAt: integer("archived_at", { mode: "timestamp_ms" }),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (t) => [index("idx_environments_created_at_id").on(t.createdAt, t.id)],
 );
