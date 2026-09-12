@@ -5,10 +5,12 @@
  * 删除先 D1 后 R2(尽力清理,孤儿对象不破坏正确性)。
  */
 import {
+  countActiveSessionMounts,
   deleteFile as deleteFileRow,
   findFile,
   getDb,
   insertFile,
+  listFilesBySessionMountPage,
   listFilesPage,
   newFileId,
 } from "@nano/db";
@@ -19,6 +21,7 @@ import {
   validateFilename,
   type FileDeletedResponse,
   type FileResponse,
+  type FileScope,
   type Page,
 } from "@nano/shared";
 import type { Env } from "../../env";
@@ -99,15 +102,13 @@ export const fileService = {
 
   /**
    * 分页列出 File,按 (created_at, id) keyset。
-   * scope_id 一期无 Session 资源,校验前缀后恒返回空页(对 GLM 客户端保持 wire 兼容)。
+   * scope_id 过滤:列出被该会话挂载的 File 并在每条回显 scope;
+   * 会话不存在或无挂载时自然返回空页。租户级列表不输出 scope。
    */
   async listFiles(
     env: Env,
     params: ListParams & { scopeId?: string },
   ): Promise<Page<FileResponse>> {
-    if (params.scopeId !== undefined) {
-      return { data: [], next_page: null };
-    }
     const cursor =
       params.cursor === null
         ? null
@@ -115,13 +116,19 @@ export const fileService = {
             createdAt: cursorNumberField(params.cursor, "createdAt"),
             id: cursorStringField(params.cursor, "id"),
           };
-    const { rows, nextCursor } = await listFilesPage(getDb(env), {
-      limit: params.limit,
-      order: params.order,
-      cursor,
-    });
+    const { rows, nextCursor } =
+      params.scopeId === undefined
+        ? await listFilesPage(getDb(env), { limit: params.limit, order: params.order, cursor })
+        : await listFilesBySessionMountPage(getDb(env), {
+            sessionId: params.scopeId,
+            limit: params.limit,
+            order: params.order,
+            cursor,
+          });
+    const scope: FileScope | undefined =
+      params.scopeId === undefined ? undefined : { type: "session", id: params.scopeId };
     return {
-      data: rows.map(serializeFile),
+      data: rows.map((row) => serializeFile(row, scope)),
       next_page: nextCursor
         ? encodeCursor({
             kind: FILES_CURSOR_KIND,
@@ -152,8 +159,18 @@ export const fileService = {
     return { body: object.body, filename: row.filename, mimeType: row.mimeType, etag: row.etag };
   },
 
-  /** 删除:先删元数据(0 行受影响 → 404),再尽力清理 R2 对象 */
+  /**
+   * 删除:引用检查(被未归档会话挂载的 File 拒绝删除)→ 删元数据(0 行受影响 → 404)
+   * → 尽力清理 R2 对象。已归档会话的挂载不阻止删除(docs/files/schema.md 的联动条款)。
+   */
   async deleteFile(env: Env, fileId: string): Promise<FileDeletedResponse> {
+    const mounts = await countActiveSessionMounts(getDb(env), fileId);
+    if (mounts > 0) {
+      throw invalidRequestError(
+        `File is mounted by ${mounts} active session(s) and cannot be deleted.`,
+        { param: "fileId", mounts },
+      );
+    }
     const deleted = await deleteFileRow(getDb(env), fileId);
     if (!deleted) {
       throw notFoundError(`File "${fileId}" not found.`);

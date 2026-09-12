@@ -1,7 +1,7 @@
 /**
  * File 资源的响应类型与上传校验纯函数(设计见 docs/files/api/README.md)。
  * 上传走 multipart/form-data,没有 JSON 请求 schema。
- * GLM DTO 见 glm/file.ts;nano 的差异(无 scope、全站分页约定)记录在 API README 的差异表。
+ * GLM DTO 见 glm/file.ts;nano 的差异记录在 API README 的差异表。
  */
 
 /** 单文件上限 50 MiB;上传校验、413 文案与测试断言同源 */
@@ -13,8 +13,14 @@ export const MAX_FILENAME_LENGTH = 256;
 /** 归一化后 mime_type 的长度上限 */
 export const MAX_MIME_TYPE_LENGTH = 128;
 
-/** scope_id 过滤参数的合法形态:sess_ 前缀(一期无 Session 资源,传入恒返回空页) */
+/** scope_id 过滤参数的合法形态:sess_ 前缀 */
 export const SCOPE_ID_PATTERN = /^sess_/;
+
+/** 会话作用域:按 scope_id 过滤列出时回显挂载该文件的会话 */
+export interface FileScope {
+  type: "session";
+  id: string;
+}
 
 export interface FileResponse {
   id: string;
@@ -25,6 +31,8 @@ export interface FileResponse {
   mime_type: string;
   /** nano 恒为 true;保留字段以对齐 GLM wire-format */
   downloadable: boolean;
+  /** 租户级文件不输出;按 scope_id 过滤列出时回显该会话 */
+  scope?: FileScope;
 }
 
 export interface FileDeletedResponse {

@@ -8,6 +8,10 @@ import {
   type FileJson,
   type PageJson,
 } from "./helpers";
+import { createDefaultAgent, createDefaultEnvironment, postSession, type SessionJson } from "../sessions/helpers";
+
+/** 带 scope 的 File 断言形状(scope_id 过滤时回显) */
+type ScopedFileJson = FileJson & { scope?: { type: string; id: string } };
 
 beforeAll(applyMigrations);
 
@@ -80,12 +84,35 @@ describe("GET /v1/files 参数校验", () => {
 });
 
 describe("GET /v1/files scope_id 过滤", () => {
-  it("sess_ 前缀恒返回空页(一期无 session-scoped 文件)", async () => {
-    const page = await jsonBody<PageJson<FileJson>> (
+  it("不存在的会话自然返回空页", async () => {
+    const page = await jsonBody<PageJson<FileJson>>(
       await listFiles("?scope_id=sess_01911111-3333-7444-8555-666666666666"),
     );
     expect(page.data).toEqual([]);
     expect(page.next_page).toBeNull();
+  });
+
+  it("真实过滤:返回被该会话挂载的 File 并回显 scope,未挂载的不出现", async () => {
+    const mounted = await createDefaultFile();
+    const unmounted = await createDefaultFile();
+    const session = await jsonBody<SessionJson>(
+      await postSession({
+        agent: (await createDefaultAgent()).id,
+        environment_id: (await createDefaultEnvironment()).id,
+        resources: [{ type: "file", file_id: mounted.id }],
+      }),
+    );
+    const page = await jsonBody<PageJson<ScopedFileJson>>(
+      await listFiles(`?scope_id=${session.id}`),
+    );
+    expect(page.data.map((row) => row.id)).toEqual([mounted.id]);
+    expect(page.data[0]?.scope).toEqual({ type: "session", id: session.id });
+
+    // 租户级列表(不带 scope_id)不输出 scope 字段
+    const tenant = await jsonBody<PageJson<ScopedFileJson>>(await listFiles("?limit=100"));
+    for (const row of tenant.data) {
+      expect(row.scope).toBeUndefined();
+    }
   });
 
   it("非 sess_ 前缀返回 400", async () => {

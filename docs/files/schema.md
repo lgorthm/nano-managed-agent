@@ -60,6 +60,7 @@
 ### 删除（`DELETE /v1/files/{fileId}`）
 
 ```
+0. 引用检查：被未归档会话挂载（session_resources JOIN sessions）→ 400
 1. DELETE FROM files WHERE id = ? → 受影响 0 行返回 404
 2. best-effort FILES.delete(files/{id})
 3. 返回 { id, type: "file_deleted" }
@@ -67,15 +68,15 @@
 
 删除顺序与上传相反的理由：先删元数据，后续读写立即 404；第 2 步失败留下的孤儿对象不影响正确性（下载先查元数据）。反过来先删内容则会出现「元数据在而内容缺」。孤儿清理留作运维脚本（演进预留）。
 
-## 与 Session 的联动（预留）
+## 与 Session 的联动（已生效）
 
-GLM 中 File 是独立资源，通过 Session Resource 挂载进沙箱（`POST /v1/sessions/{sessionId}/resources`，`{type: "file", file_id, mount_path}`），且「已被引用」的 File 不可删除。nano 的 Session 资源属二期，届时需要回填三处：
+GLM 中 File 是独立资源，通过 Session Resource 挂载进沙箱（`POST /v1/sessions/{sessionId}/resources`，`{type: "file", file_id, mount_path}`），且「已被引用」的 File 不可删除。Session 模块已落地（见 [../session/](../session/schema.md)），三处回填已全部生效：
 
 - 挂载关系表 `session_resources` 归 session 模块（对齐 GLM 的归属：挂载端点在 `/v1/sessions/*` 下，不在 `/v1/files` 下）。
 - `delete-file` 增加引用检查：被未归档 Session 挂载的 File 拒绝删除（参照 Skill 模块「活动配置引用即阻止」的先例，返回 400）。
 - `list-files` 的 `scope_id` 过滤从「恒返回空页」变为真实过滤，File 响应补 `scope` 字段。
 
-一期行为：所有文件均为租户级；`scope_id` 传入时校验 `sess_` 前缀（非法返回 400），随后恒返回空页——对 GLM 客户端保持 wire 兼容。
+租户级行为：不带 `scope_id` 的列表不输出 `scope` 字段；带 `scope_id` 时返回该会话挂载的 File 并逐条回显 `scope: {type: "session", id}`。
 
 ## 校验规则（服务层，zod + multipart 解析；DB 只保留基本约束）
 
@@ -86,6 +87,7 @@ GLM 中 File 是独立资源，通过 Session Resource 挂载进沙箱（`POST /
 | `mime_type` 取 `file` part 的 Content-Type 并去参数（如 `text/plain; charset=utf-8` → `text/plain`）；缺失或无法解析时为 `application/octet-stream`；≤ 128 字符 | — |
 | `size_bytes` ∈ (0, 52,428,800]，即单文件 ≤ 50 MiB | 超限 413 `request_too_large` |
 | `fileId` 对应的行不存在（含重复删除） | 404 |
+| 该 File 被未归档会话挂载 | 400（已归档会话的挂载不阻止删除） |
 | `limit` < 1、`order` 非法、`page` 游标无效、`scope_id` 非 `sess_` 前缀 | 400 |
 
 ## Drizzle 定义（落地到 `packages/db/src/schema.ts`）

@@ -1,12 +1,12 @@
 import type { FileRow } from "@nano/db";
-import type { FileResponse } from "@nano/shared";
+import type { FileResponse, FileScope } from "@nano/shared";
 
 /**
  * File 行到 API JSON 的唯一序列化出口:
  * 时间戳转 ISO 8601 UTC,注入不落库的固定字段 type 与 downloadable(恒 true)。
- * GLM 中可选的 scope 字段一期不输出。
+ * scope 不落库:按 scope_id 过滤列出时由调用方传入回显,租户级列表不输出。
  */
-export function serializeFile(row: FileRow): FileResponse {
+export function serializeFile(row: FileRow, scope?: FileScope): FileResponse {
   return {
     id: row.id,
     type: "file",
@@ -15,6 +15,7 @@ export function serializeFile(row: FileRow): FileResponse {
     filename: row.filename,
     mime_type: row.mimeType,
     downloadable: true,
+    ...(scope === undefined ? {} : { scope }),
   };
 }
 

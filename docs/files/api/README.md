@@ -3,7 +3,7 @@
 nano-managed-agent 的 File 资源接口，请求 / 响应结构与 GLM Managed Agents（`zai-version: 2026-05-26`）保持一致。
 表结构设计见 [../schema.md](../schema.md)。
 
-File 是独立资源：上传后不可变（无更新端点），删除是唯一生命周期变更；与 Session 的挂载关系（GLM 的 Session Resource）属二期预留，见 [../schema.md](../schema.md#与-session-的联动预留)。
+File 是独立资源：上传后不可变（无更新端点），删除是唯一生命周期变更；与 Session 的挂载关系（GLM 的 Session Resource）经 `/v1/sessions/{sessionId}/resources` 管理（见 [../schema.md](../schema.md#与-session-的联动) 与 [../session/api/](../session/api/README.md)），被未归档会话挂载的 File 不可删除。
 
 ## 端点（5）
 
@@ -22,7 +22,7 @@ File 是独立资源：上传后不可变（无更新端点），删除是唯一
 - **内容类型**：上传端点请求为 `multipart/form-data`；下载端点响应为文件原始字节（`content-type` 取存储的 `mime_type`）；其余请求与响应均为 `application/json; charset=utf-8`。
 - **时间戳**：ISO 8601 UTC（`2026-09-11T08:00:00.000Z`）。
 - **资源标识**：`fileId` 形如 `file_01911111-3333-7444-8555-666666666666`（`file_` + UUIDv7）。
-- **固定字段**：`type` 恒为 `file`；`downloadable` 恒为 `true`（保留 wire 兼容）；GLM 中可选的 `scope` 字段一期不输出。
+- **固定字段**：`type` 恒为 `file`；`downloadable` 恒为 `true`（保留 wire 兼容）；`scope` 仅在按 `scope_id` 过滤列出时回显挂载会话，租户级列表不输出。
 
 ## 上传与限制
 
@@ -52,7 +52,7 @@ File 是独立资源：上传后不可变（无更新端点），删除是唯一
 
 `list-files` 使用与 Agent / Skill API 相同的分页参数（`limit` 默认 20、大于 100 截断为 100；`order` 为 `asc` / `desc`，默认 `desc`；`page` 为 opaque 游标），响应为 `{ "data": [...], "next_page": string | null }`。排序键 `(created_at, id)`。
 
-另支持 `scope_id` 过滤参数（GLM 按 Session scope 过滤）：必须为 `sess_` 前缀，否则 400；一期没有 Session 资源与 session-scoped 文件，传入时恒返回空页（`data` 为空、`next_page` 为 null），对 GLM 客户端保持 wire 兼容。
+另支持 `scope_id` 过滤参数（GLM 按 Session scope 过滤）：必须为 `sess_` 前缀，否则 400；返回被该会话挂载的 File（每条回显 `scope: {type: "session", id}`），会话不存在或无挂载时自然返回空页。
 
 ## 下载行为
 
@@ -72,8 +72,8 @@ File 是独立资源：上传后不可变（无更新端点），删除是唯一
 | 协议头 | 必须携带 `zai-version` / `zai-beta` | 不需要（协议版本由路径 `/v1` 携带） |
 | 服务地址 | `https://agent-api.bigmodel.cn/api` | 本地 dev / 自有 Worker 域名 |
 | 列表分页 | `limit` / `before_id` / `after_id`（limit ≤ 1000），响应 `{data, has_more, first_id, last_id}` | 全站约定 `limit` / `order` / `page`（limit > 100 截断），响应 `{data, next_page}`（与 Agent / Skill API 一致） |
-| Session scope | `scope` 字段与 `scope_id` 过滤 | 一期无 Session 资源：`scope` 不输出（GLM schema 中本就可选）；`scope_id` 恒返回空页 |
-| 删除保护 | 被 Session 引用等场景返回错误 | 一期无 Session 挂载，无引用检查；Session 模块落地时回填（见 [../schema.md](../schema.md#与-session-的联动预留)） |
+| Session scope | `scope` 字段与 `scope_id` 过滤 | `scope_id` 过滤返回该会话挂载的 File 并回显 `scope`；租户级列表不输出 `scope` |
+| 删除保护 | 被 Session 引用等场景返回错误 | 被未归档会话挂载的 File 返回 400；归档会话的挂载不阻止删除（见 [../schema.md](../schema.md#与-session-的联动)） |
 | 文件大小上限 | 平台限制，未公开数值 | 单文件 ≤ 50 MiB，超限 413 |
 | 下载响应头 | 仅说明媒体类型与文件名由元数据决定 | 同左，并补充 `etag` 响应头（上传时记录，稳定可缓存） |
 | 资源可见性 | 本人创建 + 访问桥授权 | 一期单租户，不做授权共享 |
