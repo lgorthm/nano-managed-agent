@@ -25,7 +25,7 @@
 | --- | --- | --- | --- | --- |
 | M0 DO 骨架 | `SESSION_DO` + 事件三端点 + 状态机门禁（null-turn） | runtime.md §2/§5/§7/§8，api/ 三份事件文档 | 大 | 完成 |
 | M1 对话闭环 | 真实模型流 → delta → 终事件 → usage；两级检查点与崩溃恢复 | runtime.md §3/§4/§6 | 大 | 代码与测试完成（真实凭据冒烟与 prefill 实测待做） |
-| M2 沙箱工具 | 七个内置工具执行 + 挂载 / skills 供给 + tool_use / tool_result | runtime.md §1/§4 | 大 | 待开工 |
+| M2 沙箱工具 | 七个内置工具执行 + 挂载 / skills 供给 + tool_use / tool_result | runtime.md §1/§4/§4.5 | 大 | 完成（真实沙箱冒烟已过；真实 GLM 凭据端到端随 M1 遗留项） |
 | M3 确认与打断 | always_ask 挂起 / 恢复、user.interrupt、running 追加消息 | runtime.md §4.3/§4.4 | 中 | 待开工 |
 | M4 收尾 | session.error 路径、stats 投影定稿、console 接流、SIGKILL E2E | runtime.md §8/§9 | 中 | 待开工 |
 
@@ -126,22 +126,22 @@ null-turn 整体替换为真实循环；交付「发一条 user.message，收到
 
 **沙箱接入：**
 
-- [ ] Sandbox SDK 接入：`agent_toolset_20260601` 七个内置工具的执行环境；每会话一个沙箱（实例 id = sessionId，惰性创建）；skills 挂 `/mnt/skills`；挂载文件 R2 → `/mnt/session/uploads` 只读。
-- [ ] 工作区物化协议（§4.5 推论）：每次冷启后物化 uploads / skills / outputs 三类内容；**outputs 在每个 turn 收尾同步进 R2**（sleep 即清零，产出必须及时离开沙箱），醒后回填；`/workspace` 其余状态视为易失。
-- [ ] 冷启掩体：turn 启动时与首次模型调用并行预热沙箱（fire-and-forget），让容器启动与模型首响应的秒级延迟重叠。
-- [ ] 删除 / 归档联动（§4.5 推论）：删除会话与 DO wipe 并行 `destroy()`；归档处理中顺手 destroy（归档即终态）。
-- [ ] `environment_snapshot` 消费：首次工具调用时供给沙箱，不回读 `environments` 表（创建即冻结语义）。
-- [ ] 工具执行层接口化（`TurnHost` 先例）：沙箱依赖容器进不了 vitest，单测 / 集成以 fake 执行器注入，真实沙箱走 curl 冒烟与脚本。
+- [x] Sandbox SDK 接入（`@cloudflare/sandbox@0.12.9`）：wrangler `containers` 配置（lite 实例、镜像钉 `sandbox.Dockerfile` = `docker.io/cloudflare/sandbox:0.12.9-python`，与 npm 版本同步）、`SANDBOX` DO 绑定（migrations v2）、入口导出 `Sandbox` 类；每会话一个沙箱（实例 id = sessionId，惰性创建），`sleepAfter: "10m"`、keepAlive 恒不启用。
+- [x] 工作区物化协议（§4.5 推论，`runtime/tools/runner.ts`）：幂等标记（容器内 `/tmp/.nano-materialized` + DO 内存标记）判定再物化；物化内容 = 挂载文件（R2 `files/{id}` → mount_path，写后 `chmod -R a-w` 尽力只读）+ skills（D1 `skill_files` → `/mnt/skills/<directory>`）+ outputs 回填（R2 `sessions/{id}/outputs/` → `/mnt/session/outputs`）；**outputs 在每个 turn 收尾（含 interrupted）同步进 R2**；`/workspace` 其余状态视为易失。
+- [x] 冷启掩体：turn 启动（存在 always_allow 工具时）fire-and-forget `warmup()`，与首次模型调用并行；失败静默，首个工具调用再惰性建。
+- [x] 删除 / 归档联动（§4.5 推论）：删除走 `wipe()` 先 `destroySandbox()` 再清存储；归档 service 成功后调 `destroySandbox()`（失败只记日志，不阻塞归档）。
+- [x] `environment_snapshot` 消费：物化时按快照 packages 尽力安装（apt/pip/npm/go/cargo/gem，缺包管理器则跳过；镜像选 python 变体），不回读 `environments` 表；networking 三期（沙箱侧无每会话出站策略原语）。
+- [x] 工具执行层接口化（`runtime/tools/runner.ts` 的 `ToolRunner`）：`warmup / run / harvestOutputs / destroy` 四方法；mock 实现（`TOOL_SANDBOX_MOCK=1`，vitest 注入）与真实实现同接口分流；七个工具映射（bash=exec、read/write/edit=文件 API、grep/find/ls=shell 命令），输出截断 200k 字符。
 
 **循环插入工具执行：**
 
-- [ ] 向上游传 tools（agent_config.tools → chat completions tool 定义）；解析 tool_use → always_allow → 沙箱执行 → `agent.tool_use` + `agent.tool_result` 落库 → 回到模型迭代；上下文组装补 tool_use / tool_result 映射。always_ask 的挂起分支属 M3，本里程碑集成测试用 always_allow 配置。
-- [ ] 工具幂等（§6）：snapshot 记录执行进度，已落 `tool_result` 的工具不重跑；「执行完成与落库之间」逐出接受重跑一次（物理下限）。
+- [x] 向上游传 tools（`resolveBuiltinTools` 折叠归一化 toolset → 模型侧 function 定义；**M2 只放行 always_allow，always_ask 不进模型 tools**——挂起语义属 M3，先用过滤保证不产生不可处理的调用）；模型流式 tool_calls 按 index 累积解析；`agent.tool_use`（name + input）与 `agent.tool_result`（tool_use_id + content + is_error）落库，tool_use_id 即事件 id；上下文组装补映射：连续 tool_use 合并为一条带 tool_calls 的 assistant 轮、tool_result 为 tool 轮回指（`agent.message` 与 tool_use 分属两条 assistant 轮）；协议级入参校验（`validateToolInvocation`，执行器做、与 runner 实现无关）失败以 is_error 结果喂回模型，不炸 turn；usage 跨迭代累计后单条 `session.usage` 落库并回写 D1。
+- [x] 工具幂等（§6）：批次随 snapshot 预生成两个终事件 id，`resultAppended` 逐调用记录「已落 tool_result 不重跑」；恢复重入工具批次（不重放模型请求）；中断在途语义（§4.4）——在途执行完再停、未开始的合成 is_error 结果补齐配对；执行代际（executionToken）让被取代的执行静默退出（逐出模拟与双重恢复的竞态）。
 
 **测试与验收：**
 
-- [ ] mock 上游带 tool_use 的流 → fake 执行器 → 断言事件序列与迭代次数（usage 跨迭代累计）；`tool_result.tool_use_id` 关联正确；上下文组装单测补 tool 消息映射。
-- [ ] 冒烟：真实沙箱执行一次 bash 工具，产物落 R2 可读。
+- [x] mock 上游带 tool_use 的流 → mock 执行器：`session-tools.test.ts` 6 例——bash 往返（tool_use/tool_result 配对、事件 id 即 tool_use_id、usage 跨迭代累计并回写 D1、第二次请求的 tool_calls / tool 轮上下文、七个工具定义上行）；一次多工具按序配对；非法入参与未知工具（is_error 喂回、turn 继续）；always_ask 不进模型 tools；中断在途（在途执行完再停、未开始的合成 is_error、无后续模型调用）；逐出恢复（重入工具批次不重放模型请求、终事件无重复）。shared 侧补 tool 映射与工具解析 / 校验单测（context / tools.test.ts）。全仓 39 文件 320 例与 typecheck 绿。
+- [x] 冒烟：真实沙箱执行一次 bash 工具，产物落 R2 可读。已验证（本地 Docker + `.dev.vars` 把 `GLM_API_BASE` 指向一次性 mock 上游、模型侧脚本化 tool_calls）：真实容器冷启与物化正常，`agent.tool_use` / `agent.tool_result` 配对且 tool_use_id 即事件 id，`tool_result` 内容为真实容器输出，outputs 于 turn 收尾落 R2（`wrangler r2 object get … --local` 读回一致），usage 跨迭代累计回写 D1。真实 GLM 凭据的端到端对话仍待（同 M1 遗留两项）。
 
 ---
 
@@ -155,7 +155,7 @@ null-turn 整体替换为真实循环；交付「发一条 user.message，收到
 
 **user.interrupt 完整语义（§4.4）：**
 
-- [ ] 流掐断部分已随 M1 落地（逐 chunk 检查 + `AbortController` + 不落半截终事件）；M3 剩余：已在途的沙箱工具执行完再停（杀死 bash 的副作用比重跑更糟），其 `tool_result` 照常落库。
+- [x] 已全部落地：流掐断随 M1（逐 chunk 检查 + `AbortController` + 不落半截终事件）；在途沙箱工具执行完再停、未开始的合成 `is_error` 结果补齐配对随 M2（session-tools 集成用例覆盖）。
 
 **running 中追加消息（§4.4）：**
 

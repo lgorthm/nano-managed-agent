@@ -8,18 +8,31 @@
  * D1 的 sessions.status 与 usage 三列是本类状态机的投影,迁移即时回写。
  */
 import { DurableObject } from "cloudflare:workers";
-import { findSession, getDb, updateSessionRuntimeState, type SessionUsageDelta } from "@nano/db";
-import type {
-  DeltaEventType,
-  EventInput,
-  EventListFilters,
-  EventType,
-  PersistedEventJson,
-  SessionStatus,
-  StopReason,
+import { getSandbox } from "@cloudflare/sandbox";
+import {
+  findSession,
+  findSessionResourcesBySessionIds,
+  findSkillVersion,
+  getDb,
+  listSkillFiles,
+  updateSessionRuntimeState,
+  type SessionUsageDelta,
+} from "@nano/db";
+import {
+  BUILTIN_TOOL_DEFINITIONS,
+  resolveBuiltinTools,
+  type ChatToolDefinition,
+  type DeltaEventType,
+  type EventInput,
+  type EventListFilters,
+  type EventType,
+  type PersistedEventJson,
+  type SessionStatus,
+  type StopReason,
 } from "@nano/shared";
 import type { Env } from "../../env";
 import { newEventId, newTurnId } from "../ids";
+import { createToolRunner, type ToolRunner } from "../tools/runner";
 import {
   initialTurnSnapshot,
   parseTurnSnapshot,
@@ -76,6 +89,8 @@ export class SessionDo extends DurableObject<Env> {
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   /** 事件表当前最大 seq 的内存缓存(delta 帧的排序参考);null = 未初始化 */
   private lastSeq: number | null = null;
+  /** 执行代际:startTurn / 恢复各持唯一 token,被取代的执行静默退出 */
+  private currentExecutionToken = 0;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -347,8 +362,11 @@ export class SessionDo extends DurableObject<Env> {
     return { ok: true, value: JSON.stringify(this.appendEvent(type, {}, { processedAt: new Date().toISOString() })) };
   }
 
-  /** 删除联动:广播 session.deleted → 断开订阅 → 清空全部存储(事件历史随之终结) */
+  /** 删除联动:销毁沙箱 → 广播 session.deleted → 断开订阅 → 清空全部存储 */
   async wipe(): Promise<void> {
+    await this.destroySandbox().catch((err) => {
+      console.error("sandbox destroy on wipe failed:", err);
+    });
     this.deleted = true;
     this.turnActive = false;
     this.lastSeq = null;
@@ -368,6 +386,21 @@ export class SessionDo extends DurableObject<Env> {
     await this.ctx.storage.deleteAll();
     // deleteAll 连表一起删;同一实例若再被触达(幂等 id 不会复用,纯防御),表需为空存在态
     this.ensureSchema();
+  }
+
+  /**
+   * 会话终态联动(§4.5):显式销毁沙箱,清掉容器与全部状态。
+   * mock(测试)与未配置绑定时为空操作;沙箱可能从未创建,失败只记日志。
+   */
+  async destroySandbox(): Promise<void> {
+    if (this.env.TOOL_SANDBOX_MOCK === "1" || this.env.SANDBOX === undefined) return;
+    const sessionId = this.ctx.id.name;
+    if (sessionId === undefined) return;
+    try {
+      await getSandbox(this.env.SANDBOX, sessionId).destroy();
+    } catch (err) {
+      console.error("sandbox destroy failed:", err);
+    }
   }
 
   // ---------- turn 生命周期(§4) ----------
@@ -392,11 +425,15 @@ export class SessionDo extends DurableObject<Env> {
     this.turnActive = true;
     this.keepAlive();
     // fire-and-forget:RPC 响应不等 turn 完成;keepAlive 兜住执行期的空闲逐出(§5)
-    void runTurn(this, turnId, { iteration: 0, snapshot }).catch((err) => this.turnFailed(turnId, err));
+    const token = ++this.currentExecutionToken;
+    void runTurn(this, turnId, { iteration: 0, snapshot }).catch((err) =>
+      this.turnFailed(turnId, token, err),
+    );
   }
 
-  private turnFailed(turnId: string, err: unknown): void {
+  private turnFailed(turnId: string, token: number, err: unknown): void {
     console.error("session turn failed:", err);
+    if (token !== this.currentExecutionToken) return; // 被取代的执行(逐出模拟/双重恢复)失败:静默
     this.turnActive = false;
     if (this.deleted) return;
     // 行已不存在 = turn 已终局(恢复路径与在途执行的竞态):只复位内存,不补发事件
@@ -463,11 +500,15 @@ export class SessionDo extends DurableObject<Env> {
     return events;
   }
 
-  /** 每 turn 一次:agent_config 快照(创建时固化,创建即冻结语义)+ env 凭据 */
+  /** 每 turn 一次:agent_config 快照(创建时固化,创建即冻结语义)+ env 凭据 + 工具定义 */
   async loadTurnConfig(): Promise<TurnModelConfig> {
     const sessionId = this.ctx.id.name;
     const row = sessionId !== undefined ? await findSession(getDb(this.env), sessionId) : null;
-    const agentConfig = row?.agentConfig ?? { system: null as string | null, model: { id: "glm-5.3" } };
+    const agentConfig = row?.agentConfig ?? { system: null as string | null, model: { id: "glm-5.3" }, tools: [] };
+    // M2 只放行 always_allow(模型看不到 always_ask 工具);挂起语义属 M3
+    const tools = resolveBuiltinTools(agentConfig.tools)
+      .filter((tool) => tool.permission === "always_allow")
+      .map((tool) => BUILTIN_TOOL_DEFINITIONS[tool.name]);
     return {
       system: agentConfig.system ?? null,
       model: {
@@ -475,7 +516,50 @@ export class SessionDo extends DurableObject<Env> {
         apiKey: this.env.GLM_API_KEY,
         model: agentConfig.model.id,
       },
+      tools,
     };
+  }
+
+  /** 工具执行层(§4.5 注入边界):无可用工具或无会话上下文时返回 null */
+  async createToolRunner(): Promise<ToolRunner | null> {
+    const sessionId = this.ctx.id.name;
+    if (sessionId === undefined) return null;
+    const db = getDb(this.env);
+    const row = await findSession(db, sessionId);
+    if (row === null) return null;
+    const resourcesBySession = await findSessionResourcesBySessionIds(db, [sessionId]);
+    const resources = (resourcesBySession.get(sessionId) ?? []).map((resource) => ({
+      fileId: resource.fileId,
+      mountPath: resource.mountPath,
+    }));
+    const skills = [];
+    for (const reference of row.agentConfig.skills) {
+      if (reference.type !== "custom") continue;
+      const version = Number(reference.version);
+      if (!Number.isSafeInteger(version) || version < 1) continue;
+      const versionRow = await findSkillVersion(db, reference.skill_id, version);
+      const files = await listSkillFiles(db, reference.skill_id, version);
+      if (versionRow !== null && files.length > 0) {
+        skills.push({
+          directory: versionRow.directory,
+          files: files.map((file) => ({ path: file.path, content: file.content })),
+        });
+      }
+    }
+    return createToolRunner(this.env, {
+      sessionId,
+      resources,
+      skills,
+      packages: row.environmentSnapshot.packages ?? null,
+    });
+  }
+
+  executionToken(): number {
+    return this.currentExecutionToken;
+  }
+
+  isExecutionCurrent(token: number): boolean {
+    return token === this.currentExecutionToken;
   }
 
   /** 终事件 seq 的估计值(delta 帧排序参考);真实 seq 以落库行为准 */
@@ -584,7 +668,8 @@ export class SessionDo extends DurableObject<Env> {
       { processedAt: new Date().toISOString() },
     );
     const resume: TurnResume | undefined = snapshot !== null ? { iteration, snapshot } : undefined;
-    void runTurn(this, turnId, resume).catch((err) => this.turnFailed(turnId, err));
+    const token = ++this.currentExecutionToken;
+    void runTurn(this, turnId, resume).catch((err) => this.turnFailed(turnId, token, err));
   }
 
   /**

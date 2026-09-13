@@ -37,8 +37,12 @@ function pickScript(rawBody: string): MockModelScript {
   return index === -1 ? DEFAULT_SCRIPT : queue.splice(index, 1)[0]!;
 }
 
-function writeChunk(res: http.ServerResponse, delta: Record<string, string>): void {
-  res.write(`data: ${JSON.stringify({ choices: [{ delta }] })}\n\n`);
+function writeChunk(res: http.ServerResponse, delta: Record<string, string>, finishReason?: string): void {
+  res.write(
+    `data: ${JSON.stringify({
+      choices: [{ delta, ...(finishReason !== undefined ? { finish_reason: finishReason } : {}) }],
+    })}\n\n`,
+  );
 }
 
 async function handleCompletions(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
@@ -71,6 +75,25 @@ async function handleCompletions(req: http.IncomingMessage, res: http.ServerResp
     if (chunk.content !== undefined) delta.content = chunk.content;
     if (chunk.reasoning_content !== undefined) delta.reasoning_content = chunk.reasoning_content;
     writeChunk(res, delta);
+  }
+  if ((script.tool_calls ?? []).length > 0) {
+    res.write(
+      `data: ${JSON.stringify({
+        choices: [
+          {
+            delta: {
+              tool_calls: (script.tool_calls ?? []).map((call, index) => ({
+                index,
+                id: call.id ?? `call_mock_${index}`,
+                type: "function",
+                function: { name: call.name, arguments: call.arguments },
+              })),
+            },
+          },
+        ],
+      })}\n\n`,
+    );
+    writeChunk(res, {}, "tool_calls");
   }
   if (script.usage !== undefined) {
     res.write(

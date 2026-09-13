@@ -7,6 +7,14 @@ export interface MockModelChunk {
   delayMs?: number;
 }
 
+export interface MockModelToolCall {
+  name: string;
+  /** OpenAI 兼容的 arguments(JSON 字符串) */
+  arguments: string;
+  /** 缺省由 server 生成(call_mock_n) */
+  id?: string;
+}
+
 export interface MockModelScript {
   /**
    * 匹配标记:请求体 JSON 字符串包含该子串时本脚本才被消费,不匹配的留在
@@ -17,6 +25,8 @@ export interface MockModelScript {
   /** 非 2xx:直接返回 JSON 错误体(不流式) */
   status?: number;
   chunks: MockModelChunk[];
+  /** 内容块之后发起的工具调用(单块完整下发,等价于分片累积的终态) */
+  tool_calls?: MockModelToolCall[];
   usage?: { prompt_tokens: number; completion_tokens: number; cached_tokens?: number };
   /** 建立连接后不下发任何块(模拟流挂起) */
   hang?: boolean;
@@ -28,8 +38,17 @@ export interface CapturedModelRequest {
   authorization: string;
   body: {
     model: string;
-    messages: Array<{ role: string; content: unknown }>;
+    messages: Array<{
+      role: string;
+      content: unknown;
+      tool_calls?: Array<{
+        id?: string;
+        function: { name: string; arguments: string };
+      }>;
+      tool_call_id?: string;
+    }>;
     stream: boolean;
     stream_options?: unknown;
+    tools?: Array<{ function: { name: string } }>;
   };
 }

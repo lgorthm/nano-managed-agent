@@ -11,12 +11,14 @@ export default defineConfig({
     cloudflareTest({
       wrangler: { configPath: "./wrangler.jsonc" },
       // 模型上游指向测试内的 mock SSE 服务(test/sessions/mock-model.ts),
-      // 覆盖 wrangler vars 的生产默认值;保活间隔缩到 2s 让恢复巡检可等
+      // 覆盖 wrangler vars 的生产默认值;保活间隔缩到 2s 让恢复巡检可等;
+      // 工具执行走 mock 实现(沙箱依赖容器,进不了 vitest,runtime.md §9)
       miniflare: {
         bindings: {
           GLM_API_BASE: "http://127.0.0.1:18234",
           GLM_API_KEY: "test-model-key",
           TURN_KEEPALIVE_INTERVAL_MS: "2000",
+          TOOL_SANDBOX_MOCK: "1",
         },
       },
     }),

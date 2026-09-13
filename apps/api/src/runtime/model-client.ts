@@ -7,7 +7,7 @@
  * 协议按 GLM v4(OpenAI 兼容)形状实现:delta.reasoning_content → thinking,
  * delta.content → message,usage 随 include_usage 在末块返回。
  */
-import type { ChatMessage } from "@nano/shared";
+import type { ChatMessage, ChatToolDefinition } from "@nano/shared";
 import type { UsagePayload } from "@nano/shared";
 
 /** 模型调用配置:baseUrl 与 apiKey 来自 env,model 来自会话的 agent_config 快照 */
@@ -46,6 +46,8 @@ export interface ModelCallResult {
   thinking: string;
   message: string;
   usage: UsagePayload;
+  /** 模型发起的工具调用(arguments 为 JSON 字符串);空数组表示本轮无工具 */
+  toolCalls: Array<{ id: string; name: string; arguments: string }>;
 }
 
 /** 连接类错误(fetch 抛出、未收到响应头)按退避重试;流已建立不重试(§0 的「十行包装」) */
@@ -68,12 +70,45 @@ async function fetchWithRetry(url: string, init: RequestInit): Promise<Response>
 }
 
 interface StreamChunk {
-  choices?: Array<{ delta?: { content?: string | null; reasoning_content?: string | null } }>;
+  choices?: Array<{
+    delta?: {
+      content?: string | null;
+      reasoning_content?: string | null;
+      /** OpenAI 兼容的流式工具调用:index 定位,arguments 分片累积 */
+      tool_calls?: Array<{
+        index?: number;
+        id?: string;
+        function?: { name?: string; arguments?: string };
+      }> | null;
+    };
+    finish_reason?: string | null;
+  }>;
   usage?: {
     prompt_tokens?: number;
     completion_tokens?: number;
     prompt_tokens_details?: { cached_tokens?: number };
   } | null;
+}
+
+/** 按 index 累积分片到达的 tool_call(id/name 首块到位,arguments 逐片拼接) */
+function accumulateToolCall(
+  calls: Map<number, { id: string; name: string; arguments: string }>,
+  fragment: NonNullable<NonNullable<NonNullable<StreamChunk["choices"]>[number]["delta"]>["tool_calls"]>[number],
+): void {
+  const index = fragment.index ?? 0;
+  const current = calls.get(index) ?? { id: "", name: "", arguments: "" };
+  if (fragment.id !== undefined && fragment.id !== "") current.id = fragment.id;
+  if (fragment.function?.name !== undefined && fragment.function.name !== "") {
+    current.name = fragment.function.name;
+  }
+  if (fragment.function?.arguments !== undefined) current.arguments += fragment.function.arguments;
+  calls.set(index, current);
+}
+
+function finishToolCalls(
+  calls: Map<number, { id: string; name: string; arguments: string }>,
+): Array<{ id: string; name: string; arguments: string }> {
+  return [...calls.entries()].sort(([a], [b]) => a - b).map(([, call]) => call);
 }
 
 function parseUsage(chunk: StreamChunk): UsagePayload | null {
@@ -90,6 +125,7 @@ export async function streamChatCompletion(
   config: GlmModelConfig,
   messages: ChatMessage[],
   callbacks: StreamCallbacks,
+  tools?: ChatToolDefinition[],
 ): Promise<ModelCallResult> {
   const response = await fetchWithRetry(`${config.baseUrl}/chat/completions`, {
     method: "POST",
@@ -102,6 +138,8 @@ export async function streamChatCompletion(
       messages,
       stream: true,
       stream_options: { include_usage: true },
+      // 空 tools 数组部分上游会报错;无可用工具时整个字段省略
+      ...(tools !== undefined && tools.length > 0 ? { tools } : {}),
     }),
     signal: callbacks.signal,
   });
@@ -112,6 +150,7 @@ export async function streamChatCompletion(
   let thinking = "";
   let message = "";
   let usage: UsagePayload = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0 };
+  const toolCalls = new Map<number, { id: string; name: string; arguments: string }>();
 
   const reader = response.body.getReader();
   // 显式吸收 abort 时的流取消:workerd 在 abort 掐断流式响应时会在运行时
@@ -135,7 +174,7 @@ export async function streamChatCompletion(
       const data = line.slice(6);
       if (data === "[DONE]") {
         await reader.cancel().catch(() => undefined);
-        return { thinking, message, usage };
+        return { thinking, message, usage, toolCalls: finishToolCalls(toolCalls) };
       }
       let chunk: StreamChunk;
       try {
@@ -154,7 +193,10 @@ export async function streamChatCompletion(
         message += delta.content;
         callbacks.onDelta("message", delta.content);
       }
+      if (delta?.tool_calls !== undefined && delta.tool_calls !== null) {
+        for (const fragment of delta.tool_calls) accumulateToolCall(toolCalls, fragment);
+      }
     }
   }
-  return { thinking, message, usage };
+  return { thinking, message, usage, toolCalls: finishToolCalls(toolCalls) };
 }

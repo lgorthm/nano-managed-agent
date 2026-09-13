@@ -385,6 +385,14 @@ export const sessionService = {
       throw conflictError("Session is running; interrupt the session before archiving.");
     }
 
+    // 归档即终态(不再有新 turn):顺手销毁沙箱,不让容器等 sleepAfter 自然消亡
+    // (runtime.md §4.5);失败只记日志,不阻塞归档
+    await sessionDoStub(env, sessionId)
+      .destroySandbox()
+      .catch((err) => {
+        console.error("sandbox destroy on archive failed:", err);
+      });
+
     const archivedRow = await loadSessionWithResources(db, sessionId);
     return serializeSession(archivedRow.row, archivedRow.resources);
   },

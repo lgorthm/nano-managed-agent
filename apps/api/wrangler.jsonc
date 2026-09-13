@@ -28,9 +28,26 @@
 
   // 会话运行时(docs/session/runtime.md):每会话一个实例,SQLite 存储
   "durable_objects": {
-    "bindings": [{ "name": "SESSION_DO", "class_name": "SessionDo" }]
+    "bindings": [
+      { "name": "SESSION_DO", "class_name": "SessionDo" },
+      { "name": "SANDBOX", "class_name": "Sandbox" }
+    ]
   },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["SessionDo"] }]
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["SessionDo"] },
+    { "tag": "v2", "new_sqlite_classes": ["Sandbox"] }
+  ],
+
+  // 工具沙箱(docs/session/runtime.md §4.5):Sandbox SDK 的容器运行时,
+  // 镜像钉在与 npm 包一致的版本(官方要求二者同步)
+  "containers": [
+    {
+      "class_name": "Sandbox",
+      "image": "./sandbox.Dockerfile",
+      "instance_type": "lite",
+      "max_instances": 5
+    }
+  ]
 
   // agent-loop Workflow 绑定已弃用:Agent 循环在 SESSION_DO 内自管执行,
   // 决策记录见 docs/session/runtime.md §0

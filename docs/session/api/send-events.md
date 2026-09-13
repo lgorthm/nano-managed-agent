@@ -2,7 +2,7 @@
 
 > 向指定 Session 追加事件并触发后续处理。一次可发送 1 至 10 个受支持事件；已归档 Session 不接受新事件。设计见 [../runtime.md](../runtime.md) §4。
 
-M1 运行时的行为：`user.message` 追加后异步触发一轮对话（消费输入 → `session.status_running` → `agent.thinking` / `agent.message`（流上先推 `.delta` 帧）→ `session.usage`（真实模型计量）→ `session.status_idle{stop_reason: end_turn}`）；响应不等 turn 完成，立即返回持久化的输入事件。工具执行与确认挂起属 M2/M3。
+M2 运行时的行为：`user.message` 追加后异步触发一轮对话（消费输入 → `session.status_running` → `agent.thinking` / `agent.message`（流上先推 `.delta` 帧）→ 模型发起工具调用时 `agent.tool_use` → 沙箱执行 → `agent.tool_result` → 带结果继续迭代 → `session.usage`（真实模型计量，跨迭代累计）→ `session.status_idle{stop_reason: end_turn}`）；响应不等 turn 完成，立即返回持久化的输入事件。工具按沙箱生命周期（[../runtime.md](../runtime.md) §4.5）在会话专属沙箱中执行（按需冷启、10 分钟空闲回收）；确认挂起（always_ask）属 M3，该类工具暂不进入模型可用工具集。
 
 ## 请求示例
 
@@ -35,13 +35,13 @@ curl -sS -X POST "http://127.0.0.1:8787/v1/sessions/$SESSION_ID/events" \
 
 `processed_at` 在排队期间为 `null`，被 turn 消费后回填（[../runtime.md](../runtime.md) §2.1 的唯一可变字段例外）。
 
-## 支持的输入事件（M1）
+## 支持的输入事件（M2）
 
 | type | 载荷 | 说明 |
 | --- | --- | --- |
 | `user.message` | `content`: 1–20 个 block（text / base64 image / document） | 追加消息；idle 时触发 turn |
-| `user.interrupt` | 无 | 置中断标志；运行中的模型流被掐断，不落半截产出，以 `status_idle{interrupted}` 收尾 |
-| `user.tool_confirmation` | `tool_use_id`、`result`(allow/deny)、`deny_message`(仅 deny) | M1 无 always_ask 工具，任何确认返回 400（M3 挂起语义就位后放开） |
+| `user.interrupt` | 无 | 置中断标志；模型流被掐断不落半截产出，在途的沙箱工具执行完再停（未开始的以 `is_error` 结果补齐配对），以 `status_idle{interrupted}` 收尾 |
+| `user.tool_confirmation` | `tool_use_id`、`result`(allow/deny)、`deny_message`(仅 deny) | M2 无 always_ask 挂起语义，任何确认返回 400（M3 就位后放开） |
 
 ## 错误行为
 

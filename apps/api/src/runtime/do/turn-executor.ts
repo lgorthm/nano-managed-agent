@@ -1,15 +1,21 @@
 /**
- * turn 执行器 — M1 对话闭环(docs/session/runtime.md §4)。
- * 循环:装配上下文(事件日志 + agent_config 快照)→ 预生成终事件 id 进
- * snapshot → 流式调 GLM(delta 缓冲推送、snapshot 节奏落盘)→ 终事件落库
- * → 无 tool_use 即 usage + end_turn 收尾;收尾前检查积压输入,有则继续迭代。
+ * turn 执行器 — M2 工具循环(docs/session/runtime.md §4)。
+ * 每个迭代两阶段:模型调用(装配上下文 → 流式调用 → 终事件)与工具批次
+ * (agent.tool_use 落库 → 沙箱执行 → agent.tool_result 落库),工具完成后
+ * 回到模型迭代,直到无工具调用即 usage + end_turn 收尾。
  *
- * 宿主能力经 TurnHost 注入(SessionDo 实现);M2 在流终结后插入 tool_use
- * 解析与沙箱执行,本文件的循环骨架不动。
+ * 恢复语义(§6):终事件 id 与工具批次随 snapshot 预生成,append 去重兜底;
+ * 已落 tool_result 的工具不重跑,「执行完成与落库之间」的逐出接受重跑一次。
+ * 中断语义(§4.4):模型流逐 chunk 掐断;沙箱工具在途的执行完再停,未开始的
+ * 以 is_error 的合成结果补齐 tool_use/tool_result 配对(缺失会让下一轮上下文
+ * 不完整)。执行代际(executionToken)让被取代的执行(测试的逐出模拟、
+ * 双重恢复竞态)静默退出,不与新执行交叉落事件。
  */
 import {
   assembleChatMessages,
+  validateToolInvocation,
   type ChatMessage,
+  type ChatToolDefinition,
   type DeltaEventType,
   type JsonValue,
   type PersistedEventJson,
@@ -18,6 +24,19 @@ import {
 } from "@nano/shared";
 import { ModelAbortedError, streamChatCompletion, type GlmModelConfig } from "../model-client";
 import { newEventId } from "../ids";
+import type { ToolRunner } from "../tools/runner";
+
+/** 工具批次条目:身份与两个终事件 id 全部预生成(重试幂等的锚点) */
+export interface PendingToolCall {
+  /** 模型侧调用 id(上游回指用;缺失时本地生成) */
+  callId: string;
+  name: string;
+  inputJson: string;
+  toolUseEventId: string;
+  toolResultEventId: string;
+  /** §6:tool_result 已落库——恢复时跳过重跑 */
+  resultAppended: boolean;
+}
 
 /** 细粒度检查点(§3/§4.1):身份进列,这里只有循环内部状态;恢复时沿用预生成 id */
 export interface TurnSnapshot {
@@ -29,9 +48,26 @@ export interface TurnSnapshot {
   completed: Array<"agent.thinking" | "agent.message">;
   partialThinking: string;
   partialMessage: string;
+  /** 待执行 / 执行到一半的工具批次(恢复重入点) */
+  pendingToolCalls: PendingToolCall[];
 }
 
-/** 防御性解析:行在但 snapshot 损坏(如 M0 旧形态)时返回 null,调用方重生成 */
+function parsePendingToolCalls(raw: unknown): PendingToolCall[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(
+    (item): item is PendingToolCall =>
+      typeof item === "object" &&
+      item !== null &&
+      typeof (item as PendingToolCall).callId === "string" &&
+      typeof (item as PendingToolCall).name === "string" &&
+      typeof (item as PendingToolCall).inputJson === "string" &&
+      typeof (item as PendingToolCall).toolUseEventId === "string" &&
+      typeof (item as PendingToolCall).toolResultEventId === "string" &&
+      typeof (item as PendingToolCall).resultAppended === "boolean",
+  );
+}
+
+/** 防御性解析:行在但 snapshot 损坏(如 M0/M1 旧形态)时返回 null,调用方重生成 */
 export function parseTurnSnapshot(raw: unknown): TurnSnapshot | null {
   if (typeof raw !== "string" || raw === "") return null;
   try {
@@ -55,19 +91,22 @@ export function parseTurnSnapshot(raw: unknown): TurnSnapshot | null {
       ),
       partialThinking: typeof parsed.partialThinking === "string" ? parsed.partialThinking : "",
       partialMessage: typeof parsed.partialMessage === "string" ? parsed.partialMessage : "",
+      pendingToolCalls: parsePendingToolCalls(parsed.pendingToolCalls),
     };
   } catch {
     return null;
   }
 }
 
-/** 模型调用配置:model 来自会话的 agent_config 快照,baseUrl/apiKey 来自 env */
+/** 模型调用配置:model 与 tools 来自会话的 agent_config 快照,baseUrl/apiKey 来自 env */
 export interface TurnModelConfig {
   system: string | null;
   model: GlmModelConfig;
+  /** 模型侧工具定义(M2 只含 always_allow;always_ask 挂起属 M3) */
+  tools: ChatToolDefinition[];
 }
 
-/** 执行器可用的宿主能力(SessionDo 实现;M2 增沙箱执行接口) */
+/** 执行器可用的宿主能力(SessionDo 实现) */
 export interface TurnHost {
   /** 产出事件:消息体唯一落库点;options.id 传执行器预生成的 id(重试幂等) */
   appendProducedEvent(
@@ -102,6 +141,11 @@ export interface TurnHost {
   loadTurnConfig(): Promise<TurnModelConfig>;
   /** 终事件 seq 的估计值(delta 帧的排序参考) */
   estimateNextSeq(): number;
+  /** 工具执行层(§4.5 注入边界):无可用工具时返回 null */
+  createToolRunner(): Promise<ToolRunner | null>;
+  /** 当前执行代际:startTurn / 恢复各持唯一 token,被取代的执行静默退出 */
+  executionToken(): number;
+  isExecutionCurrent(token: number): boolean;
 }
 
 const ZERO_USAGE: UsagePayload = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0 };
@@ -121,6 +165,7 @@ function freshSnapshot(turnId: string, iteration: number): TurnSnapshot {
     completed: [],
     partialThinking: "",
     partialMessage: "",
+    pendingToolCalls: [],
   };
 }
 
@@ -135,12 +180,108 @@ export interface TurnResume {
   snapshot: TurnSnapshot;
 }
 
+/** 模型生成的入参不可信:非法 JSON 以标记对象进入(会被入参校验拒绝) */
+function parseToolInput(inputJson: string): JsonValue {
+  try {
+    return JSON.parse(inputJson) as JsonValue;
+  } catch {
+    return { __invalid_json: inputJson };
+  }
+}
+
 export async function runTurn(host: TurnHost, turnId: string, resume?: TurnResume): Promise<void> {
   const config = await host.loadTurnConfig();
+  const token = host.executionToken();
+  const current = (): boolean => host.isExecutionCurrent(token);
+  const runner = config.tools.length > 0 ? await host.createToolRunner() : null;
+  let toolsRan = false;
+  if (runner !== null) {
+    // 冷启掩体(§4.5):与首次模型调用并行预热,失败静默(真正用时会再惰性建)
+    void runner.warmup();
+  }
+
+  const totalUsage: UsagePayload = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0 };
+  const addUsage = (usage: UsagePayload): void => {
+    totalUsage.input_tokens += usage.input_tokens;
+    totalUsage.output_tokens += usage.output_tokens;
+    totalUsage.cache_read_input_tokens += usage.cache_read_input_tokens;
+  };
+
   let iteration = resume?.iteration ?? 0;
   let resumed = resume?.snapshot ?? null;
 
   for (;;) {
+    // ---- 阶段一:执行遗留的工具批次(上一模型调用的产出,或恢复重入) ----
+    const snapshot = resumed ?? freshSnapshot(turnId, iteration);
+    resumed = null;
+
+    if (snapshot.pendingToolCalls.length > 0) {
+      if (runner === null) {
+        // 不可达防御:模型未获工具定义就不会发起调用;恢复旧快照同理
+        host.appendProducedEvent("session.error", { message: "Tool runner is unavailable." });
+        await host.finishTurn(turnId, { type: "interrupted" }, ZERO_USAGE);
+        return;
+      }
+      host.saveTurnSnapshot(turnId, iteration, snapshot);
+      let interrupted = false;
+      for (const call of snapshot.pendingToolCalls) {
+        if (call.resultAppended) continue; // §6:已落 tool_result 的不重跑
+        if (host.isInterrupted() || host.isDeleted()) {
+          // §4.4:未开始的工具跳过执行,合成 is_error 结果补齐配对
+          host.appendProducedEvent(
+            "agent.tool_result",
+            {
+              tool_use_id: call.toolUseEventId,
+              content: [{ type: "text", text: "Tool execution was skipped because the session was interrupted." }],
+              is_error: true,
+            },
+            { id: call.toolResultEventId },
+          );
+          call.resultAppended = true;
+          continue;
+        }
+        const input = parseToolInput(call.inputJson);
+        // 协议级校验(执行器做,与 runner 实现无关):失败不进沙箱,直接喂回错误
+        const invalid = validateToolInvocation(call.name, input);
+        if (invalid !== null) {
+          host.appendProducedEvent(
+            "agent.tool_result",
+            { tool_use_id: call.toolUseEventId, content: [{ type: "text", text: invalid }], is_error: true },
+            { id: call.toolResultEventId },
+          );
+          call.resultAppended = true;
+          host.saveTurnSnapshot(turnId, iteration, snapshot);
+          continue;
+        }
+        const outcome = await runner.run({ toolUseId: call.toolUseEventId, name: call.name, input });
+        if (!current()) return; // 被取代的执行(逐出模拟 / 双重恢复):静默退出
+        toolsRan = true;
+        host.appendProducedEvent(
+          "agent.tool_result",
+          {
+            tool_use_id: call.toolUseEventId,
+            content: [{ type: "text", text: outcome.content }],
+            ...(outcome.isError ? { is_error: true } : {}),
+          },
+          { id: call.toolResultEventId },
+        );
+        call.resultAppended = true;
+        host.saveTurnSnapshot(turnId, iteration, snapshot);
+      }
+      interrupted = host.isInterrupted() || host.isDeleted();
+      snapshot.pendingToolCalls = [];
+      host.saveTurnSnapshot(turnId, iteration, snapshot);
+      if (interrupted) {
+        if (toolsRan && runner !== null) await runner.harvestOutputs();
+        await host.finishTurn(turnId, { type: "interrupted" }, ZERO_USAGE);
+        return;
+      }
+      // 工具结果就绪,带着 tool 轮上下文进入下一次模型调用
+      iteration += 1;
+      continue;
+    }
+
+    // ---- 阶段二:模型调用 ----
     const events = host.loadEventsForContext();
     const messages: ChatMessage[] = assembleChatMessages({ system: config.system, events });
     host.consumePendingUserMessages();
@@ -152,10 +293,7 @@ export async function runTurn(host: TurnHost, turnId: string, resume?: TurnResum
       return;
     }
 
-    const snapshot = resumed ?? freshSnapshot(turnId, iteration);
-    resumed = null;
     host.saveTurnSnapshot(turnId, iteration, snapshot);
-
     const controller = new AbortController();
     const deltaBuffer: Record<"thinking" | "message", string> = { thinking: "", message: "" };
     const deltaTimers: Partial<Record<"thinking" | "message", ReturnType<typeof setTimeout>>> = {};
@@ -199,23 +337,24 @@ export async function runTurn(host: TurnHost, turnId: string, resume?: TurnResum
             snapshot.partialMessage += text;
             deltaBuffer.message += text;
           }
-          // delta 缓冲:换行即冲,否则 80ms 窗口
           if (deltaBuffer[kind].includes("\n")) {
             emitBuffered(kind);
           } else if (deltaTimers[kind] === undefined) {
             deltaTimers[kind] = setTimeout(() => emitBuffered(kind), DELTA_FLUSH_WINDOW_MS);
           }
-          // snapshot 节奏落盘(§3):同步、整体替换
           chunkCount += 1;
           if (chunkCount % SNAPSHOT_CHUNK_INTERVAL === 0 || Date.now() - lastSnapshotAt >= SNAPSHOT_TIME_INTERVAL_MS) {
             host.saveTurnSnapshot(turnId, iteration, snapshot);
             lastSnapshotAt = Date.now();
           }
         },
-      });
+      }, config.tools);
 
       emitAll(); // 残余 delta 先于终事件冲净(§7:delta 在前、终事件在后)
+      addUsage(result.usage);
+      if (!current()) return;
       if (host.isDeleted() || host.isInterrupted()) {
+        if (toolsRan && runner !== null) await runner.harvestOutputs();
         await host.finishTurn(turnId, { type: "interrupted" }, ZERO_USAGE);
         return;
       }
@@ -236,22 +375,45 @@ export async function runTurn(host: TurnHost, turnId: string, resume?: TurnResum
         snapshot.completed.push("agent.message");
       }
 
+      if (result.toolCalls.length > 0) {
+        // 工具调用先落 agent.tool_use(事实记录),批次随 snapshot 交阶段一执行
+        snapshot.pendingToolCalls = result.toolCalls.map((call, index) => ({
+          callId: call.id !== "" ? call.id : `${turnId}:${iteration}:call_${index}`,
+          name: call.name,
+          inputJson: call.arguments,
+          toolUseEventId: newEventId(),
+          toolResultEventId: newEventId(),
+          resultAppended: false,
+        }));
+        host.saveTurnSnapshot(turnId, iteration, snapshot);
+        for (const call of snapshot.pendingToolCalls) {
+          host.appendProducedEvent(
+            "agent.tool_use",
+            { name: call.name, input: parseToolInput(call.inputJson) },
+            { id: call.toolUseEventId },
+          );
+        }
+        resumed = snapshot; // 下一轮循环进阶段一
+        continue;
+      }
+
       // §4.4 收尾窗口竞态:收尾前仍有未消费输入则本 turn 内继续消费
       if (host.hasPendingUserMessages()) {
         iteration += 1;
         continue;
       }
 
-      host.appendProducedEvent("session.usage", { ...result.usage });
-      await host.finishTurn(turnId, { type: "end_turn" }, result.usage);
+      if (toolsRan && runner !== null) await runner.harvestOutputs();
+      host.appendProducedEvent("session.usage", { ...totalUsage });
+      await host.finishTurn(turnId, { type: "end_turn" }, totalUsage);
       return;
     } catch (err) {
-      emitAll(); // 已发出的 delta 无害(终事件补全语义),只保证不再新增
+      emitAll();
       for (const timer of Object.values(deltaTimers)) {
         if (timer !== undefined) clearTimeout(timer);
       }
       if (err instanceof ModelAbortedError || controller.signal.aborted) {
-        // 打断 / 删除:不落半截终事件,积压输入留给下一条消息(§4.4)
+        if (toolsRan && runner !== null) await runner.harvestOutputs();
         await host.finishTurn(turnId, { type: "interrupted" }, ZERO_USAGE);
         return;
       }
