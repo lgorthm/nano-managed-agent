@@ -392,9 +392,12 @@ function ResourcesSection({ sessionId, archived }: { sessionId: string; archived
     <SectionCard
       title="资源挂载"
       action={
-        <RefreshButton isFetching={query.isFetching} onClick={() => void query.refetch()}>
-          刷新
-        </RefreshButton>
+        <>
+          <RefreshButton isFetching={query.isFetching} onClick={() => void query.refetch()}>
+            刷新
+          </RefreshButton>
+          <AddSessionFileDialog sessionId={sessionId} disabled={archived} />
+        </>
       }
     >
       {query.isPending ? (
