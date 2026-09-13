@@ -1,9 +1,10 @@
 import { env, exports } from "cloudflare:workers";
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   API_KEY,
   applyMigrations,
   archiveSessionInDb,
+  createDefaultAgent,
   createDefaultSession,
   deleteSessionViaApi,
   getSession,
@@ -18,10 +19,31 @@ import {
   type PageJson,
   type SessionJson,
 } from "./helpers";
+import {
+  enqueueModelScript,
+  modelRequests,
+  resetModelMock,
+  waitForModelRequests,
+} from "../mock-model/client";
 
 beforeAll(applyMigrations);
+beforeEach(() => resetModelMock());
 
 const TEXT_MESSAGE = { type: "user.message", content: [{ type: "text", text: "hello" }] };
+
+/** M1 起的完整 turn 事件序(缺省 mock 脚本:thinking + message + 非零 usage) */
+const FULL_TURN_TYPES = [
+  "session.status_running",
+  "agent.thinking",
+  "agent.message",
+  "session.usage",
+  "session.status_idle",
+] as const;
+
+/** 捕获断言按消息文本过滤,避免与其他测试文件的模型请求互扰 */
+async function requestsFor(text: string) {
+  return (await modelRequests()).filter((request) => JSON.stringify(request.body).includes(text));
+}
 
 /** SSE 读取器:跨调用共享解码缓冲与单个 pending read(流只允许一个未决读) */
 interface StreamReader {
@@ -79,8 +101,8 @@ async function eventTypes(sessionId: string): Promise<string[]> {
   return page.data.map((event) => event.type);
 }
 
-describe("POST /v1/sessions/{id}/events — 发送事件与 null-turn 生命周期", () => {
-  it("user.message 返回持久化事件(null-turn 异步完成 status_running → usage → status_idle)", async () => {
+describe("POST /v1/sessions/{id}/events — 发送事件与模型循环生命周期", () => {
+  it("user.message 返回持久化事件(模型循环异步完成 status_running → thinking → message → usage → status_idle)", async () => {
     const session = await createDefaultSession();
     const res = await sendEvents(session.id, [TEXT_MESSAGE]);
     expect(res.status).toBe(200);
@@ -91,31 +113,31 @@ describe("POST /v1/sessions/{id}/events — 发送事件与 null-turn 生命周�
     expect(body.data[0]!.processed_at).toBeNull();
     expect(body.data[0]!.content).toEqual([{ type: "text", text: "hello" }]);
 
-    // null-turn fire-and-forget:轮询直到终局事件出现
+    // fire-and-forget:轮询直到终局事件出现
     const events = await pollForEvent(
       session.id,
       (list) => list.some((event) => event.type === "session.status_idle"),
     );
-    expect(events.map((event) => event.type)).toEqual([
-      "user.message",
-      "session.status_running",
-      "session.usage",
-      "session.status_idle",
-    ]);
+    expect(events.map((event) => event.type)).toEqual(["user.message", ...FULL_TURN_TYPES]);
 
     const idle = events.find((event) => event.type === "session.status_idle")!;
     expect(idle.stop_reason).toEqual({ type: "end_turn" });
+    const thinking = events.find((event) => event.type === "agent.thinking")!;
+    expect(thinking.content).toEqual([{ type: "text", text: "Let me think." }]);
+    const message = events.find((event) => event.type === "agent.message")!;
+    expect(message.content).toEqual([{ type: "text", text: "Hello!" }]);
     const usage = events.find((event) => event.type === "session.usage")!;
-    expect(usage).toMatchObject({ input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0 });
+    expect(usage).toMatchObject({ input_tokens: 12, output_tokens: 34, cache_read_input_tokens: 0 });
     // 输入消费后 processed_at 回填(runtime.md §2.1 的唯一可变字段)
     expect(events.find((event) => event.type === "user.message")!.processed_at).not.toBeNull();
 
-    // 会话回到 idle(D1 投影回写)
+    // 会话回到 idle 且 usage 三列投影回写 D1(runtime.md §8)
     const after = await jsonBody<SessionJson>(await getSession(session.id));
     expect(after.status).toBe("idle");
+    expect(after.usage).toEqual({ input_tokens: 12, output_tokens: 34, cache_read_input_tokens: 0 });
   });
 
-  it("一次请求多条消息按序落库且都被消费", async () => {
+  it("一次请求多条消息按序落库且都被消费(同上下文一次模型调用)", async () => {
     const session = await createDefaultSession();
     const res = await sendEvents(session.id, [
       { type: "user.message", content: [{ type: "text", text: "first" }] },
@@ -131,13 +153,17 @@ describe("POST /v1/sessions/{id}/events — 发送事件与 null-turn 生命周�
     expect(events.map((event) => event.type)).toEqual([
       "user.message",
       "user.message",
-      "session.status_running",
-      "session.usage",
-      "session.status_idle",
+      ...FULL_TURN_TYPES,
     ]);
     expect(events.every((event) => event.type !== "user.message" || event.processed_at !== null)).toBe(
       true,
     );
+    // 两条消息都在同一次模型调用的上下文里
+    const requests = await requestsFor("second");
+    expect(requests[0]!.body.messages).toEqual([
+      { role: "user", content: "first" },
+      { role: "user", content: "second" },
+    ]);
   });
 
   it("user.interrupt 单独发送不触发 turn", async () => {
@@ -186,6 +212,117 @@ describe("POST /v1/sessions/{id}/events — 发送事件与 null-turn 生命周�
   });
 });
 
+describe("M1 模型循环 — 上下文装配与凭据上行", () => {
+  it("system 提示词与 model 随 agent_config 快照上行;凭据经 env 注入", async () => {
+    const agent = await createDefaultAgent({ name: "sys-agent", model: "glm-5.3", system: "Be terse." });
+    const session = await createDefaultSession({ agent: agent.id });
+    await sendEvents(session.id, [TEXT_MESSAGE]);
+    await pollForEvent(session.id, (list) => list.some((event) => event.type === "session.status_idle"));
+
+    const requests = await requestsFor("hello");
+    expect(requests).toHaveLength(1);
+    expect(requests[0]!.authorization).toBe("Bearer test-model-key");
+    expect(requests[0]!.body.model).toBe("glm-5.3");
+    expect(requests[0]!.body.stream).toBe(true);
+    expect(requests[0]!.body.messages).toEqual([
+      { role: "system", content: "Be terse." },
+      { role: "user", content: "hello" },
+    ]);
+  });
+
+  it("多轮:第二轮请求携带完整历史(assistant 回放,thinking 不回放)", async () => {
+    const session = await createDefaultSession();
+    await sendEvents(session.id, [{ type: "user.message", content: [{ type: "text", text: "first turn" }] }]);
+    await pollForEvent(session.id, (list) => list.some((event) => event.type === "session.status_idle"));
+    await sendEvents(session.id, [{ type: "user.message", content: [{ type: "text", text: "second turn" }] }]);
+    await pollForEvent(
+      session.id,
+      (list) => list.filter((event) => event.type === "session.status_idle").length >= 2,
+    );
+
+    const requests = await requestsFor("turn");
+    expect(requests).toHaveLength(2);
+    expect(requests[0]!.body.messages).toEqual([{ role: "user", content: "first turn" }]);
+    expect(requests[1]!.body.messages).toEqual([
+      { role: "user", content: "first turn" },
+      { role: "assistant", content: "Hello!" },
+      { role: "user", content: "second turn" },
+    ]);
+  });
+});
+
+describe("M1 模型循环 — 打断与恢复", () => {
+  it("流中途 user.interrupt:掐断模型请求,不落半截终事件(§4.4)", async () => {
+    const session = await createDefaultSession();
+    await enqueueModelScript({
+      match: "interrupt-me",
+      chunks: [{ content: "partial" }, { content: "-tail", delayMs: 700 }],
+      usage: { prompt_tokens: 1, completion_tokens: 1 },
+    });
+    const res = await sendEvents(session.id, [
+      { type: "user.message", content: [{ type: "text", text: "please interrupt-me now" }] },
+    ]);
+    expect(res.status).toBe(200);
+    await waitForModelRequests(1);
+    await sendEvents(session.id, [{ type: "user.interrupt" }]);
+
+    const events = await pollForEvent(
+      session.id,
+      (list) => list.some((event) => event.type === "session.status_idle"),
+    );
+    const types = events.map((event) => event.type);
+    expect(types).toEqual(["user.message", "session.status_running", "user.interrupt", "session.status_idle"]);
+    // 不落半截产出:无 thinking / message / usage
+    expect(types).not.toContain("agent.message");
+    expect(types).not.toContain("agent.thinking");
+    expect(types).not.toContain("session.usage");
+    expect(events.find((event) => event.type === "session.status_idle")!.stop_reason).toEqual({
+      type: "interrupted",
+    });
+    // 会话回到 idle,可接受新消息(打断后新输入驱动新 turn)
+    const after = await jsonBody<SessionJson>(await getSession(session.id));
+    expect(after.status).toBe("idle");
+  });
+
+  it("强制逐出后恢复:外发 system.message,同上下文重发,终事件无重复(§6 策略 1)", async () => {
+    const session = await createDefaultSession();
+    await enqueueModelScript({ match: "recover-me", hang: true, chunks: [] });
+    const res = await sendEvents(session.id, [
+      { type: "user.message", content: [{ type: "text", text: "please recover-me" }] },
+    ]);
+    expect(res.status).toBe(200);
+    await waitForModelRequests(1); // 首次请求已到达并挂起(turn 行在、内存活跃)
+
+    const stub = env.SESSION_DO.get(env.SESSION_DO.idFromName(session.id));
+    const result = await stub.simulateEvictionForTest();
+    expect(result.ok).toBe(true);
+
+    const events = await pollForEvent(
+      session.id,
+      (list) => list.some((event) => event.type === "session.status_idle"),
+    );
+    expect(events.map((event) => event.type)).toEqual([
+      "user.message",
+      "session.status_running",
+      "system.message",
+      "agent.thinking",
+      "agent.message",
+      "session.usage",
+      "session.status_idle",
+    ]);
+    expect(events.filter((event) => event.type === "agent.message")).toHaveLength(1);
+    expect(events.find((event) => event.type === "session.status_idle")!.stop_reason).toEqual({
+      type: "end_turn",
+    });
+
+    // 策略 1 重发:同一份上下文再次上行(终事件 id 沿用 snapshot,append 去重兜底)
+    const requests = await requestsFor("recover-me");
+    expect(requests).toHaveLength(2);
+    expect(requests[1]!.body.messages).toEqual(requests[0]!.body.messages);
+    expect(requests[1]!.body.model).toBe("glm-5.3");
+  });
+});
+
 describe("GET /v1/sessions/{id}/events — 事件历史检索", () => {
   it("types 过滤(重复参数与逗号分隔)、order=desc、游标分页", async () => {
     const session = await createDefaultSession();
@@ -206,13 +343,13 @@ describe("GET /v1/sessions/{id}/events — 事件历史检索", () => {
     const desc = await jsonBody<PageJson<EventJson>>(await listEvents(session.id, "?order=desc"));
     expect(desc.data[0]!.type).toBe("session.status_idle");
 
-    const firstPage = await jsonBody<PageJson<EventJson>>(await listEvents(session.id, "?limit=2"));
-    expect(firstPage.data).toHaveLength(2);
+    const firstPage = await jsonBody<PageJson<EventJson>>(await listEvents(session.id, "?limit=3"));
+    expect(firstPage.data).toHaveLength(3);
     expect(firstPage.next_page).not.toBeNull();
     const secondPage = await jsonBody<PageJson<EventJson>>(
-      await listEvents(session.id, `?limit=2&page=${encodeURIComponent(firstPage.next_page!)}`),
+      await listEvents(session.id, `?limit=3&page=${encodeURIComponent(firstPage.next_page!)}`),
     );
-    expect(secondPage.data).toHaveLength(2);
+    expect(secondPage.data).toHaveLength(3);
     expect([...firstPage.data, ...secondPage.data].map((event) => event.type)).toEqual(
       await eventTypes(session.id),
     );
@@ -242,7 +379,7 @@ describe("GET /v1/sessions/{id}/events — 事件历史检索", () => {
 });
 
 describe("GET /v1/sessions/{id}/events/stream — SSE 订阅", () => {
-  it("只推连接后的新事件:先收 ping,发送后按序收到 user.message → status_running → usage → status_idle", async () => {
+  it("只推连接后的新事件:先收 ping,发送后按序收到完整 turn 事件(未订阅 delta 只见终事件)", async () => {
     const session = await createDefaultSession();
     const stream = await openEventStream(session.id);
     expect(stream.status).toBe(200);
@@ -253,18 +390,48 @@ describe("GET /v1/sessions/{id}/events/stream — SSE 订阅", () => {
     expect(await readFrame(s)).toBe(": ping");
 
     await sendEvents(session.id, [TEXT_MESSAGE]);
-    const expected = [
-      "user.message",
-      "session.status_running",
-      "session.usage",
-      "session.status_idle",
-    ];
+    const expected = ["user.message", ...FULL_TURN_TYPES];
     for (const type of expected) {
       const frame = await readFrame(s);
       expect(frame).toMatch(/^data: \{/);
       expect(parseDataFrames([frame!])[0]!.type).toBe(type);
     }
     await closeStreamReader(s);
+  });
+
+  it("event_deltas[] 订阅:delta 帧先于终事件,event_id 与终事件一致(§7)", async () => {
+    const session = await createDefaultSession();
+    const stream = await openEventStream(
+      session.id,
+      "?event_deltas[]=agent.message&event_deltas[]=agent.thinking",
+    );
+    expect(stream.status).toBe(200);
+    const s = openStreamReader(stream);
+    expect(await readFrame(s)).toBe(": ping");
+
+    await sendEvents(session.id, [TEXT_MESSAGE]);
+    const frames: string[] = [];
+    for (;;) {
+      const frame = await readFrame(s);
+      if (frame === null) throw new Error("stream closed before status_idle");
+      frames.push(frame);
+      if (parseDataFrames([frame])[0]?.type === "session.status_idle") break;
+    }
+    await closeStreamReader(s);
+
+    const events = parseDataFrames(frames);
+    const thinkingDelta = events.find((event) => event.type === "agent.thinking.delta");
+    const messageDelta = events.find((event) => event.type === "agent.message.delta");
+    expect(thinkingDelta).toBeDefined();
+    expect(messageDelta).toBeDefined();
+    const thinking = events.find((event) => event.type === "agent.thinking")!;
+    const message = events.find((event) => event.type === "agent.message")!;
+    expect(thinkingDelta!.event_id).toBe(thinking.id);
+    expect(messageDelta!.event_id).toBe(message.id);
+    expect(typeof messageDelta!.seq).toBe("number");
+    // delta 在前、终事件在后
+    expect(events.indexOf(thinkingDelta!)).toBeLessThan(events.indexOf(thinking));
+    expect(events.indexOf(messageDelta!)).toBeLessThan(events.indexOf(message));
   });
 
   it("连接前已存在的事件不被回放(重连协议 = 列表补历史 + 按 id 去重)", async () => {

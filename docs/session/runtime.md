@@ -223,7 +223,7 @@ data: {"type":"agent.message","id":"sevt_…","content":[{"type":"text","text":"
 ## 11. 开放问题
 
 1. **沙箱生命周期**：会话级常驻（快、闲置计费）vs 按需冷启（省、首工具秒级延迟）——M2 定，倾向按需冷启 + 空闲回收，`status_rescheduled` 届时一并引入。
-2. **GLM 续写支持**：assistant prefill / 取回已存响应是否可用，决定恢复策略 2 是否可行（M1 实测）。
+2. **GLM 续写支持**：assistant prefill / 取回已存响应是否可用，决定恢复策略 2 是否可行（M1 状态：未实测——需真实凭据；恢复已按策略 1 重发落地，策略 2 待实测后定）。
 3. **`x-events-encrypted` / `x-checkpoint`**：密钥管理单独设计，二期不做。
 
 ## 附：事件侧与 GLM 的差异

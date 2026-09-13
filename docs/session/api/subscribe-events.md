@@ -18,7 +18,7 @@ data: {"id":"sevt_…","type":"session.status_running","created_at":"…","proce
 ```
 
 - `data:` 帧的 JSON 与持久化事件同构（信封 + 按 type 展开的载荷）。
-- **delta 帧**（`.delta` 后缀类型，仅流上存在、不落库、不出现在列表端点）：`{"type":"agent.message.delta","event_id":"sevt_…","seq":3,"delta":{"text":"…"}}`——增量在前、终事件在后；断线丢增量无害，终事件补全。M1 模型流式调用起才产生。
+- **delta 帧**（`.delta` 后缀类型，仅流上存在、不落库、不出现在列表端点）：`{"type":"agent.message.delta","event_id":"sevt_…","seq":3,"delta":{"text":"…"}}`——增量在前、终事件在后；断线丢增量无害，终事件补全。M1 起随模型流式调用产生（`agent.thinking.delta` / `agent.message.delta`）。
 
 | 参数 | 说明 |
 | --- | --- |

@@ -19,6 +19,13 @@
   // 运行 `wrangler r2 bucket create nano-files` 后即可本地/线上一致使用
   "r2_buckets": [{ "binding": "FILES", "bucket_name": "nano-files" }],
 
+  // Agent 循环的模型服务(docs/session/runtime.md §1)。GLM_API_KEY 走
+  // secret(不进仓库):`wrangler secret put GLM_API_KEY`;测试经 vitest
+  // 的 miniflare 绑定把 GLM_API_BASE 指向本地 mock 上游
+  "vars": {
+    "GLM_API_BASE": "https://open.bigmodel.cn/api/paas/v4"
+  },
+
   // 会话运行时(docs/session/runtime.md):每会话一个实例,SQLite 存储
   "durable_objects": {
     "bindings": [{ "name": "SESSION_DO", "class_name": "SessionDo" }]

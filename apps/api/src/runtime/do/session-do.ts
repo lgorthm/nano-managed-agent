@@ -1,14 +1,14 @@
 /**
  * SESSION_DO — 会话运行时的单写者 Durable Object(docs/session/runtime.md §1)。
  * 职责:状态机(idle/running)、事件日志(append-only + id 去重)、SSE fan-out、
- * turn 执行宿主与 alarm 复用器。M0 的执行体是 null-turn(turn-executor.ts);
- * M1 在执行器内插入模型调用,本类不动。
+ * turn 执行宿主与 alarm 复用器。执行器(turn-executor.ts)经 TurnHost 消费本类;
+ * M1 起执行器含真实模型循环,崩溃恢复(§6)在构造唤醒与 alarm 巡检两处触发。
  *
  * 与控制面的边界(§8):存在性/归档门禁在 service 侧查 D1 先行裁决;
  * D1 的 sessions.status 与 usage 三列是本类状态机的投影,迁移即时回写。
  */
 import { DurableObject } from "cloudflare:workers";
-import { getDb, updateSessionRuntimeState, type SessionUsageDelta } from "@nano/db";
+import { findSession, getDb, updateSessionRuntimeState, type SessionUsageDelta } from "@nano/db";
 import type {
   DeltaEventType,
   EventInput,
@@ -20,7 +20,14 @@ import type {
 } from "@nano/shared";
 import type { Env } from "../../env";
 import { newEventId, newTurnId } from "../ids";
-import { runTurn } from "./turn-executor";
+import {
+  initialTurnSnapshot,
+  parseTurnSnapshot,
+  runTurn,
+  type TurnModelConfig,
+  type TurnResume,
+  type TurnSnapshot,
+} from "./turn-executor";
 
 /** SSE 订阅上限(§7):超出即 429,客户端补历史 + 重连自愈 */
 const MAX_SUBSCRIBERS = 16;
@@ -67,6 +74,8 @@ export class SessionDo extends DurableObject<Env> {
   private turnActive = false;
   private subscribers: Subscriber[] = [];
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+  /** 事件表当前最大 seq 的内存缓存(delta 帧的排序参考);null = 未初始化 */
+  private lastSeq: number | null = null;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -76,6 +85,10 @@ export class SessionDo extends DurableObject<Env> {
         this.status = row.value;
       }
     }
+    // 构造唤醒 = 强制逐出后的恢复入口之一(§6,等价 onStart);无孤儿 turn 行时是廉价空查
+    void this.recoverOrphanTurnIfAny().catch((err) => {
+      console.error("session turn recovery on wake failed:", err);
+    });
   }
 
   /** 建表幂等(§2.4 / §4.1 的表结构);wipe 后同一实例继续存活,需重建空表 */
@@ -145,7 +158,7 @@ export class SessionDo extends DurableObject<Env> {
       processed_at: processedAt,
       ...fields,
     };
-    this.exec(
+    const written = this.exec(
       "INSERT OR IGNORE INTO events (id, type, payload, created_at, processed_at) VALUES (?, ?, ?, ?, ?)",
       id,
       type,
@@ -153,6 +166,7 @@ export class SessionDo extends DurableObject<Env> {
       createdAt.getTime(),
       processedAt !== null ? Date.parse(processedAt) : null,
     );
+    if (written > 0) this.lastSeq = this.estimateNextSeq(); // 真插入才推进(去重命中不动)
     this.broadcastFrame(`data: ${JSON.stringify(event)}\n\n`);
     return event;
   }
@@ -172,7 +186,7 @@ export class SessionDo extends DurableObject<Env> {
     }
   }
 
-  private hasPendingUserMessages(): boolean {
+  hasPendingUserMessages(): boolean {
     for (const _row of this.query(
       "SELECT 1 FROM events WHERE type = 'user.message' AND processed_at IS NULL LIMIT 1",
     )) {
@@ -337,6 +351,7 @@ export class SessionDo extends DurableObject<Env> {
   async wipe(): Promise<void> {
     this.deleted = true;
     this.turnActive = false;
+    this.lastSeq = null;
     if (this.subscribers.length > 0) {
       this.broadcastFrame(
         `data: ${JSON.stringify({
@@ -357,7 +372,7 @@ export class SessionDo extends DurableObject<Env> {
 
   // ---------- turn 生命周期(§4) ----------
 
-  /** idle→running:落 status_running、插 turn 行、保活、fire-and-forget 执行 */
+  /** idle→running:落 status_running、插 turn 行(带完整初始检查点)、保活、fire-and-forget 执行 */
   private startTurn(): void {
     if (this.status !== "idle" || this.turnActive) return;
     this.status = "running";
@@ -366,29 +381,34 @@ export class SessionDo extends DurableObject<Env> {
     void this.writeback({ status: "running" });
 
     const turnId = newTurnId();
+    const snapshot = initialTurnSnapshot(turnId);
     this.exec(
       "INSERT INTO session_turns (turn_id, iteration, snapshot, created_at) VALUES (?, ?, ?, ?)",
       turnId,
       0,
-      JSON.stringify({ iteration: 0 }),
+      JSON.stringify(snapshot),
       Date.now(),
     );
     this.turnActive = true;
     this.keepAlive();
     // fire-and-forget:RPC 响应不等 turn 完成;keepAlive 兜住执行期的空闲逐出(§5)
-    void runTurn(this, turnId).catch((err) => this.turnFailed(turnId, err));
+    void runTurn(this, turnId, { iteration: 0, snapshot }).catch((err) => this.turnFailed(turnId, err));
   }
 
   private turnFailed(turnId: string, err: unknown): void {
     console.error("session turn failed:", err);
     this.turnActive = false;
     if (this.deleted) return;
-    this.appendEvent("session.error", { message: "The agent turn failed unexpectedly." });
-    void this.finishTurn(turnId, { type: "interrupted" }, {
-      input_tokens: 0,
-      output_tokens: 0,
-      cache_read_input_tokens: 0,
-    });
+    // 行已不存在 = turn 已终局(恢复路径与在途执行的竞态):只复位内存,不补发事件
+    for (const _row of this.query("SELECT 1 FROM session_turns WHERE turn_id = ? LIMIT 1", turnId)) {
+      this.appendEvent("session.error", { message: "The agent turn failed unexpectedly." });
+      void this.finishTurn(turnId, { type: "interrupted" }, {
+        input_tokens: 0,
+        output_tokens: 0,
+        cache_read_input_tokens: 0,
+      });
+      return;
+    }
   }
 
   // ---------- TurnHost 实现(turn-executor.ts 消费) ----------
@@ -403,8 +423,9 @@ export class SessionDo extends DurableObject<Env> {
       | "session.error"
       | "system.message",
     fields: Record<string, unknown>,
+    options: { id?: string } = {},
   ): void {
-    this.appendEvent(type, fields, { processedAt: new Date().toISOString() });
+    this.appendEvent(type, fields, { id: options.id, processedAt: new Date().toISOString() });
   }
 
   consumePendingUserMessages(): number {
@@ -417,6 +438,56 @@ export class SessionDo extends DurableObject<Env> {
     const processedAt = new Date().toISOString();
     for (const id of ids) this.markProcessed(id, processedAt);
     return ids.length;
+  }
+
+  /** 细粒度检查点整体替换(§3):同步 SQL,无 await 间隙 */
+  saveTurnSnapshot(turnId: string, iteration: number, snapshot: TurnSnapshot): void {
+    this.exec(
+      "UPDATE session_turns SET iteration = ?, snapshot = ? WHERE turn_id = ?",
+      iteration,
+      JSON.stringify(snapshot),
+      turnId,
+    );
+  }
+
+  loadEventsForContext(): PersistedEventJson[] {
+    const events: PersistedEventJson[] = [];
+    for (const row of this.query("SELECT payload FROM events ORDER BY seq ASC")) {
+      if (typeof row.payload !== "string") continue;
+      try {
+        events.push(JSON.parse(row.payload) as PersistedEventJson);
+      } catch {
+        // 日志行损坏不应炸掉整个 turn:跳过该行(单写者下正常不可达)
+      }
+    }
+    return events;
+  }
+
+  /** 每 turn 一次:agent_config 快照(创建时固化,创建即冻结语义)+ env 凭据 */
+  async loadTurnConfig(): Promise<TurnModelConfig> {
+    const sessionId = this.ctx.id.name;
+    const row = sessionId !== undefined ? await findSession(getDb(this.env), sessionId) : null;
+    const agentConfig = row?.agentConfig ?? { system: null as string | null, model: { id: "glm-5.3" } };
+    return {
+      system: agentConfig.system ?? null,
+      model: {
+        baseUrl: this.env.GLM_API_BASE,
+        apiKey: this.env.GLM_API_KEY,
+        model: agentConfig.model.id,
+      },
+    };
+  }
+
+  /** 终事件 seq 的估计值(delta 帧排序参考);真实 seq 以落库行为准 */
+  estimateNextSeq(): number {
+    if (this.lastSeq === null) {
+      this.lastSeq = 0;
+      for (const row of this.query("SELECT MAX(seq) AS max_seq FROM events")) {
+        const max = Number(row.max_seq ?? 0);
+        if (Number.isFinite(max)) this.lastSeq = max;
+      }
+    }
+    return this.lastSeq + 1;
   }
 
   isInterrupted(): boolean {
@@ -461,9 +532,15 @@ export class SessionDo extends DurableObject<Env> {
 
   // ---------- alarm 复用器(§5):心跳续期 → 孤儿 turn 巡检 ----------
 
+  /** 保活间隔可注入(测试 2s 才能等到巡检),默认 30s */
+  private keepAliveIntervalMs(): number {
+    const parsed = Number.parseInt(this.env.TURN_KEEPALIVE_INTERVAL_MS ?? "", 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : KEEPALIVE_INTERVAL_MS;
+  }
+
   /** 刷新保活心跳;turn 执行期间按间隔续期 */
   private keepAlive(): void {
-    void this.ctx.storage.setAlarm(Date.now() + KEEPALIVE_INTERVAL_MS).catch(() => undefined);
+    void this.ctx.storage.setAlarm(Date.now() + this.keepAliveIntervalMs()).catch(() => undefined);
   }
 
   override async alarm(): Promise<void> {
@@ -471,34 +548,57 @@ export class SessionDo extends DurableObject<Env> {
       this.keepAlive();
       return;
     }
-    // 孤儿巡检:turn 行存在但内存无活跃 turn = 强制逐出后的恢复入口(§6)
-    for (const row of this.query("SELECT turn_id FROM session_turns LIMIT 1")) {
-      const turnId = row.turn_id;
-      if (typeof turnId === "string" && !this.deleted) {
-        this.recoverOrphanTurn(turnId);
-      }
-      break;
-    }
+    await this.recoverOrphanTurnIfAny();
   }
 
   /**
-   * M0 恢复策略:null-turn 无模型调用、无可重放——外发恢复通知并以 interrupted 收尾。
-   * M1 起按 snapshot 走 §6 的完整策略(重发 / 部分落盘 + 合成继续)。
+   * 孤儿 turn 恢复(§6 策略 1:重发)——turn 行存在但内存无活跃 turn,即强制
+   * 逐出后的现场。恢复动作:外发 system.message → 同 turnId/iteration 续跑,
+   * 终事件 id 沿用 snapshot 预生成值(append 去重兜底);无孤儿行时为空查。
    */
-  private recoverOrphanTurn(turnId: string): void {
+  private async recoverOrphanTurnIfAny(): Promise<void> {
+    if (this.turnActive || this.deleted) return;
+    let turnId: string | null = null;
+    let iteration = 0;
+    let snapshot: TurnSnapshot | null = null;
+    for (const row of this.query("SELECT turn_id, iteration, snapshot FROM session_turns LIMIT 1")) {
+      if (typeof row.turn_id === "string") turnId = row.turn_id;
+      iteration = Number(row.iteration ?? 0);
+      snapshot = parseTurnSnapshot(row.snapshot);
+      break;
+    }
+    if (turnId === null) return;
+
+    this.turnActive = true;
+    this.keepAlive();
+    if (this.status !== "running") {
+      // 逐出时状态机事实应为 running;防御性归一,保证续跑期间的门禁语义
+      this.status = "running";
+      this.setState("status", "running");
+      this.appendEvent("session.status_running", {});
+      void this.writeback({ status: "running" });
+    }
     this.appendEvent(
       "system.message",
-      { content: "The session recovered after an interruption; the in-flight turn was ended." },
+      { content: "The session recovered after an interruption; the in-flight turn was restarted." },
       { processedAt: new Date().toISOString() },
     );
-    this.exec("DELETE FROM session_turns WHERE turn_id = ?", turnId);
-    this.turnActive = false;
-    if (this.status === "running") {
-      this.status = "idle";
-      this.setState("status", "idle");
-      this.appendEvent("session.status_idle", { stop_reason: { type: "interrupted" } });
+    const resume: TurnResume | undefined = snapshot !== null ? { iteration, snapshot } : undefined;
+    void runTurn(this, turnId, resume).catch((err) => this.turnFailed(turnId, err));
+  }
+
+  /**
+   * 测试专用:模拟强制逐出造成的内存丢失(turnActive 归零)并立即走真实恢复
+   * 路径——与构造唤醒 / alarm 巡检触发的是同一个 recoverOrphanTurnIfAny。
+   * 恢复路径是正常流程(§6),必须可测试;vitest 里无法真正逐出 DO 实例。
+   */
+  async simulateEvictionForTest(): Promise<DoResult<null>> {
+    if (!this.turnActive) {
+      return doFailure(409, "No active turn in memory to evict.");
     }
-    void this.writeback({ status: "idle" });
+    this.turnActive = false;
+    await this.recoverOrphanTurnIfAny();
+    return { ok: true, value: null };
   }
 
   // ---------- D1 投影回写(§8) ----------

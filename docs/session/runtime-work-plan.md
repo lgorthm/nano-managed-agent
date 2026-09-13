@@ -24,7 +24,7 @@
 | 里程碑 | 交付能力 | 对应设计 | 规模 | 状态 |
 | --- | --- | --- | --- | --- |
 | M0 DO 骨架 | `SESSION_DO` + 事件三端点 + 状态机门禁（null-turn） | runtime.md §2/§5/§7/§8，api/ 三份事件文档 | 大 | 完成 |
-| M1 对话闭环 | 真实模型流 → delta → 终事件 → usage；两级检查点与崩溃恢复 | runtime.md §3/§4/§6 | 大 | 待开工 |
+| M1 对话闭环 | 真实模型流 → delta → 终事件 → usage；两级检查点与崩溃恢复 | runtime.md §3/§4/§6 | 大 | 代码与测试完成（真实凭据冒烟与 prefill 实测待做） |
 | M2 沙箱工具 | 七个内置工具执行 + 挂载 / skills 供给 + tool_use / tool_result | runtime.md §1/§4 | 大 | 待开工 |
 | M3 确认与打断 | always_ask 挂起 / 恢复、user.interrupt、running 追加消息 | runtime.md §4.3/§4.4 | 中 | 待开工 |
 | M4 收尾 | session.error 路径、stats 投影定稿、console 接流、SIGKILL E2E | runtime.md §8/§9 | 中 | 待开工 |
@@ -84,37 +84,37 @@ M0 → M1 → M2 → M3 → M4
 
 ## M1 对话闭环 — 真实模型调用（无工具）
 
-null-turn 整体替换为真实循环；交付「发一条 user.message，收到 thinking / message 的 delta 与终事件、真实 usage」。
+null-turn 整体替换为真实循环；交付「发一条 user.message，收到 thinking / message 的 delta 与终事件、真实 usage」。代码与测试已完成（38 个测试文件、314 例全绿）；两项依赖真实凭据的验收留待（见下）。另外两点实现时的偏差：`user.interrupt` 的流掐断（逐 chunk 检查 + AbortController）从 M3 提前到 M1 一并实现——执行器重写时顺势就位，M3 只剩在途沙箱工具「执行完再停」的语义；stats 计时口径归 M4 定稿（D1 无 stats 列，序列化仍固定 0），M1 只回写 usage 三列。
 
 **协议层（纯函数先行）：**
 
-- [ ] shared 新建上下文组装纯函数（事件数组 + 最终配置 → GLM chat completions `messages`）：system 拼装（agent_config 快照的 system prompt）；历史事件映射（user.message → user 轮，agent.thinking / agent.message → assistant 轮；M2 的 tool_use / tool_result 映射与三期 compaction 先留参数位）。
-- [ ] 单测：system 拼装、user / assistant 交替、多轮、未消费输入包含、载荷边界穷举。
+- [x] shared 新建上下文组装纯函数 `session/context.ts`（事件数组 + 最终配置 → GLM chat completions `messages`）：system 拼装（agent_config 快照的 system prompt）；历史事件映射（user.message → user 轮，agent.message → assistant 轮，agent.thinking 不回放——推理模型的输入侧回传会被拒绝；M2 的 tool_use / tool_result 映射与三期 compaction 留扩展位）。content 块映射：text 折叠为字符串、image 转 data URL parts、document(text) 内联、document(file_id) 占位（M2 物化）。
+- [x] 单测 `context.test.ts`：system 拼装、user / assistant 交替、thinking 跳过、非模型事件跳过、未消费输入包含、载荷边界、image / document 映射。
 
 **模型客户端：**
 
-- [ ] `runtime/` 新建 GLM chat completions 流式客户端：fetch + SSE 解析，`AbortController` 可掐断；凭据与上游地址经 env 注入（新增 secret，命名对齐 console 侧 GLM 代理约定；`.dev.vars.example` 同步）——集成测试指向 mock 上游，真实 key 只用于冒烟。
-- [ ] 带退避的 fetch 包装（§0 决策记录的「十行包装」）：仅连接类错误重试，流已建立不重试。
+- [x] `runtime/model-client.ts`：GLM chat completions 流式客户端——fetch + SSE 解析（`delta.reasoning_content` → thinking、`delta.content` → message、`include_usage` 末块计量）；`AbortController` 掐断（abort 时显式 cancel 流，吸收 workerd 运行时内部的取消拒绝）；凭据与上游地址经 env 注入（`GLM_API_KEY` secret + `GLM_API_BASE` var，命名对齐 console 侧约定；`.dev.vars.example` 同步）——集成测试指向 mock 上游，真实 key 只用于冒烟。
+- [x] 带退避的 fetch 包装（§0 的「十行包装」）：仅连接类错误重试（200ms / 500ms 两退），流已建立不重试；非 2xx 抛 `ModelHttpError`（M4 细化分诊）。
 
-**执行器真实化（`turn-executor.ts` 整体替换，`TurnHost` 仅增能力）：**
+**执行器真实化（`turn-executor.ts` 整体替换，`TurnHost` 增能力）：**
 
-- [ ] 循环迭代：组装 messages（含未消费输入，消费即回填）→ 预生成终事件 id（进 snapshot）→ 流式调用（确定性 `call_id = turn_id:iteration`）。
-- [ ] delta 缓冲：时间窗 50–100ms 或换行批量 → `emitDelta`；未订阅 delta 的连接只见终事件。
-- [ ] snapshot 节奏落盘（§3）：每 ~64 chunk 或 ~500ms，`ctx.storage.sql` 同步执行、无 await 间隙、整体替换（iteration / partial_text / 预生成 id / call_id）。
-- [ ] 流终结 → `appendProducedEvent`（agent.thinking / agent.message，用预生成 id）→ 无 tool_use（M1 不向上游传 tools）→ `session.usage`（上游 usage）→ `finishTurn(end_turn)`；usage 三列与 stats 计时回写 D1。
-- [ ] keepAlive 间隔可注入（默认 30s、测试 2s，§5）——恢复类用例要能等到 alarm 巡检。
+- [x] 循环迭代：装配上下文（含未消费输入，消费即回填）→ 预生成终事件 id 进 snapshot → 流式调用（确定性 `call_id = turn_id:iteration`）；收尾前积压检查，有则本 turn 内继续消费。
+- [x] delta 缓冲：换行即冲、否则 80ms 窗口 → `emitDelta`；流终结先冲净残余再落终事件（§7 的 delta 在前）；未订阅 delta 的连接只见终事件。
+- [x] snapshot 节奏落盘（§3）：每 ~64 chunk 或 ~500ms 整体替换（iteration / partial_text / 预生成 id / call_id / 已落库终事件标记）；初始检查点随 turn 行落库（`startTurn` 传 resume），任何时刻崩溃恢复都有完整身份。
+- [x] 流终结 → `appendProducedEvent`（agent.thinking / agent.message，用预生成 id）→ 无 tool_use（M1 不向上游传 tools）→ `session.usage`（上游计量）→ `finishTurn(end_turn)`；usage 三列回写 D1 投影（stats 计时口径 M4 定稿）。
+- [x] keepAlive 间隔可注入（`TURN_KEEPALIVE_INTERVAL_MS`，默认 30s、测试 2s，§5）——恢复类用例等得到 alarm 巡检。
 
 **崩溃恢复（§6）：**
 
-- [ ] `onStart` 与 alarm 巡检共用恢复入口，替换 M0 的简化分支：策略 1 重发（从日志重组上下文、同 call_id、终事件 id 沿用 snapshot，append 去重兜底）。
-- [ ] 实测 GLM assistant prefill / 取回已存响应（开放问题 2）：结论回写 runtime.md §11，决定策略 2（部分落盘 + 合成继续）是否实现。
-- [ ] 恢复动作外发 `system.message`。
+- [x] 构造唤醒（constructor kick）与 alarm 巡检共用恢复入口 `recoverOrphanTurnIfAny`，替换 M0 的简化分支：策略 1 重发（从日志重组上下文、同 turnId / iteration / call_id、终事件 id 沿用 snapshot，append 去重兜底；snapshot 标记的已落库终事件不重发）；恢复前防御性归一 running 状态。测试经 `simulateEvictionForTest` RPC 走同一条恢复路径（vitest 无法真正逐出 DO 实例）。
+- [ ] 实测 GLM assistant prefill / 取回已存响应（开放问题 2）：需真实凭据；结论回写 runtime.md §11，决定策略 2（部分落盘 + 合成继续）是否实现。**未做**——当前策略 1 重发已可用。
+- [x] 恢复动作外发 `system.message`；在途执行与恢复的竞态由 `turnFailed` 的 turn 行存在性守卫兜底（行已删则只复位内存，不补发 session.error）。
 
 **测试与验收：**
 
-- [ ] DO 集成（mock 上游返回受控 SSE）：事件序 status_running → thinking / message → usage → idle{end_turn}；delta 帧先于终事件且 `event_id` 一致；usage 回写 D1；多轮上下文组装。
-- [ ] 恢复集成：构造孤儿 turn 行 + snapshot → 触发巡检 → 断言终事件无重复 + system.message 已外发。
-- [ ] curl 冒烟（真实凭据）：一轮真实对话，肉眼比对事件流与 SSE。
+- [x] DO 集成（mock 上游返回受控 SSE，`test/mock-model/`：node 侧服务 + workerd 侧 admin 控制，脚本按消息文本 match 匹配防并行抢占）：事件序 status_running → thinking / message → usage → idle{end_turn}；usage 真实值回写 D1；delta 帧先于终事件且 `event_id` 一致、未订阅只见终事件；多轮上下文（assistant 回放、thinking 不回放）；system / model / 凭据上行；流中途 interrupt 掐断（无半截终事件、interrupted 收尾）；恢复（system.message + 同上下文重发 + 终事件无重复）。既有 15 例的事件序列预期同步更新（session-events 19 例全绿，全仓 314 例）。
+- [x] 恢复集成：孤儿 turn（挂起流）→ `simulateEvictionForTest` → 巡检恢复 → 断言终事件无重复 + system.message 已外发 + 第二次请求与首次同上下文。
+- [ ] curl 冒烟（真实凭据）：一轮真实对话，肉眼比对事件流与 SSE。**未做**——`GLM_API_KEY` 需真实 secret（`.dev.vars` 配好后按 send-events / subscribe-events 文档示例执行）。
 
 ---
 
@@ -152,7 +152,7 @@ null-turn 整体替换为真实循环；交付「发一条 user.message，收到
 
 **user.interrupt 完整语义（§4.4）：**
 
-- [ ] 流读取循环逐 chunk 检查中断标志 → `AbortController` 掐断模型请求 → 不落半截终事件 → `status_idle{interrupted}` → 删行；已在途的沙箱工具执行完再停（杀死 bash 的副作用比重跑更糟），其 `tool_result` 照常落库。
+- [ ] 流掐断部分已随 M1 落地（逐 chunk 检查 + `AbortController` + 不落半截终事件）；M3 剩余：已在途的沙箱工具执行完再停（杀死 bash 的副作用比重跑更糟），其 `tool_result` 照常落库。
 
 **running 中追加消息（§4.4）：**
 

@@ -38,14 +38,16 @@ describe("GET /v1/sessions 列表与分页", () => {
 
   it("order=asc 正序;limit 截断与非法值", async () => {
     const agent = await createDefaultAgent();
-    const [a, b] = await Promise.all([
-      createDefaultSession({ agent: agent.id }),
-      createDefaultSession({ agent: agent.id }),
-    ]);
+    await createDefaultSession({ agent: agent.id });
+    await createDefaultSession({ agent: agent.id });
     const res = await listSessions(`?agent_id=${agent.id}&order=asc&limit=10`);
     const page = await jsonBody<PageJson<SessionJson>>(res);
-    const ids = page.data.map((row) => row.id);
-    expect(ids.indexOf(a.id)).toBeLessThan(ids.indexOf(b.id));
+    // 断言"列表本身按 (created_at, id) 升序",不断言两个夹具的创建先后——
+    // 同毫秒创建时 keyset 回退到 id 比较(随机序),按创建顺序断言会抖动
+    const sorted = [...page.data].sort(
+      (x, y) => x.created_at.localeCompare(y.created_at) || x.id.localeCompare(y.id),
+    );
+    expect(page.data).toEqual(sorted);
 
     expect((await listSessions("?limit=0")).status).toBe(400);
     expect((await listSessions("?order=sideways")).status).toBe(400);
