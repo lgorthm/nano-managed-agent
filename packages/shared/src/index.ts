@@ -11,6 +11,7 @@ export * from "./skill/schemas";
 export * from "./skill/tree";
 export * from "./skill/frontmatter";
 export * from "./file/schemas";
+export * from "./file/mime";
 export * from "./environment/schemas";
 export * from "./environment/normalize";
 export * from "./environment/merge";
