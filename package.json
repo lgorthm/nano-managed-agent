@@ -16,6 +16,7 @@
     "lint:deps": "bash scripts/check-deps.sh",
     "test": "pnpm lint:deps && pnpm -r --filter '@nano/*' test",
     "db:generate": "pnpm --filter @nano/db db:generate",
-    "db:migrate:local": "pnpm --filter @nano/api db:migrate:local"
+    "db:migrate:local": "pnpm --filter @nano/api db:migrate:local",
+    "test:e2e": "node scripts/e2e-session-lifecycle.mjs && node scripts/e2e-sigkill.mjs"
   }
 }

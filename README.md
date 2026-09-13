@@ -43,6 +43,7 @@ pnpm dev            # 同时启动 api(wrangler dev, :8787)与 console(vite, :51
 pnpm dev:api        # 仅启动 api
 pnpm dev:console    # 仅启动 console(首次需 cp apps/console/.dev.vars.example .dev.vars)
 pnpm test           # 运行测试(真实 Workers 运行时,基于 @cloudflare/vitest-plugin)
+pnpm test:e2e       # 脚本级 E2E(wrangler dev + mock 模型/沙箱):会话全生命周期 + SIGKILL 崩溃恢复
 pnpm typecheck      # 全仓类型检查
 pnpm types          # 修改 wrangler.jsonc 后重新生成各 app 的 worker-configuration.d.ts
 pnpm deploy         # 部署到 Cloudflare

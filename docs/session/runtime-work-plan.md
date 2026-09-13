@@ -27,7 +27,7 @@
 | M1 对话闭环 | 真实模型流 → delta → 终事件 → usage；两级检查点与崩溃恢复 | runtime.md §3/§4/§6 | 大 | 代码与测试完成（真实凭据冒烟与 prefill 实测待做） |
 | M2 沙箱工具 | 七个内置工具执行 + 挂载 / skills 供给 + tool_use / tool_result | runtime.md §1/§4/§4.5 | 大 | 完成（真实沙箱冒烟已过；真实 GLM 凭据端到端随 M1 遗留项） |
 | M3 确认与打断 | always_ask 挂起 / 恢复、user.interrupt、running 追加消息 | runtime.md §4.3/§4.4 | 中 | 完成 |
-| M4 收尾 | session.error 路径、stats 投影定稿、console 接流、SIGKILL E2E | runtime.md §8/§9 | 中 | 待开工 |
+| M4 收尾 | session.error 路径、stats 投影定稿、console 接流、SIGKILL E2E | runtime.md §8/§9 | 中 | 完成（Last-Event-ID 回放留作后续增强） |
 
 依赖关系：
 
@@ -170,12 +170,12 @@ null-turn 整体替换为真实循环；交付「发一条 user.message，收到
 
 ## M4 收尾
 
-- [ ] `session.error` 路径细化：上游 4xx / 5xx / 超时 / 断流分类进载荷；M0 的笼统 turnFailed 分支按错误类型分诊（连接类可重试走退避，不可重试直接 error 收尾回 idle）。
-- [ ] usage / stats 投影定稿：turn 终局 usage 三列累计、`stats`（active_seconds / duration_seconds）计时口径核对；获取 / 列表端点回读一致性验收。
-- [ ] console 会话详情页接流（`/nano` 代理的 SSE 透传已就绪）：list 补历史 + stream 订阅 + 按 id 去重的重连协议；interrupt 与工具审批的操作入口。
-- [ ] SIGKILL E2E（§9，脚本级、不进 vitest）：`wrangler dev` 指定 `persistTo` 目录 → 触发 turn → `kill -9` → 同目录重启 → 断言孤儿 turn 被巡检恢复、终事件无重复、`system.message` 已外发。
-- [ ] 可选增强：SSE `Last-Event-ID` 回放（§7 留作后续，DO 有 seq 可做）。
-- [ ] 全量验收：全量 `pnpm test` / `pnpm typecheck`；curl 走完整生命周期（创建带 initial_events → 对话 → 工具 → 审批 → interrupt → 归档 → 删除）；开放问题状态回写 runtime.md §11；`x-events-encrypted` 维持单独设计、二期不做。
+- [x] `session.error` 路径细化：fetch 包装对 429/5xx 退避重试（200ms/500ms 两次，错误体先取消再重试；4xx 不重试）；turnFailed 分诊——`ModelHttpError` 带状态码（`The model API request failed (HTTP …).`）、其余给出错误摘要；错误可恢复（会话回 idle，下一条消息照常驱动新 turn），集成用例覆盖（压三条同 match 的 500 脚本耗尽重试后走 error 路径）。
+- [x] usage / stats 投影定稿：sessions 表新增 `active_seconds` / `duration_seconds`（REAL,迁移 0005）；DO 记 turn 起始时刻，finishTurn 按 turn 实际时长累计 active、duration 取「现在 − 创建时刻」（julianday 毫秒精度,钳非负——`strftime('%s')` 秒截断会产生负值）；serialize 改回读行值；创建时恒 0、turn 后回读一致的集成用例覆盖（回写与事件广播的竞态以有界轮询吸收）。
+- [x] console 会话详情页接流（列表/详情/发送/SSE 骨架一期已在,本次补齐 M4 清单）：**自动重连**——断线后指数退避(1s 起、上限 15s),重连前先补拉历史再订阅,按事件 id 去重,收到事件即重置退避;**interrupt 按钮**（status=running 时可用,发 `user.interrupt` 后失效刷新）；**审批卡片**——最后一个 `status_idle{requires_action}` 且尚无 tool_result 的 tool_use 逐条展示（工具名 + 入参 JSON + 拒绝原因可选）,允许/拒绝即发 `user.tool_confirmation`。
+- [x] SIGKILL E2E（`scripts/e2e-sigkill.mjs`，`pnpm test:e2e`）：wrangler dev 指定 persistTo → 挂起的模型流上触发 turn → 对进程组 `kill -9` → 同 persistTo 重启 → 三断言全过（孤儿 turn 巡检恢复、终事件无重复 thinking/message/idle 各 ×1、`system.message` 已外发；策略 1 重发恰两次上行）。附带 `scripts/e2e-session-lifecycle.mjs`：全生命周期（initial_events 对话 → always_ask 挂起 → 审批 allow → mock 沙箱执行 → 续跑 → 流中途 interrupt 无半截产出 → 归档 → 删除）。两个脚本均不依赖 Docker 与真实凭据（模型/沙箱全 mock,`--var` 注入 + persistTo 隔离）。
+- [ ] 可选增强：SSE `Last-Event-ID` 回放（§7 留作后续，DO 有 seq 可做）——**未做**，现有重连协议（补历史 + id 去重）已自洽，留待真实客户端需要时再加。
+- [x] 全量验收：全量 `pnpm test`（40 文件 327 例）与 `pnpm typecheck` 绿；`pnpm test:e2e` 两个脚本通过（等价于 curl 全生命周期验收——不依赖真实凭据）；`x-events-encrypted` 维持单独设计、二期不做。真实 GLM 凭据的端到端对话与 prefill 实测仍为遗留（自 M1）。
 
 ---
 

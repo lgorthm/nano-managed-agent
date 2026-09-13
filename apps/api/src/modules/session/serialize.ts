@@ -26,7 +26,7 @@ export function serializeSession(session: SessionRow, resources: SessionResource
     resources: resources.map(serializeSessionResource),
     vault_ids: [],
     outcome_evaluations: [],
-    stats: { active_seconds: 0, duration_seconds: 0 },
+    stats: { active_seconds: session.activeSeconds, duration_seconds: session.durationSeconds },
     usage: {
       input_tokens: session.inputTokens,
       output_tokens: session.outputTokens,

@@ -34,6 +34,7 @@ import {
 } from "@nano/shared";
 import type { Env } from "../../env";
 import { newEventId, newTurnId } from "../ids";
+import { ModelHttpError } from "../model-client";
 import { createToolRunner, type ToolRunner } from "../tools/runner";
 import {
   initialTurnSnapshot,
@@ -94,6 +95,8 @@ export class SessionDo extends DurableObject<Env> {
   private lastSeq: number | null = null;
   /** 执行代际:startTurn / 恢复各持唯一 token,被取代的执行静默退出 */
   private currentExecutionToken = 0;
+  /** 当前 turn 的开始时刻(active_seconds 计时;逐出丢失该值时少计一次,投影允许) */
+  private turnStartedAt: number | null = null;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -495,6 +498,7 @@ export class SessionDo extends DurableObject<Env> {
       Date.now(),
     );
     this.turnActive = true;
+    this.turnStartedAt = Date.now();
     this.keepAlive();
     const token = ++this.currentExecutionToken;
     // fire-and-forget:RPC 响应不等 turn 完成;keepAlive 兜住执行期的空闲逐出(§5)
@@ -510,7 +514,13 @@ export class SessionDo extends DurableObject<Env> {
     if (this.deleted) return;
     // 行已不存在 = turn 已终局(恢复路径与在途执行的竞态):只复位内存,不补发事件
     for (const _row of this.query("SELECT 1 FROM session_turns WHERE turn_id = ? LIMIT 1", turnId)) {
-      this.appendEvent("session.error", { message: "The agent turn failed unexpectedly." });
+      // 分诊(M4):上游 HTTP 错误带状态码,连接/断流类给出错误摘要,均可恢复——
+      // 会话回 idle,下一条消息照常驱动新 turn
+      const message =
+        err instanceof ModelHttpError
+          ? `The model API request failed (HTTP ${err.status}).`
+          : `The agent turn failed: ${err instanceof Error ? err.message : String(err)}`;
+      this.appendEvent("session.error", { message });
       void this.finishTurn(turnId, { type: "interrupted" }, {
         input_tokens: 0,
         output_tokens: 0,
@@ -686,6 +696,7 @@ export class SessionDo extends DurableObject<Env> {
     // 执行代际让被取代的确认执行(逐出模拟 / 双重恢复)静默退出
     const token = ++this.currentExecutionToken;
     this.turnActive = true;
+    this.turnStartedAt = Date.now();
     if (this.status !== "running") {
       this.status = "running";
       this.setState("status", "running");
@@ -797,7 +808,11 @@ export class SessionDo extends DurableObject<Env> {
             cacheReadInputTokens: usage.cache_read_input_tokens,
           }
         : undefined;
-    await this.writeback({ status: "idle", usageDelta });
+    // stats 投影(M4):active 按 turn 实际时长累计(内存起点,逐出丢失则该次少计)
+    const activeDelta =
+      this.turnStartedAt !== null ? Math.max(0, (Date.now() - this.turnStartedAt) / 1000) : undefined;
+    this.turnStartedAt = null;
+    await this.writeback({ status: "idle", usageDelta, activeSecondsDelta: activeDelta });
 
     if (stopReason.type === "end_turn" && this.hasPendingUserMessages()) {
       this.startTurn();
@@ -884,7 +899,11 @@ export class SessionDo extends DurableObject<Env> {
   // ---------- D1 投影回写(§8) ----------
 
   /** 失败只记日志:投影允许短暂落后,事实源在本 DO */
-  private async writeback(patch: { status?: SessionStatus; usageDelta?: SessionUsageDelta }): Promise<void> {
+  private async writeback(patch: {
+    status?: SessionStatus;
+    usageDelta?: SessionUsageDelta;
+    activeSecondsDelta?: number;
+  }): Promise<void> {
     // idFromName 创建的实例 name 恒有值;newUniqueId 的实例才可能缺失
     const sessionId = this.ctx.id.name;
     if (sessionId === undefined) return;
@@ -893,6 +912,7 @@ export class SessionDo extends DurableObject<Env> {
         sessionId,
         status: patch.status,
         usageDelta: patch.usageDelta,
+        activeSecondsDelta: patch.activeSecondsDelta,
         now: new Date(),
       });
     } catch (err) {

@@ -80,7 +80,7 @@ Session 是一次会话运行的控制面记录：创建时把 Agent（钉住版
 | `status` 迁移 | idle / running / rescheduling / terminated 全量 | `idle ↔ running` 由运行时驱动；`rescheduling` / `terminated` 待三期沙箱与准入联动 |
 | `resources` 类型 | `file` + `memory_store` | 一期仅 `file`（无 Memory Store 资源），`memory_store` 返回 400 |
 | `vault_ids` | ≤ 20 个 Vault 引用 | 一期恒 `[]`，非空返回 400（无 Vault 资源） |
-| `stats` / `outcome_evaluations` | 运行时统计 | `usage` 三列 M1 起真实累计；stats 计时口径 M4 定稿，当前固定 `{active_seconds: 0, duration_seconds: 0}` / `[]` |
+| `stats` / `outcome_evaluations` | 运行时统计 | `usage` 三列与 `stats` 均由运行时回写（active=running 时长累计、duration=创建至今，M4）；`outcome_evaluations` 恒 `[]` |
 | `budget` | 恒 `null`（平台未支持） | 同 GLM，恒 `null` |
 | 列表过滤 | `memory_store_id` 可用 | 一期提供即 400（无 Memory Store 资源） |
 | 双向游标 | 响应含 `prev_page`，支持向前翻页 | 一期仅 `next_page` 向后翻页（nano 统一分页约定） |
@@ -88,7 +88,7 @@ Session 是一次会话运行的控制面记录：创建时把 Agent（钉住版
 | 非 API 创建会话 | IM 渠道会话不可归档 / 删除（409） | 不适用（nano 只有 API 创建的会话） |
 | 环境归档联动 | 归档环境触发引用会话准入终止 | 一期无运行时无联动；创建时校验环境未归档已实现 |
 
-## 事件运行时（M0–M3 已落地）
+## 事件运行时（M0–M4 已落地）
 
 GLM 的会话工作流是「先开 SSE 流、再发消息、会话进入 running、结束后回到 idle」。事件历史、SSE 推流与 Agent 循环执行落在 `SESSION_DO` Durable Object（循环在 DO 内自管执行、不使用 Workflows，定稿设计见 [../runtime.md](../runtime.md)；架构见 [architecture-diagrams.md](../../architecture-diagrams.md)）。当前状态：
 
@@ -98,4 +98,5 @@ GLM 的会话工作流是「先开 SSE 流、再发消息、会话进入 running
 - 崩溃恢复按 §6 策略 1（重发）落地：构造唤醒与 alarm 巡检发现孤儿 turn 后外发 `system.message` 并以同 turnId / 预生成事件 id 续跑（工具批次重入不重放模型请求）；`user.interrupt` 在流中途掐断模型请求、在途沙箱工具执行完再停；
 - `initial_events` 已放开（仅 `user.message`、content 不允许 document 块），创建时走同一条 append → 触发链路；
 - 更新端点在实际变更时外发 `session.updated` 事件；删除会话广播 `session.deleted`、销毁沙箱并清空 DO 存储；归档顺手销毁沙箱；
+- 错误分诊与 stats 投影（M4）：上游 429/5xx 退避重试后仍失败以带状态码的 `session.error` 收尾回 idle（可恢复）；`stats`（active_seconds / duration_seconds）随 turn 终局回写 D1；
 - 确认挂起 / 恢复（M3）：always_ask 的调用使会话以 `status_idle{requires_action, event_ids}` 挂起（usage 照常落库）；`user.tool_confirmation` 逐条裁决（未知 / 已裁决 / 同批重复均 400），全部裁决后回 running——allow 执行、deny 合成含 `deny_message` 的 is_error 拒绝结果，新 turn 带全部结果继续；确认执行被逐出打断由恢复入口幂等重入。

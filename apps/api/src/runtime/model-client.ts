@@ -50,14 +50,21 @@ export interface ModelCallResult {
   toolCalls: Array<{ id: string; name: string; arguments: string }>;
 }
 
-/** 连接类错误(fetch 抛出、未收到响应头)按退避重试;流已建立不重试(§0 的「十行包装」) */
+/** 连接类错误与可重试状态码(429/5xx)按退避重试;流已建立不重试(§0 的「十行包装」) */
 const RETRY_DELAYS_MS = [200, 500];
+const RETRYABLE_STATUSES = new Set([429, 500, 502, 503, 504]);
 
 async function fetchWithRetry(url: string, init: RequestInit): Promise<Response> {
   let lastError: unknown;
   for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
     try {
-      return await fetch(url, init);
+      const response = await fetch(url, init);
+      if (RETRYABLE_STATUSES.has(response.status) && attempt < RETRY_DELAYS_MS.length) {
+        await response.body?.cancel().catch(() => undefined); // 丢弃错误体再重试
+        await new Promise((resolve) => setTimeout(resolve, RETRY_DELAYS_MS[attempt]));
+        continue;
+      }
+      return response;
     } catch (err) {
       if (init.signal?.aborted) throw new ModelAbortedError();
       lastError = err;

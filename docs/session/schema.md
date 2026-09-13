@@ -267,6 +267,6 @@ export const sessionResources = sqliteTable(
 ## 约定
 
 - **时间戳**：DB 存 `timestamp_ms` 整数；API 输出 ISO 8601 UTC（`2026-09-12T08:00:00.000Z`）。
-- **固定回显字段**：`type: "session"`、`vault_ids: []`（一期）、`outcome_evaluations: []`、`stats: {active_seconds: 0, duration_seconds: 0}`、`budget: null` 与 `agent.multiagent: null` 不落库，序列化时注入。
+- **固定回显字段**：`type: "session"`、`vault_ids: []`（一期）、`outcome_evaluations: []`、`budget: null` 与 `agent.multiagent: null` 不落库，序列化时注入；`stats` 自 M4 落库回读（`active_seconds` / `duration_seconds` 两列,运行时随 turn 终局回写，见 runtime.md §8）。
 - **无事件端点**：GLM 的 `POST/GET /v1/sessions/:id/events` 与 SSE 流属二期（`SESSION_DO`，设计见 [runtime.md](runtime.md)），本设计的表结构不为其预留列。
 - **分页游标**：列表按 `(created_at, id)` keyset（带 `agent_id` 过滤时走 agent 复合索引同序），游标 base64url 编码经 `next_page` 返回，opaque；一期不提供 GLM 的 `prev_page` 双向游标。

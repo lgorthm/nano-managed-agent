@@ -465,6 +465,57 @@ describe("GET /v1/sessions/{id}/events/stream — SSE 订阅", () => {
   });
 });
 
+describe("M4 收尾 — 错误分诊与 stats 投影", () => {
+  it("上游 5xx:session.error 带分类消息(HTTP 状态),会话回 idle 可继续", async () => {
+    const session = await createDefaultSession();
+    // fetch 包装对 5xx 有两次退避重试:压三条同 match 脚本耗尽重试,才走 ModelHttpError
+    for (let i = 0; i < 3; i++) {
+      await enqueueModelScript({ match: "fail-500", status: 500, chunks: [] });
+    }
+    await sendEvents(session.id, [
+      { type: "user.message", content: [{ type: "text", text: "please fail-500 now" }] },
+    ]);
+    const events = await pollForEvent(
+      session.id,
+      (list) => list.some((event) => event.type === "session.status_idle"),
+    );
+    expect(events.map((event) => event.type)).toEqual([
+      "user.message",
+      "session.status_running",
+      "session.error",
+      "session.status_idle",
+    ]);
+    expect(String(events.find((event) => event.type === "session.error")!.message)).toContain("HTTP 500");
+    expect(events.find((event) => event.type === "session.status_idle")!.stop_reason).toEqual({
+      type: "interrupted",
+    });
+    // 错误可恢复:下一条消息照常驱动新 turn(缺省脚本)
+    await sendEvents(session.id, [TEXT_MESSAGE]);
+    const recovered = await pollForEvent(
+      session.id,
+      (list) => list.filter((event) => event.type === "session.status_idle").length >= 2,
+    );
+    expect(recovered.filter((event) => event.type === "session.error")).toHaveLength(1);
+    expect((await jsonBody<SessionJson>(await getSession(session.id))).status).toBe("idle");
+  });
+
+  it("stats 投影:turn 终局回写 active_seconds / duration_seconds", async () => {
+    const session = await createDefaultSession();
+    expect(session.stats).toEqual({ active_seconds: 0, duration_seconds: 0 }); // 创建时未执行
+    await sendEvents(session.id, [TEXT_MESSAGE]);
+    await pollForEvent(session.id, (list) => list.some((event) => event.type === "session.status_idle"));
+    // 投影回写与事件广播异步竞态:有界轮询直到 active_seconds 落库
+    let after!: SessionJson;
+    for (let i = 0; i < 50; i++) {
+      after = await jsonBody<SessionJson>(await getSession(session.id));
+      if (after.stats.active_seconds > 0) break;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    expect(after.stats.active_seconds).toBeGreaterThan(0);
+    expect(after.stats.duration_seconds).toBeGreaterThanOrEqual(after.stats.active_seconds);
+  });
+});
+
 describe("控制面与运行时的联动", () => {
   it("更新配置实际变更时外发 session.updated;无变化更新不外发", async () => {
     const session = await createDefaultSession();
