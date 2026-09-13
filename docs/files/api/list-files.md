@@ -1,6 +1,6 @@
 # 列出 File
 
-> 分页列出当前身份可读取的 File（仅元数据，不含内容）。支持 `limit` / `order` / `page` 游标翻页；`scope_id` 过滤参数一期恒返回空页（见 [README.md](README.md#分页)）。
+> 分页列出当前身份可读取的 File（仅元数据，不含内容）：用户上传的 File 与会话产出文件（session-scoped）都在列表中。支持 `limit` / `order` / `page` 游标翻页；`scope_id` 过滤返回与该会话相关的 File（挂载 ∪ 产出）。
 
 ## 请求示例
 
@@ -29,7 +29,8 @@ curl -sS "http://127.0.0.1:8787/v1/files?limit=20&order=desc" \
 ```
 
 - 分页参数与全站约定一致（`limit` 默认 20、大于 100 截断为 100；`order` 默认 `desc`，即最新上传的在前；`page` 为上一页返回的 opaque 游标），详见 [README.md](README.md#分页)。nano 实现按 `(created_at, id)` keyset 排序，游标对客户端 opaque。
-- `scope_id`：必须为 `sess_` 前缀，否则 400；一期无 Session 资源与 session-scoped 文件，传入时恒返回 `{"data": [], "next_page": null}`。
+- `scope_id`：必须为 `sess_` 前缀，否则 400；返回与该会话相关的 File——被其挂载的（`session_resources`）∪ 其产出的（`session_outputs`），同一 File 双来源只出现一次。会话不存在或无关联时返回空页。
+- `scope` 回显规则：**产出文件在任何列表（含不带 `scope_id` 的租户级列表）都携带 `scope: {type: "session", id}`**（一对一归属，恒可回显）；挂载的 File 是多对多关系，只在 `scope_id` 过滤时回显该会话，租户级列表不输出 `scope`。产出文件的 `filename` 是 outputs 目录下的相对路径（如 `report/charts/a.png`），`mime_type` 按扩展名推断。
 
 ## 错误行为
 
@@ -61,8 +62,8 @@ paths:
       tags: [File]
       summary: 列出 File
       description: >-
-        分页列出当前身份可读取的 File（仅元数据，不含内容）。支持 limit / order / page 游标翻页；scope_id
-        过滤参数一期恒返回空页。
+        分页列出当前身份可读取的 File（仅元数据，不含内容）：用户上传的 File 与会话产出文件都在列表中。
+        支持 limit / order / page 游标翻页；scope_id 过滤返回与该会话相关的 File（挂载 ∪ 产出）。
       operationId: listFiles
       parameters:
         - $ref: '#/components/parameters/Authorization'
@@ -91,7 +92,7 @@ paths:
         - name: scope_id
           in: query
           required: false
-          description: 按 Session scope 过滤，必须为 sess_ 前缀；一期无 Session 资源，传入时恒返回空页。
+          description: 按 Session scope 过滤，必须为 sess_ 前缀；返回挂载 ∪ 产出的 File，产出条目回显 scope。
           schema:
             type: string
       responses:
@@ -147,16 +148,27 @@ components:
         created_at:
           type: string
           format: date-time
-          description: 上传时间。
+          description: 上传时间（产出文件为收割编目时间）。
         filename:
           type: string
-          description: 上传时的原始文件名，原样回显。
+          description: 上传时的原始文件名，原样回显；产出文件为 outputs 目录下的相对路径。
         mime_type:
           type: string
           description: 归一化后的 media type（去参数）。
         downloadable:
           type: boolean
           description: 当前恒为 true；保留字段以对齐 GLM wire-format。
+        scope:
+          type: object
+          description: 产出文件的会话归属，恒回显；挂载文件仅在 scope_id 过滤时回显。
+          properties:
+            type:
+              type: string
+              enum: [session]
+            id:
+              type: string
+          required: [type, id]
+          additionalProperties: false
       required: [type, id, size_bytes, created_at, filename, mime_type, downloadable]
       additionalProperties: false
       example:

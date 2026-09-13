@@ -29,7 +29,7 @@
 | 组件 | 职责 |
 | --- | --- |
 | `SESSION_DO`（每会话一个） | 单写者：状态机（idle/running 门禁）、事件日志、SSE fan-out、turn 执行器、alarm 复用器、崩溃恢复 |
-| Sandbox SDK | `agent_toolset_20260601` 七个内置工具的执行环境；skills 挂 `/mnt/skills`，上传文件挂 `/mnt/session/uploads`（只读），产出写 `/mnt/session/outputs` → R2 |
+| Sandbox SDK | `agent_toolset_20260601` 七个内置工具的执行环境；skills 挂 `/mnt/skills`，上传文件挂 `/mnt/session/uploads`（只读），产出写 `/mnt/session/outputs` → turn 收尾收割编目为 File 资源（R2 `files/{id}` + D1 `session_outputs`，见 [../files/schema.md](../files/schema.md)「会话产出文件」） |
 | D1（`DB`） | 元数据事实源；`sessions.status` 与 usage 三列降级为**投影**（§8），由运行时回写 |
 | GLM 模型 API | chat completions（流式 + tools），凭据为 api worker secret |
 | console `/nano` 代理 | SSE 透传链路已就绪（与 `/glm` 共用） |
@@ -177,7 +177,7 @@ runTurn 循环：
 
 **推论：**
 
-- **工作区物化协议（M2 实现契约）**：每次冷启后由 DO 物化三类内容——挂载文件（R2 → `/mnt/session/uploads`，只读）、skills（`/mnt/skills`）、outputs 回填（`/mnt/session/outputs`）。**outputs 在每个 turn 收尾时同步进 R2**：sleep 即清零的平台事实要求产出必须及时离开沙箱，「会话产出文件」的编目语义才成立。`/workspace` 的其余临时状态视为易失，不承诺跨 sleep 存活；M2 实测若需更强语义，用 Directory backups 补（醒后显式再还原）。
+- **工作区物化协议（M2 实现契约）**：每次冷启后由 DO 物化三类内容——挂载文件（R2 → `/mnt/session/uploads`，只读）、skills（`/mnt/skills`）、outputs 回填（D1 `session_outputs` 映射 → R2 `files/{fileId}` → `/mnt/session/outputs`）。**outputs 在每个 turn 收尾时收割编目为 File 资源**（差集同步、以沙箱现状为准，协议定稿见 [../files/schema.md](../files/schema.md)「会话产出文件」）：sleep 即清零的平台事实要求产出必须及时离开沙箱，「会话产出文件」的编目语义才成立。`/workspace` 的其余临时状态视为易失，不承诺跨 sleep 存活；M2 实测若需更强语义，用 Directory backups 补（醒后显式再还原）。
 - **`rescheduled` 维持三期预留，M2 不产生。** GLM 的 rescheduling 是「平台正在重新调度会话的沙箱（恢复或迁移），随后自动回到执行」——一个会话级、独立于 turn 的可观测中间态。nano 的冷启永远**嵌在活跃 turn 内**（工具调用阻塞等它），不存在「会话在 turn 之外等沙箱」的时刻；强行外发 `status_rescheduled` 只是 turn 中途的 wire 噪声。`statuses[]` 过滤与 wire 枚举照旧保留（同一期预留的口径，同 `terminated`）。三期若出现平台主动维护（预热队列、跨区迁移）产生真正的「turn 外等沙箱」状态，再引入。
 - **删除 / 归档联动**：删除会话必须 `destroy()`（显式清掉容器与全部状态，与 DO 的 wipe 并行）；归档后不再接受新 turn，沙箱随 `sleepAfter` 自然消亡，归档处理中顺手 destroy（归档即终态，不再有执行）。
 - **可逆性**：wire、事件日志、console 消费端均不感知沙箱生命周期；三期若需特定会话常驻（如 console 实时预览），对该会话单独开 `keepAlive` 即可，协议零改动。

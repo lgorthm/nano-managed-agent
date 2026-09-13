@@ -17,7 +17,7 @@ GLM 的 Session 是「一次实际运行的载体」：事件收发、SSE 推流
 1. **与 API wire-format 一一对应**：GLM 的 Session 响应字段中，凡一期有真实状态的（`id` / `agent` / `environment_id` / `status` / `title` / `metadata` / `resources` / `usage` / `created_at` / `updated_at` / `archived_at`）都能直接从表中读出；四个一期无状态的字段（`type` / `vault_ids` / `outcome_evaluations` / `stats` / `budget`）不落库，序列化时注入固定值。
 2. **快照固化，创建即冻结**：`agent` 与 `environment` 都以「创建时点的解析结果」落库。会话持有自己的环境快照（[Environment schema](../environment/schema.md) 中「快照固化发生在 Session 侧」语义的落点），Agent 侧持有「钉住版本 ⊕ 会话级覆盖」的完整解析快照。此后对 Agent / Environment 的任何变更都不影响既有会话。
 3. **单表无版本**：Session 没有 `version` 字段、没有版本端点，更新是就地覆盖单行（同 Environment 先例）；wire 上没有可提交的期望值，并发语义为最后写入获胜。
-4. **挂载关系独立成表**：`session_resources` 归 session 模块（挂载端点在 `/v1/sessions/*` 下，对齐 GLM 归属，见 [File schema](../files/schema.md) 的预留条款）；File 本体是独立资源，不随会话删除，删除的只是挂载记录。
+4. **挂载关系独立成表**：`session_resources` 归 session 模块（挂载端点在 `/v1/sessions/*` 下，对齐 GLM 归属，见 [File schema](../files/schema.md) 的预留条款）；File 本体是独立资源，不随会话删除，删除的只是挂载记录。产出编目同样独立成表（`session_outputs`，见下）：语义与挂载相反——产出 File 随会话删除级联清理。
 
 ## 表结构
 
@@ -63,6 +63,24 @@ GLM 的 Session 是「一次实际运行的载体」：事件收发、SSE 推流
 - `idx_session_resources_session (session_id, created_at, id)` — 会话的资源列表分页。
 - `idx_session_resources_file_id (file_id)` — File 删除时的引用检查（被未归档会话挂载即拒绝）。
 - `UNIQUE (session_id, mount_path)` — 完全相同路径的兜底约束；「前缀包含」类重叠仍由服务层检查（见下）。
+
+### `session_outputs` — 会话产出文件的编目映射
+
+沙箱产出文件（`/mnt/session/outputs`）在每个 turn 收尾收割编目为 File 资源的映射表，设计细节与收割协议见 [../files/schema.md](../files/schema.md)「会话产出文件」。与 `session_resources` 的挂载语义相对：挂载是**输入**（File 本体独立、不随会话删），产出是**输出**（File 生命周期从属于会话，随会话删除级联清理）。
+
+| 列 | 类型 | 约束 | 说明 |
+| --- | --- | --- | --- |
+| `file_id` | TEXT | PK, FK → `files.id` | 当前代表的 File 行；换代时就地改指新行 |
+| `session_id` | TEXT | NOT NULL, FK → `sessions.id` | 产出会话；随会话删除级联清理（并连带删 File 行） |
+| `path` | TEXT | NOT NULL | outputs 目录下的相对路径 |
+| `content_sha256` | TEXT | NOT NULL | 内容指纹；收割幂等的判断依据（未变即跳过） |
+| `created_at` | INTEGER (ts_ms) | NOT NULL | 首编目时间 |
+| `updated_at` | INTEGER (ts_ms) | NOT NULL | 最近一次换代时间 |
+
+索引与约束：
+
+- `UNIQUE (session_id, path)` — 一个产出路径只指向一个当前 File。
+- `idx_session_outputs_session (session_id, updated_at, file_id)` — 收割对比、冷启物化回填与删除前取 fileIds 都按会话查询。
 
 ## JSON 列的归一化形态
 
@@ -141,10 +159,12 @@ GLM 的 Session 归档有两点与 Agent / Environment 相反，必须照抄而�
 ```
 batch:
   1. DELETE FROM session_resources WHERE session_id = ?
-  2. DELETE FROM sessions WHERE id = ? AND status != 'running'
+  2. DELETE FROM session_outputs WHERE session_id = ?   ← 先删映射(FK 顺序)
+  3. DELETE FROM files WHERE id IN (产出 fileIds,删除前先行查出)
+  4. DELETE FROM sessions WHERE id = ? AND status != 'running'
 ```
 
-受影响 0 行时重读区分 404 / 409（running）。已归档会话允许删除。挂载的 File 本体是独立资源不随会话删除（R2 对象与 `files` 行都保留），只是挂载记录消失、File 随之解除引用、恢复可删。
+受影响 0 行时重读区分 404 / 409（running）。已归档会话允许删除。挂载的 File 本体是独立资源不随会话删除（R2 对象与 `files` 行都保留），只是挂载记录消失、File 随之解除引用、恢复可删。**产出的 File 相反：生命周期从属于会话**，连行带 R2 对象一起清（R2 清理在 batch 成功后尽力执行，失败留孤儿对象不影响正确性）；被其他会话挂载的产出被删时留下悬空挂载，物化读取以 null-continue 防御。
 
 ### 资源挂载 / 卸载
 

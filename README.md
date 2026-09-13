@@ -10,8 +10,8 @@ API 定义 Agent → 启动有状态 Session → 平台驱动 Agent 循环 → �
 | Workers | API 网关(`/v1/agents`、`/v1/sessions` 等) |
 | Durable Objects | 每个 Session 一个:事件历史 + SSE 推流 + Agent 循环执行(二期,自管检查点与恢复、不使用 Workflows,见 [docs/session/runtime.md](docs/session/runtime.md)) |
 | Sandbox SDK | 会话沙箱:bash / 文件工具(二期) |
-| D1 | 元数据:agents / skills / files(内容在 R2)/ environments / sessions |
-| R2 | File 资源内容存储(`FILES` 绑定,见 [docs/files/schema.md](docs/files/schema.md));会话产出文件(二期) |
+| D1 | 元数据:agents / skills / files(内容在 R2)/ environments / sessions(含产出编目 `session_outputs`) |
+| R2 | File 资源内容存储(`FILES` 绑定,见 [docs/files/schema.md](docs/files/schema.md));沙箱产出文件 turn 收尾收割编目为 File 资源,`/v1/files` 可列可下载 |
 
 整体架构图、API 请求链路与 D1 数据模型的 Mermaid 图见 [docs/architecture-diagrams.md](docs/architecture-diagrams.md)。
 

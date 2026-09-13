@@ -23,7 +23,7 @@ curl -sS "http://127.0.0.1:8787/v1/files/file_01911111-3333-7444-8555-6666666666
 }
 ```
 
-`downloadable` 恒为 `true`；GLM 中可选的 `scope` 字段一期不输出（见 [README.md](README.md#通用约定)）。
+`downloadable` 恒为 `true`。`scope` 字段：会话产出文件恒回显 `{"type": "session", "id": "sess_…"}`（一对一归属）；用户上传的 File 不输出（挂载关系是多对多，仅在 [list-files.md](list-files.md) 的 `scope_id` 过滤时回显）。
 
 ## 错误行为
 

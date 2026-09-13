@@ -7,7 +7,7 @@
 1. **与 API wire-format 一一对应**：GLM 的 File 响应字段（`type` / `id` / `size_bytes` / `created_at` / `filename` / `mime_type` / `downloadable`）都能直接从表中读出，序列化时零拼装。`scope` 在 GLM schema 中本就可选，nano 一期没有 Session 资源、不输出该字段（见「与 Session 的联动（预留）」）。
 2. **元数据与内容分离**：D1 行是唯一权威元数据，R2 只存字节。对象键由 id 确定性派生（恒为 `files/{fileId}`），不落库、不参与 API。
 3. **元数据在 ⇒ 内容可读**：上传先写 R2 再插 D1（插入失败时补偿删除 R2 对象），删除先删 D1 行再尽力清 R2。两个顺序共同保证下载路径不会出现「元数据存在而内容缺失」；反方向的中间态（R2 孤儿对象）只浪费存储、不影响正确性。
-4. **不可变资源**：File 没有更新端点，上传即定格；删除是唯一生命周期变更。无版本、无归档、无指针，一行就是一个资源的全部状态——这也是单表即可的原因（对照 [Agent](../agent/schema.md) 的两张表、[Skill](../skills/schema.md) 的三张表）。
+4. **不可变资源**：File 没有更新端点，上传即定格；删除是唯一生命周期变更。无版本、无归档、无指针，一行就是一个资源的全部状态——这也是单表即可的原因（对照 [Agent](../agent/schema.md) 的两张表、[Skill](../skills/schema.md) 的三张表）。会话产出是唯一例外形态：产出内容变化时收割编目**换新行新对象**（`session_outputs` 映射行就地改指，见「会话产出文件」），File 行本身仍然一经写入不再变。
 5. **上传缓冲、下载流式**：上传经 `request.formData()` 整体缓冲后校验尺寸，因此单文件上限取 50 MiB——同时低于 Workers 请求体上限与 128 MB 内存预算的保守值；下载把 R2 返回的 `ReadableStream` 直接透传为响应体，Worker 不全量缓冲，上传上限不构成下载瓶颈。
 
 ## 为什么内容放 R2 而不是 D1 BLOB
@@ -77,6 +77,42 @@ GLM 中 File 是独立资源，通过 Session Resource 挂载进沙箱（`POST /
 - `list-files` 的 `scope_id` 过滤从「恒返回空页」变为真实过滤，File 响应补 `scope` 字段。
 
 租户级行为：不带 `scope_id` 的列表不输出 `scope` 字段；带 `scope_id` 时返回该会话挂载的 File 并逐条回显 `scope: {type: "session", id}`。
+
+## 会话产出文件（session-scoped File，已生效）
+
+沙箱产出文件编目为 File 资源——「写入 `/mnt/session/outputs` 的东西，用户能从 `/v1/files` 拿到」：
+
+### 编目映射表 `session_outputs`（D1，归 session 模块）
+
+| 列 | 类型 | 约束 | 说明 |
+| --- | --- | --- | --- |
+| `file_id` | TEXT | PK, FK → files.id | 当前代表的 File 行 |
+| `session_id` | TEXT | NOT NULL, FK → sessions.id | 产出会话 |
+| `path` | TEXT | NOT NULL | outputs 目录下的相对路径（含文件名），UNIQUE(session_id, path) |
+| `content_sha256` | TEXT | NOT NULL | 内容指纹，收割幂等的判断依据 |
+| `created_at` / `updated_at` | INTEGER (ts_ms) | NOT NULL | 首编目 / 最近换代时间 |
+
+索引：`uq_session_outputs_session_path (session_id, path)`、`idx_session_outputs_session (session_id, updated_at, file_id)`。
+
+### 收割协议（runtime.md §4.5 物化协议的编目落地）
+
+每个 turn 收尾，`harvestOutputs` 把沙箱 outputs 目录读成「相对路径 → 字节」快照，交给编目编排（`apps/api/src/runtime/tools/catalog.ts`）收敛，规则是**差集同步、以沙箱现状为准**：
+
+- **新路径** → R2 `put(files/{newId})` 先行 → 同 batch 插 file 行 + 映射行（`filename` = 相对路径，`mime_type` 按扩展名推断，未知回退 octet-stream）。
+- **内容变化**（sha-256 不同）→ 换新 `file_` id 新行新对象，映射行就地改指；旧 file 行同 batch 删除，旧 R2 对象尽力清。**File 不可变原则不变**——「更新」落地为换 id，upsert 的是映射关系。
+- **内容未变** → 跳过（幂等：重复收割零写入，file id 稳定，下载链接不漂移）。
+- **沙箱里消失** → 映射行与 file 行删除、R2 对象尽力清。安全性依据：物化协议保证「编目过的内容必已回填进沙箱」，列目录完整时差集即真实删除（agent 的 rm/mv 不留过期条目）。
+- **越界跳过**：超过 `MAX_FILE_BYTES`（50 MiB）或 filename 超 256 字符的产出不编目（沙箱内仍可用），非法相对路径（绝对路径、`..` 段）跳过。
+
+一致性沿用上传的顺序契约（原则 3）：先 R2 后 D1，D1 失败补偿删新对象；反向失败只留孤儿对象。冷启物化的 outputs 回填也从「R2 前缀 list」切换为「D1 查映射 → R2 get `files/{fileId}`」，与挂载文件同一键空间。
+
+### wire 与生命周期语义
+
+- `scope_id` 过滤 = **挂载 ∪ 产出**（同一 File 双来源只出现一次）；产出文件在**任何列表与 get-file** 都恒回显 `scope`（一对一归属），挂载文件维持「仅 scope_id 过滤时回显」。
+- 删除门禁：属于未归档会话的产出拒删（400，与挂载同语义）；已归档会话的产出可删，删除连带清理映射行。
+- 会话删除级联：`session_resources` + `session_outputs` + 对应 `files` 行同一 batch 删除（**产出的 File 生命周期从属于产出它的会话**，与挂载的「File 本体不删」相反），R2 对象随后尽力清。已知取舍：产出 File 被其他会话挂载时，源会话删除会留下悬空挂载——`session_resources.file_id` 是软引用，物化读取对缺失 file 有 null-continue 防御。
+- `toolsRan` 不跨崩溃恢复快照：恢复路径直接 end_turn 时本轮跳过收割，编目在下一 turn 按同一规则收敛（幂等保证收敛）。
+- 历史 R2 前缀 `sessions/{id}/outputs/` 已弃用（dev 数据，不迁移）。
 
 ## 校验规则（服务层，zod + multipart 解析；DB 只保留基本约束）
 
