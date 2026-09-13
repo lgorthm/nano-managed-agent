@@ -10,6 +10,7 @@ import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
 import { QueryError } from "@/components/query-error";
 import { RefreshButton } from "@/components/refresh-button";
+import { SessionCreateDialog } from "@/components/session-create-dialog";
 import { SessionStatusBadge } from "@/components/status-badges";
 import { TableSkeleton } from "@/components/table-skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -34,9 +35,12 @@ export function SessionListPage() {
         title="Sessions"
         description="有状态的 Agent 会话:事件历史、实时流与用量。"
         actions={
-          <RefreshButton isFetching={query.isFetching} onClick={() => void query.refetch()}>
-            刷新
-          </RefreshButton>
+          <>
+            <SessionCreateDialog />
+            <RefreshButton isFetching={query.isFetching} onClick={() => void query.refetch()}>
+              刷新
+            </RefreshButton>
+          </>
         }
       />
       {query.isPending ? (
@@ -48,7 +52,7 @@ export function SessionListPage() {
           <EmptyState
             icon={MessagesSquare}
             title="暂无会话"
-            description="会话由 API 调用或 Deployment 运行创建;跑起来之后,事件历史和 token 用量会出现在这里。"
+            description="点右上角「新建会话」创建一个,或者由 API 调用 / Deployment 运行创建;跑起来之后,事件历史和 token 用量会出现在这里。"
           />
         </div>
       ) : (
