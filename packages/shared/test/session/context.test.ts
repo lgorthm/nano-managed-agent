@@ -152,3 +152,60 @@ describe("assembleChatMessages content 块映射", () => {
     });
   });
 });
+
+describe("assembleChatMessages 工具事件映射(M2)", () => {
+  it("连续 agent.tool_use 合并为一条带 tool_calls 的 assistant 轮,tool_result 为 tool 轮回指", () => {
+    const messages = assembleChatMessages({
+      system: null,
+      events: [
+        event("user.message", { content: [{ type: "text", text: "列出文件" }] }),
+        event("agent.tool_use", { name: "bash", input: { command: "ls" } }),
+        event("agent.tool_use", { name: "read", input: { path: "a.txt" } }),
+        event("agent.tool_result", { tool_use_id: "sevt_agent.tool_use", content: [{ type: "text", text: "file-a" }] }),
+        event("agent.message", { content: [{ type: "text", text: "两个文件" }] }),
+      ],
+    });
+    expect(messages).toEqual([
+      { role: "user", content: "列出文件" },
+      {
+        role: "assistant",
+        content: null,
+        tool_calls: [
+          { id: "sevt_agent.tool_use", type: "function", function: { name: "bash", arguments: "{\"command\":\"ls\"}" } },
+          { id: "sevt_agent.tool_use", type: "function", function: { name: "read", arguments: "{\"path\":\"a.txt\"}" } },
+        ],
+      },
+      { role: "tool", tool_call_id: "sevt_agent.tool_use", content: "file-a" },
+      { role: "assistant", content: "两个文件" },
+    ]);
+  });
+
+  it("末尾的 tool_use(结果未回)也产出 tool_calls 轮——恢复重放时上下文完整", () => {
+    const messages = assembleChatMessages({
+      system: null,
+      events: [event("agent.tool_use", { name: "ls", input: {} })],
+    });
+    expect(messages).toEqual([
+      {
+        role: "assistant",
+        content: null,
+        tool_calls: [
+          { id: "sevt_agent.tool_use", type: "function", function: { name: "ls", arguments: "{}" } },
+        ],
+      },
+    ]);
+  });
+
+  it("tool_use 与 tool_result 之间隔着非工具事件时,tool_calls 先行 flush", () => {
+    const messages = assembleChatMessages({
+      system: null,
+      events: [
+        event("agent.tool_use", { name: "bash", input: { command: "x" } }),
+        event("session.usage", { input_tokens: 1, output_tokens: 1, cache_read_input_tokens: 0 }),
+        event("agent.tool_result", { tool_use_id: "sevt_agent.tool_use", content: [{ type: "text", text: "ok" }] }),
+      ],
+    });
+    expect(messages.map((message) => message.role)).toEqual(["assistant", "tool"]);
+    expect(messages[0]!.tool_calls).toHaveLength(1);
+  });
+});
