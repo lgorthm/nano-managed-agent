@@ -122,11 +122,14 @@ null-turn 整体替换为真实循环；交付「发一条 user.message，收到
 
 **决策先行（开放问题 1）：**
 
-- [ ] 沙箱生命周期定稿：倾向按需冷启 + 空闲回收；若引入休眠唤醒，`status_rescheduled` 一并引入（wire 枚举已在全集）。结论回写 §11。
+- [x] 沙箱生命周期定稿（2026-09，结论与平台事实见 runtime.md §4.5）：**按需冷启 + 平台默认 `sleepAfter`（10m）空闲回收，不启用 `keepAlive`**——sleep 即状态清零是平台事实，「常驻」买不到持久性，nano 必须自建工作区再物化；默认 10m 窗口免费提供「会话级半常驻」（活跃对话几乎不冷启）。`rescheduled` 维持三期预留：nano 的冷启嵌在活跃 turn 内（工具调用阻塞等它），无独立可观测的会话级重调度时刻，强行外发只是 wire 噪声。§11 已回写。
 
 **沙箱接入：**
 
-- [ ] Sandbox SDK 接入：`agent_toolset_20260601` 七个内置工具的执行环境；skills 挂 `/mnt/skills`；挂载文件 `/mnt/session/uploads` 只读；产出写 `/mnt/session/outputs` → R2（README 架构表的「会话产出文件」二期项）。
+- [ ] Sandbox SDK 接入：`agent_toolset_20260601` 七个内置工具的执行环境；每会话一个沙箱（实例 id = sessionId，惰性创建）；skills 挂 `/mnt/skills`；挂载文件 R2 → `/mnt/session/uploads` 只读。
+- [ ] 工作区物化协议（§4.5 推论）：每次冷启后物化 uploads / skills / outputs 三类内容；**outputs 在每个 turn 收尾同步进 R2**（sleep 即清零，产出必须及时离开沙箱），醒后回填；`/workspace` 其余状态视为易失。
+- [ ] 冷启掩体：turn 启动时与首次模型调用并行预热沙箱（fire-and-forget），让容器启动与模型首响应的秒级延迟重叠。
+- [ ] 删除 / 归档联动（§4.5 推论）：删除会话与 DO wipe 并行 `destroy()`；归档处理中顺手 destroy（归档即终态）。
 - [ ] `environment_snapshot` 消费：首次工具调用时供给沙箱，不回读 `environments` 表（创建即冻结语义）。
 - [ ] 工具执行层接口化（`TurnHost` 先例）：沙箱依赖容器进不了 vitest，单测 / 集成以 fake 执行器注入，真实沙箱走 curl 冒烟与脚本。
 
