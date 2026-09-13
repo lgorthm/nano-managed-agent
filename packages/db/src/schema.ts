@@ -26,6 +26,7 @@ import {
   index,
   integer,
   primaryKey,
+  real,
   sqliteTable,
   text,
   uniqueIndex,
@@ -221,6 +222,9 @@ export const sessions = sqliteTable(
     inputTokens: integer("input_tokens").notNull().default(0),
     outputTokens: integer("output_tokens").notNull().default(0),
     cacheReadInputTokens: integer("cache_read_input_tokens").notNull().default(0),
+    // stats 投影(runtime.md §8):active = running 时长累计,duration = 创建至今
+    activeSeconds: real("active_seconds").notNull().default(0),
+    durationSeconds: real("duration_seconds").notNull().default(0),
     archivedAt: integer("archived_at", { mode: "timestamp_ms" }),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
     updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),

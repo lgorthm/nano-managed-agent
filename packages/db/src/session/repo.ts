@@ -341,13 +341,21 @@ export interface SessionUsageDelta {
 }
 
 /**
- * SESSION_DO 回写状态投影:status 迁移即时、usage 按 turn 终局增量累计。
+ * SESSION_DO 回写状态投影:status 迁移即时、usage 按 turn 终局增量累计、
+ * stats 随终局回写(active_seconds 按 turn 时长增量累计;duration_seconds
+ * 直接取「现在 − 创建时刻」,单调不减)。
  * 不带 archived/running 守卫——归档与删除的门禁在控制面(D1)先行裁决;
  * 行不存在(会话已删)返回 false,投影丢失被容忍:事实源已随删除终结。
  */
 export async function updateSessionRuntimeState(
   db: Db,
-  input: { sessionId: string; status?: SessionStatus; usageDelta?: SessionUsageDelta; now: Date },
+  input: {
+    sessionId: string;
+    status?: SessionStatus;
+    usageDelta?: SessionUsageDelta;
+    activeSecondsDelta?: number;
+    now: Date;
+  },
 ): Promise<boolean> {
   const delta = input.usageDelta;
   const hasUsageDelta =
@@ -363,6 +371,12 @@ export async function updateSessionRuntimeState(
             outputTokens: sql`${sessions.outputTokens} + ${delta.outputTokens}`,
             cacheReadInputTokens: sql`${sessions.cacheReadInputTokens} + ${delta.cacheReadInputTokens}`,
           }
+        : {}),
+      ...(input.activeSecondsDelta !== undefined && input.activeSecondsDelta > 0
+        ? { activeSeconds: sql`${sessions.activeSeconds} + ${input.activeSecondsDelta}` }
+        : {}),
+      ...(input.activeSecondsDelta !== undefined
+        ? { durationSeconds: sql`MAX(0.0, (CAST((julianday('now') - 2440587.5) * 86400000 AS REAL) - ${sessions.createdAt}) / 1000.0)` }
         : {}),
       updatedAt: input.now,
     })
