@@ -36,10 +36,10 @@ export function SessionListPage() {
         description="有状态的 Agent 会话:事件历史、实时流与用量。"
         actions={
           <>
-            <SessionCreateDialog />
             <RefreshButton isFetching={query.isFetching} onClick={() => void query.refetch()}>
               刷新
             </RefreshButton>
+            <SessionCreateDialog />
           </>
         }
       />
