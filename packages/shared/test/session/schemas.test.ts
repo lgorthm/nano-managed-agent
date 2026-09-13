@@ -83,12 +83,24 @@ describe("SessionCreateRequestSchema 字段约束与一期裁剪", () => {
     ).toBe(false);
   });
 
-  it("initial_events 非空拒绝(一期裁剪),空数组与省略通过", () => {
+  it("initial_events 已随事件运行时放开:文本消息通过,document 块拒绝,空数组与省略等价", () => {
     expect(
       SessionCreateRequestSchema.safeParse({
         agent: AGENT_ID,
         environment_id: ENV_ID,
         initial_events: [{ type: "user.message", content: [{ type: "text", text: "hi" }] }],
+      }).success,
+    ).toBe(true);
+    expect(
+      SessionCreateRequestSchema.safeParse({
+        agent: AGENT_ID,
+        environment_id: ENV_ID,
+        initial_events: [
+          {
+            type: "user.message",
+            content: [{ type: "document", source: { type: "file", file_id: FILE_ID } }],
+          },
+        ],
       }).success,
     ).toBe(false);
     expect(createRequest({ initial_events: [] }).initial_events).toEqual([]);

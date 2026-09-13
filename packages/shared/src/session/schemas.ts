@@ -1,8 +1,8 @@
 /**
  * Session 资源的协议层定义,以 docs/session/api/*.md 的 OpenAPI 为准。
  * 所有 schema 均 strict(拒绝未知键,对应 additionalProperties: false)。
- * 一期裁剪(initial_events / vault_ids 非空拒绝、resources 仅 file 类型)
- * 以 refine 分支实现,schema 主体与 GLM 形状一致,二期放开时删掉分支即可。
+ * 剩余一期裁剪(vault_ids 非空拒绝、resources 仅 file 类型)以 refine 分支实现;
+ * initial_events 已随二期事件运行时放开,形状约束见 events.ts。
  */
 import { z } from "zod";
 import {
@@ -13,6 +13,7 @@ import {
   ModelInputSchema,
   SkillReferenceSchema,
 } from "../agent/schemas";
+import { InitialUserMessageEventSchema } from "./events";
 import type { SessionAgentConfig } from "./resolve";
 
 // ---------- 状态与常量 ----------
@@ -86,7 +87,7 @@ export const SessionCreateRequestSchema = z
       ),
     title: z.string().max(256).nullish(),
     metadata: MetadataSchema.default({}),
-    initial_events: z.array(z.unknown()).max(50).default([]),
+    initial_events: z.array(InitialUserMessageEventSchema).max(50).default([]),
     resources: z.array(FileResourceInputSchema).max(MAX_SESSION_RESOURCES).default([]),
     vault_ids: z.array(z.string().min(1)).max(20).default([]),
   })
@@ -98,14 +99,8 @@ export const SessionCreateRequestSchema = z
         message: "either agent or the compatible field agent_id must be provided",
       });
     }
-    // 一期裁剪:无事件存储,非空拒绝(GLM 形状保留,二期放开)
-    if (request.initial_events.length > 0) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["initial_events"],
-        message: "initial_events is not supported yet: nano has no event storage in this phase",
-      });
-    }
+    // 一期裁剪已放开:initial_events 走 SESSION_DO 的事件链路(runtime.md §8);
+    // 形状限制(仅 user.message、content 不含 document)由 InitialUserMessageEventSchema 表达
     // 一期裁剪:无 Vault 资源,非空拒绝
     if (request.vault_ids.length > 0) {
       ctx.addIssue({
