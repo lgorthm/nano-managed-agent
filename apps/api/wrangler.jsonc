@@ -17,16 +17,14 @@
 
   // File 内容存储(docs/files/schema.md)。bucket_name 为占位:
   // 运行 `wrangler r2 bucket create nano-files` 后即可本地/线上一致使用
-  "r2_buckets": [{ "binding": "FILES", "bucket_name": "nano-files" }]
+  "r2_buckets": [{ "binding": "FILES", "bucket_name": "nano-files" }],
 
-  // ---- 二期按需启用,加 DO 时记得在 tsconfig types 加 "wrangler" 并导出类 ----
+  // 会话运行时(docs/session/runtime.md):每会话一个实例,SQLite 存储
+  "durable_objects": {
+    "bindings": [{ "name": "SESSION_DO", "class_name": "SessionDo" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["SessionDo"] }]
 
-  // "durable_objects": {
-  //   "bindings": [{ "name": "SESSION_DO", "class_name": "SessionDo" }]
-  // },
-  // "migrations": [{ "tag": "v1", "new_sqlite_classes": ["SessionDo"] }],
-
-  // "workflows": [
-  //   { "name": "agent-loop", "binding": "AGENT_LOOP", "class_name": "AgentLoopWorkflow" }
-  // ]
+  // agent-loop Workflow 绑定已弃用:Agent 循环在 SESSION_DO 内自管执行,
+  // 决策记录见 docs/session/runtime.md §0
 }

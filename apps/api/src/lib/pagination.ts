@@ -66,6 +66,12 @@ export function cursorStringField(payload: CursorPayload, name: string): string 
   return value;
 }
 
+/** 端点级分页默认值覆盖(如事件列表:默认 100、正序) */
+export interface ListParamsDefaults {
+  limit?: number;
+  order?: SortOrder;
+}
+
 /**
  * 解析 limit/order/page 查询参数:
  * limit 非正整数或非法字符串抛 400,大于 100 截断;order 只接受 asc/desc,默认 desc;
@@ -74,9 +80,12 @@ export function cursorStringField(payload: CursorPayload, name: string): string 
 export function parseListParams(
   getQuery: (name: string) => string | undefined,
   cursorKind: string,
+  defaults: ListParamsDefaults = {},
 ): ListParams {
+  const defaultLimit = defaults.limit ?? DEFAULT_PAGE_LIMIT;
+  const defaultOrder = defaults.order ?? "desc";
   const rawLimit = getQuery("limit");
-  let limit = DEFAULT_PAGE_LIMIT;
+  let limit = defaultLimit;
   if (rawLimit !== undefined) {
     if (!/^\d+$/.test(rawLimit)) {
       throw invalidRequestError("Query parameter limit must be a positive integer.");
@@ -89,7 +98,7 @@ export function parseListParams(
   }
 
   const rawOrder = getQuery("order");
-  let order: SortOrder = "desc";
+  let order: SortOrder = defaultOrder;
   if (rawOrder !== undefined) {
     if (rawOrder !== "asc" && rawOrder !== "desc") {
       throw invalidRequestError("Query parameter order must be asc or desc.");

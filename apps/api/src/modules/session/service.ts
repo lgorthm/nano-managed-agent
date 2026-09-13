@@ -22,9 +22,13 @@ import {
   type Db,
 } from "@nano/db";
 import type {
+  DeltaEventType,
+  EventInput,
+  EventListFilters,
   FileResourceInput,
   FileResourceResponse,
   Page,
+  PersistedEventJson,
   SessionAgentOverrides,
   SessionCreateRequestInput,
   SessionDeletedResponse,
@@ -46,12 +50,14 @@ import {
 import type { Env } from "../../env";
 import { conflictError, invalidRequestError, notFoundError } from "../../lib/errors";
 import { cursorNumberField, cursorStringField, encodeCursor, type ListParams } from "../../lib/pagination";
+import { sessionDoStub, unwrapDoResult } from "../../runtime/session-do-stub";
 import { assertSkillReferencesResolvable } from "../../lib/skill-refs";
 import { serializeSession, serializeSessionResource } from "./serialize";
 
-/** sessions / session-resources 列表游标的 kind 前缀,防止与其他列表端点混用 */
+/** sessions / session-resources / session-events 列表游标的 kind 前缀,防止互串 */
 const SESSIONS_CURSOR_KIND = "sessions";
 const SESSION_RESOURCES_CURSOR_KIND = "session-resources";
+export const SESSION_EVENTS_CURSOR_KIND = "session-events";
 
 /** 已归档会话的门禁(更新 / 挂载 / 卸载共用) */
 function assertSessionNotArchived(archivedAt: Date | null): void {
@@ -221,6 +227,12 @@ export const sessionService = {
       now,
     });
 
+    // initial_events 走同一条 append → 触发链路(runtime.md §8);DO 失败让创建失败,
+    // 不留"会话存在但初始事件丢失"的半态
+    if (input.initial_events.length > 0) {
+      unwrapDoResult(await sessionDoStub(env, sessionId).sendEvents(input.initial_events));
+    }
+
     const created = await loadSessionWithResources(db, sessionId);
     return serializeSession(created.row, created.resources);
   },
@@ -327,6 +339,15 @@ export const sessionService = {
           throw notFoundError(`Session "${sessionId}" not found.`);
         }
         assertSessionNotArchived(current.archivedAt);
+      } else {
+        // 配置实际变更时外发 session.updated(runtime.md §2.3);
+        // 事件 append 失败不回滚更新——投影可比事实滞后,事实源在 D1
+        await sessionDoStub(env, sessionId)
+          .appendControlEvent("session.updated")
+          .then(unwrapDoResult)
+          .catch((err) => {
+            console.error("session.updated append failed:", err);
+          });
       }
     }
 
@@ -529,5 +550,60 @@ export const sessionService = {
       sessionResourceNotFound(resourceId);
     }
     return { id: resourceId, type: "session_resource_deleted" };
+  },
+
+  // ---------- 事件运行时(docs/session/runtime.md;M0 起执行器为 null-turn) ----------
+
+  /** 发送事件:404 → 已归档 409 → DO 追加并按需触发 turn(响应不等 turn 完成) */
+  async sendEvents(
+    env: Env,
+    sessionId: string,
+    events: EventInput[],
+  ): Promise<{ data: PersistedEventJson[] }> {
+    const row = await findSession(getDb(env), sessionId);
+    if (!row) {
+      throw notFoundError(`Session "${sessionId}" not found.`);
+    }
+    assertSessionNotArchived(row.archivedAt);
+    const raw = unwrapDoResult(await sessionDoStub(env, sessionId).sendEvents(events));
+    return { data: raw.map((event) => JSON.parse(event) as PersistedEventJson) };
+  },
+
+  /** 分页读取事件历史(默认 100 条正序);过滤与游标解析在 handler */
+  async listEvents(
+    env: Env,
+    sessionId: string,
+    params: ListParams,
+    filters: EventListFilters,
+  ): Promise<Page<PersistedEventJson>> {
+    const row = await findSession(getDb(env), sessionId);
+    if (!row) {
+      throw notFoundError(`Session "${sessionId}" not found.`);
+    }
+    const cursorSeq =
+      params.cursor === null ? undefined : cursorNumberField(params.cursor, "seq");
+    // listEvents 无失败分支(过滤参数已在传输层校验),结果无需解包
+    const result = await sessionDoStub(env, sessionId).listEvents({
+      filters,
+      limit: params.limit,
+      order: params.order,
+      cursorSeq,
+    });
+    return {
+      data: result.data.map((event) => JSON.parse(event) as PersistedEventJson),
+      next_page:
+        result.nextPageSeq === null
+          ? null
+          : encodeCursor({ kind: SESSION_EVENTS_CURSOR_KIND, seq: result.nextPageSeq }),
+    };
+  },
+
+  /** SSE 订阅:只推连接后的新事件;重连协议 = 列表补历史 + 按 id 去重(runtime.md §7) */
+  async streamEvents(env: Env, sessionId: string, deltas: DeltaEventType[]): Promise<ReadableStream> {
+    const row = await findSession(getDb(env), sessionId);
+    if (!row) {
+      throw notFoundError(`Session "${sessionId}" not found.`);
+    }
+    return unwrapDoResult(await sessionDoStub(env, sessionId).subscribe(deltas));
   },
 };

@@ -8,17 +8,8 @@ import {
 import type { AppEnv } from "../../../env";
 import { invalidRequestError } from "../../../lib/errors";
 import { parseListParams } from "../../../lib/pagination";
+import { parseRfc3339Query } from "../../../lib/rfc3339";
 import { sessionService } from "../service";
-
-/** RFC 3339 时间戳;四个边界参数共用同一校验 */
-const RFC3339_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
-
-function parseRfc3339(name: string, raw: string): number {
-  if (!RFC3339_PATTERN.test(raw) || Number.isNaN(Date.parse(raw))) {
-    throw invalidRequestError(`Query parameter ${name} must be a valid RFC 3339 timestamp.`);
-  }
-  return Date.parse(raw);
-}
 
 /**
  * 解析 sessions 列表的过滤参数(docs/session/api/list-sessions.md):
@@ -82,7 +73,7 @@ function parseSessionFilters(c: Context<AppEnv>): SessionListFilters {
   ] as const) {
     const raw = query(`created_at[${suffix}]`);
     if (raw !== undefined) {
-      filters[key] = parseRfc3339(`created_at[${suffix}]`, raw);
+      filters[key] = parseRfc3339Query(`created_at[${suffix}]`, raw);
     }
   }
 

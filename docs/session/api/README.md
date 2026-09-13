@@ -3,9 +3,9 @@
 nano-managed-agent 的 Session 资源接口，请求 / 响应结构与 GLM Managed Agents（`zai-version: 2026-05-26`）保持一致。
 表结构设计见 [../schema.md](../schema.md)，代码结构见 [../structure.md](../structure.md)。
 
-Session 是一次会话运行的控制面记录：创建时把 Agent（钉住版本 ⊕ 会话级覆盖）与 Environment（配置快照）固化进会话，可挂载 File 资源供沙箱使用。nano 一期只实现元数据控制面——事件收发、SSE 推流与 Agent 循环属二期运行时（见文末「二期预留」），因此一期会话创建后停留在 `idle`，`status` 的其余枚举值与相关 409 门禁为二期就位预留。
+Session 是一次会话运行的控制面记录：创建时把 Agent（钉住版本 ⊕ 会话级覆盖）与 Environment（配置快照）固化进会话，可挂载 File 资源供沙箱使用。事件端点（收发 / 检索 / SSE 订阅）随 M0 运行时落地（见文末「事件运行时」）；模型调用与沙箱工具属后续里程碑，`status` 目前只在 `idle ↔ running` 间迁移，`rescheduling` / `terminated` 门禁为后续就位预留。
 
-## 端点（10）
+## 端点（13）
 
 | 文档 | 端点 |
 | --- | --- |
@@ -19,6 +19,9 @@ Session 是一次会话运行的控制面记录：创建时把 Agent（钉住版
 | [list-session-resources.md](list-session-resources.md) | `GET /v1/sessions/{sessionId}/resources` |
 | [get-session-file-resource.md](get-session-file-resource.md) | `GET /v1/sessions/{sessionId}/resources/{resourceId}` |
 | [delete-session-file-resource.md](delete-session-file-resource.md) | `DELETE /v1/sessions/{sessionId}/resources/{resourceId}` |
+| [send-events.md](send-events.md) | `POST /v1/sessions/{sessionId}/events` |
+| [list-events.md](list-events.md) | `GET /v1/sessions/{sessionId}/events` |
+| [subscribe-events.md](subscribe-events.md) | `GET /v1/sessions/{sessionId}/events/stream` |
 
 ## 通用约定
 
@@ -72,12 +75,12 @@ Session 是一次会话运行的控制面记录：创建时把 Agent（钉住版
 | 协议头 | 必须携带 `zai-version` / `zai-beta` | 不需要（协议版本由路径 `/v1` 携带） |
 | 服务地址 | `https://agent-api.bigmodel.cn/api` | 本地 dev / 自有 Worker 域名 |
 | 创建状态码 | `200` | `201`（沿用 nano 各资源创建端点惯例） |
-| 事件端点 | `POST/GET …/events`、`GET …/events/stream`（SSE） | 二期（见下节）；`initial_events` 非空一期返回 400 |
-| `x-events-encrypted` / `x-checkpoint` | 创建时开关，事件按客户密钥加密 / 检查点 | 一期忽略（无事件存储） |
-| `status` 迁移 | idle / running / rescheduling / terminated 全量 | wire 保留全部枚举，一期恒 `idle`；running 门禁照常实现 |
+| 事件端点 | `POST/GET …/events`、`GET …/events/stream`（SSE） | 已实现（M0 运行时）；执行器为 null-turn，模型调用与工具属 M1/M2 |
+| `x-events-encrypted` / `x-checkpoint` | 创建时开关，事件按客户密钥加密 / 检查点 | 忽略（密钥管理单独设计，见 runtime.md §11） |
+| `status` 迁移 | idle / running / rescheduling / terminated 全量 | `idle ↔ running` 由运行时驱动；`rescheduling` / `terminated` 待三期沙箱与准入联动 |
 | `resources` 类型 | `file` + `memory_store` | 一期仅 `file`（无 Memory Store 资源），`memory_store` 返回 400 |
 | `vault_ids` | ≤ 20 个 Vault 引用 | 一期恒 `[]`，非空返回 400（无 Vault 资源） |
-| `stats` / `outcome_evaluations` | 运行时统计 | 一期固定 `{active_seconds: 0, duration_seconds: 0}` / `[]` |
+| `stats` / `outcome_evaluations` | 运行时统计 | M1 起随真实执行累计；当前固定 `{active_seconds: 0, duration_seconds: 0}` / `[]` |
 | `budget` | 恒 `null`（平台未支持） | 同 GLM，恒 `null` |
 | 列表过滤 | `memory_store_id` 可用 | 一期提供即 400（无 Memory Store 资源） |
 | 双向游标 | 响应含 `prev_page`，支持向前翻页 | 一期仅 `next_page` 向后翻页（nano 统一分页约定） |
@@ -85,11 +88,12 @@ Session 是一次会话运行的控制面记录：创建时把 Agent（钉住版
 | 非 API 创建会话 | IM 渠道会话不可归档 / 删除（409） | 不适用（nano 只有 API 创建的会话） |
 | 环境归档联动 | 归档环境触发引用会话准入终止 | 一期无运行时无联动；创建时校验环境未归档已实现 |
 
-## 二期预留：事件与运行时
+## 事件运行时（M0 已落地）
 
-GLM 的会话工作流是「先开 SSE 流、再发消息、会话进入 running、结束后回到 idle」。nano 把这一侧整体划入二期：事件历史与 SSE 推流落在 `SESSION_DO` Durable Object，Agent 循环由 `agent-loop` Workflow 驱动（架构见 [architecture-diagrams.md](../../architecture-diagrams.md)，绑定已在 `apps/api/wrangler.jsonc` 注释预留）。届时：
+GLM 的会话工作流是「先开 SSE 流、再发消息、会话进入 running、结束后回到 idle」。事件历史、SSE 推流与 Agent 循环执行落在 `SESSION_DO` Durable Object（循环在 DO 内自管执行、不使用 Workflows，定稿设计见 [../runtime.md](../runtime.md)；架构见 [architecture-diagrams.md](../../architecture-diagrams.md)）。当前状态：
 
-- 新增 `POST /v1/sessions/{sessionId}/events`（发送事件，触发执行）、`GET …/events`（检索事件历史）、`GET …/events/stream`（SSE 订阅）三个端点，`docs/session/api/` 补对应文档；
-- `status` 由运行时驱动迁移，`usage` 三列开始累计，`stats` 变为真实统计；
-- `initial_events` 放开（删除创建 schema 的一期拒绝分支），`x-events-encrypted` 一并设计；
-- 本页十个端点的契约不变。
+- 三个事件端点已实现：[send-events.md](send-events.md)（发送并触发处理）、[list-events.md](list-events.md)（检索历史）、[subscribe-events.md](subscribe-events.md)（SSE 订阅，只推连接后的新事件）；
+- `status` 的 `idle ↔ running` 迁移与 `usage` 三列回写由运行时驱动（M0 的 turn 为 null-turn：消费输入后直接终局，usage 全零）；
+- `initial_events` 已放开（仅 `user.message`、content 不允许 document 块），创建时走同一条 append → 触发链路；
+- 更新端点在实际变更时外发 `session.updated` 事件；删除会话广播 `session.deleted` 并清空 DO 存储；
+- 模型调用、沙箱工具、确认挂起与打断属 M1–M3（里程碑见 runtime.md §10），`user.tool_confirmation` 在挂起语义就位前一律 400。

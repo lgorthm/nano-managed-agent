@@ -163,6 +163,54 @@ export function deleteResource(sessionId: string, resourceId: string): Promise<R
   });
 }
 
+// ---------- 事件端点(二期运行时) ----------
+
+/** 事件响应的断言形状(信封 + 按展开的载荷字段) */
+export interface EventJson {
+  id: string;
+  type: string;
+  created_at: string;
+  processed_at?: string | null;
+  [key: string]: unknown;
+}
+
+/** POST /v1/sessions/{sessionId}/events,默认带认证 */
+export function sendEvents(sessionId: string, events: unknown, headers: Record<string, string> = {}): Promise<Response> {
+  return exports.default.fetch(sessionUrl(sessionId, "/events"), {
+    method: "POST",
+    headers: { "content-type": "application/json", ...authed(headers) },
+    body: JSON.stringify(typeof events === "object" && events !== null && "events" in events ? events : { events }),
+  });
+}
+
+/** GET /v1/sessions/{sessionId}/events?{query},默认带认证 */
+export function listEvents(sessionId: string, query = "", headers: Record<string, string> = {}): Promise<Response> {
+  return exports.default.fetch(sessionUrl(sessionId, `/events${query}`), { headers: authed(headers) });
+}
+
+/** GET /v1/sessions/{sessionId}/events/stream?{query},默认带认证;调用方读取并消费流 */
+export function openEventStream(sessionId: string, query = "", headers: Record<string, string> = {}): Promise<Response> {
+  return exports.default.fetch(sessionUrl(sessionId, `/events/stream${query}`), { headers: authed(headers) });
+}
+
+/** 轮询事件列表直到谓词命中(用户输入消费、null-turn 终局都是异步完成的) */
+export async function pollForEvent(
+  sessionId: string,
+  predicate: (events: EventJson[]) => boolean,
+  timeoutMs = 5000,
+): Promise<EventJson[]> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const res = await listEvents(sessionId);
+    const page = await jsonBody<PageJson<EventJson>>(res);
+    if (predicate(page.data)) return page.data;
+    if (Date.now() > deadline) {
+      throw new Error(`pollForEvent timed out; last events: ${JSON.stringify(page.data)}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+}
+
 /** 测试夹具:绕过接口直改库,把会话置为已归档 */
 export async function archiveSessionInDb(sessionId: string): Promise<void> {
   await env.DB.prepare("UPDATE sessions SET archived_at = ? WHERE id = ?")

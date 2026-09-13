@@ -5,7 +5,7 @@
 
 ## 一期范围与裁剪
 
-GLM 的 Session 是「一次实际运行的载体」：事件收发、SSE 推流、沙箱供给、Agent 循环都挂在它身上。nano 一期只落地 **元数据控制面**——会话的创建、检索、更新、归档、删除与 File 资源挂载；事件与运行时（`SESSION_DO` Durable Object、`agent-loop` Workflow，见 [architecture-diagrams.md](../architecture-diagrams.md)，wrangler 绑定已注释预留）属二期。由此产生四条一期裁剪，全文一致遵守：
+GLM 的 Session 是「一次实际运行的载体」：事件收发、SSE 推流、沙箱供给、Agent 循环都挂在它身上。nano 一期只落地 **元数据控制面**——会话的创建、检索、更新、归档、删除与 File 资源挂载；事件与运行时（`SESSION_DO` Durable Object 内自管执行，定稿设计见 [runtime.md](runtime.md)）属二期。由此产生四条一期裁剪，全文一致遵守：
 
 1. **`status` 一期恒为 `idle`**。wire 上保留 GLM 全部四个枚举值（`idle` / `running` / `rescheduling` / `terminated`），但一期没有任何组件会驱动状态迁移；`running` 门禁（更新 tools 409、归档 409、删除 409）照常实现，为二期运行时就位后直接生效。
 2. **事件不落库**。`initial_events` 字段在 wire 上保留（≤ 50 条），非空数组一期返回 400——事件历史的存储位置在二期的 `SESSION_DO`，先在 D1 里开一个事件存放点、二期再迁移，不如一开始就拒绝。`x-events-encrypted` / `x-checkpoint` 协议头一期忽略。
@@ -268,5 +268,5 @@ export const sessionResources = sqliteTable(
 
 - **时间戳**：DB 存 `timestamp_ms` 整数；API 输出 ISO 8601 UTC（`2026-09-12T08:00:00.000Z`）。
 - **固定回显字段**：`type: "session"`、`vault_ids: []`（一期）、`outcome_evaluations: []`、`stats: {active_seconds: 0, duration_seconds: 0}`、`budget: null` 与 `agent.multiagent: null` 不落库，序列化时注入。
-- **无事件端点**：GLM 的 `POST/GET /v1/sessions/:id/events` 与 SSE 流属二期（`SESSION_DO`），本设计的表结构不为其预留列。
+- **无事件端点**：GLM 的 `POST/GET /v1/sessions/:id/events` 与 SSE 流属二期（`SESSION_DO`，设计见 [runtime.md](runtime.md)），本设计的表结构不为其预留列。
 - **分页游标**：列表按 `(created_at, id)` keyset（带 `agent_id` 过滤时走 agent 复合索引同序），游标 base64url 编码经 `next_page` 返回，opaque；一期不提供 GLM 的 `prev_page` 双向游标。

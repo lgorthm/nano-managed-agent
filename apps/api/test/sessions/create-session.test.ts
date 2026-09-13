@@ -6,9 +6,11 @@ import {
   createDefaultEnvironment,
   createDefaultFile,
   jsonBody,
+  listEvents,
   postSession,
   type AgentJson,
   type ErrorEnvelope,
+  type PageJson,
   type SessionJson,
 } from "./helpers";
 
@@ -225,7 +227,7 @@ describe("POST /v1/sessions 一期裁剪与请求校验", () => {
     expect(res.status).toBe(400);
   });
 
-  it("initial_events 非空返回 400", async () => {
+  it("initial_events 随事件运行时放开:非空创建成功且初始消息可见", async () => {
     const agent = await createDefaultAgent();
     const environment = await createDefaultEnvironment();
     const res = await postSession({
@@ -233,9 +235,26 @@ describe("POST /v1/sessions 一期裁剪与请求校验", () => {
       environment_id: environment.id,
       initial_events: [{ type: "user.message", content: [{ type: "text", text: "hi" }] }],
     });
+    expect(res.status).toBe(201);
+    const events = await listEvents((await jsonBody<SessionJson>(res)).id);
+    const types = (await jsonBody<PageJson<{ type: string }>>(events)).data.map((event) => event.type);
+    expect(types).toContain("user.message");
+  });
+
+  it("initial_events 携带 document 块返回 400(GLM:创建不允许该块)", async () => {
+    const agent = await createDefaultAgent();
+    const environment = await createDefaultEnvironment();
+    const res = await postSession({
+      agent: agent.id,
+      environment_id: environment.id,
+      initial_events: [
+        {
+          type: "user.message",
+          content: [{ type: "document", source: { type: "text", media_type: "text/plain", data: "doc" } }],
+        },
+      ],
+    });
     expect(res.status).toBe(400);
-    const error = (await jsonBody<ErrorEnvelope>(res)).error;
-    expect(JSON.stringify(error.details)).toContain("initial_events");
   });
 
   it("vault_ids 非空返回 400", async () => {

@@ -2,7 +2,7 @@
 
 本文档描述 Session 模块的代码目录结构，把 [schema.md](schema.md) 中设计的两张表和 [api/](api/) 中定义的十个端点，落地为一份可以直接照着建文件的代码组织方案。
 
-Session 是仓库里的第五个资源模块（前四个：agent、skill、file、environment），分层规则、目录形态与 [Agent 模块结构](../agent/structure.md) 完全一致——传输层（`apps/api`）、存储层（`packages/db`）、协议层（`packages/shared`）单向依赖，模块间禁止横向引用。因此本文档不再重复三层划分的论证，只讲 Session 与既有模块**不同**的部分：跨资源的引用解析、纯函数的两类语义、以及为二期运行时（`SESSION_DO` / `agent-loop`）预留的位置。
+Session 是仓库里的第五个资源模块（前四个：agent、skill、file、environment），分层规则、目录形态与 [Agent 模块结构](../agent/structure.md) 完全一致——传输层（`apps/api`）、存储层（`packages/db`）、协议层（`packages/shared`）单向依赖，模块间禁止横向引用。因此本文档不再重复三层划分的论证，只讲 Session 与既有模块**不同**的部分：跨资源的引用解析、纯函数的两类语义、以及为二期运行时（`SESSION_DO` 内自管执行，定稿见 [runtime.md](runtime.md)）预留的位置。
 
 ## Session 模块的三个特殊点
 
@@ -10,7 +10,7 @@ Session 是仓库里的第五个资源模块（前四个：agent、skill、file�
 
 **它的纯函数是两类语义。** Agent 模块的 shared 纯函数只有一类（配置归一化与合并）；Session 增加了第二类——**引用解析**（`resolveSessionAgent`：版本配置 ⊕ 覆盖 → 最终配置）与**路径归一化**（`normalizeMountPath`：挂载路径消解、逃逸检测、重叠判定）。两者都是「相同输入永远相同输出、无 IO」的协议语义，放 `@nano/shared` 用 node 单测穷举，尤其是 mount_path 的 `..` 消解与前缀重叠，边界用例多且最容易错。
 
-**它有一个二期运行时的预留位。** 一期 Session 是纯元数据控制面；二期的事件历史与 SSE 推流落在 `SESSION_DO` Durable Object，Agent 循环落在 `agent-loop` Workflow（`wrangler.jsonc` 已注释预留绑定）。它们的代码位置与依赖方向现在就定下来（见文末），避免二期开工时把运行时代码塞进模块目录破坏分层。
+**它有一个二期运行时的预留位。** 一期 Session 是纯元数据控制面；二期的事件历史、SSE 推流与 Agent 循环执行都落在 `SESSION_DO` Durable Object（循环在 DO 内自管检查点与恢复，不使用 Workflows，定稿见 [runtime.md](runtime.md)；`wrangler.jsonc` 已注释预留 DO 绑定）。它们的代码位置与依赖方向现在就定下来（见文末），避免二期开工时把运行时代码塞进模块目录破坏分层。
 
 ## 目录树
 
@@ -21,7 +21,7 @@ nano-managed-agent/
 │       ├── src/
 │       │   ├── modules/
 │       │   │   ├── session/                   # Session 资源模块(照 agent 模块骨架复制)
-│       │   │   │   ├── routes.ts              # 子路由: 声明 10 个端点并绑定 handler
+│       │   │   │   ├── routes.ts              # 子路由: 声明端点并绑定 handler(一期 10 个,M0 起含事件 3 个)
 │       │   │   │   ├── handlers/              # 每端点一个文件, 与 docs/session/api/ 文档一一对应
 │       │   │   │   │   ├── create-session.ts            # POST   /v1/sessions
 │       │   │   │   │   ├── list-sessions.ts             # GET    /v1/sessions
@@ -37,8 +37,9 @@ nano-managed-agent/
 │       │   │   │   └── serialize.ts            # 行转 API JSON: 注入固定回显字段, 拼装 resources 子查询
 │       │   │   └── ...
 │       │   ├── runtime/                        # 二期预留: 会话运行时(一期不建目录)
-│       │   │   ├── do/session-do.ts            # SESSION_DO: 事件历史存储 + SSE 推流(每会话一个实例)
-│       │   │   └── workflows/agent-loop.ts     # agent-loop: 每轮 Agent 循环的持久化执行
+│       │   │   └── do/                         # SESSION_DO 全部内部(每会话一个实例):
+│       │   │       ├── session-do.ts           #   状态机 + 事件历史 + SSE 推流 + alarm 复用器
+│       │   │       └── turn-executor.ts        #   Agent 循环执行(runTurn / 快照 / 恢复钩子)
 │       │   └── ...
 │       └── test/
 │           └── sessions/                       # 集成测试(真实 Workers 运行时 + miniflare D1)
@@ -148,10 +149,10 @@ serialize 的一个新职责：`resources` 子对象来自 `session_resources` �
 - **列表行为**：默认排除已归档、`include_archived=true` 包含、`agent_id`+`agent_version` 过滤、`statuses[]` 重复参数、`created_at[gte]` 等区间、`memory_store_id` 400。
 - **挂载端到端**：归一化回显（省略 mount_path 得默认路径）、重叠拒绝、500 上限、删除会话后 file 恢复可删（对 file 模块的回归断言）。
 
-## 二期运行时的扩展路径
+## 二期运行时的扩展路径（M0 已按此落地）
 
 事件端点（`POST/GET /v1/sessions/:id/events`、`GET …/events/stream`）与状态迁移引入时：
 
-1. `apps/api/src/runtime/` 建目录：`do/session-do.ts`（事件历史 + SSE，实例 id 即 sessionId）与 `workflows/agent-loop.ts`（Agent 循环持久化执行，调 GLM 模型 API 与 Sandbox SDK）；`wrangler.jsonc` 解开 `durable_objects` / `workflows` 绑定注释。运行时属于传输层侧的独立子系统，不进 `modules/session/`，经 service 触发而非被 handler 直连。
+1. `apps/api/src/runtime/do/` 建目录：`session-do.ts`（状态机 + 事件历史 + SSE + alarm 复用器，实例 id 即 sessionId）与 `turn-executor.ts`（Agent 循环执行：调 GLM 模型 API 与 Sandbox SDK，自管两级检查点与崩溃恢复，见 [runtime.md](runtime.md)）；`wrangler.jsonc` 只解开 `durable_objects` 绑定注释（`workflows` 绑定已弃用，决策记录见 [runtime.md](runtime.md) 的 §0）。运行时属于传输层侧的独立子系统，不进 `modules/session/`，经 service 触发而非被 handler 直连。
 2. 协议层补 `packages/shared/src/session/events.ts`（事件 wire schema）；存储层不动——事件历史在 DO，D1 的 `sessions.status` 由运行时经既有 `updateSessionRow` 风格的守卫 UPDATE 迁移（`idle → running → idle`），`usage` 三列由运行时累计。
 3. 挂载/资源端点与本文档全部端点零改动；`initial_events` / `x-events-encrypted` 的放开只删 refine 分支。

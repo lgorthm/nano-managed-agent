@@ -1,7 +1,7 @@
 # 架构图与流程图
 
 本文用 Mermaid 描述 nano-managed-agent 的整体目标架构、nano-api 的请求链路,以及 D1 数据模型。
-图中的绑定名(`DB`、`SESSION_DO`、`AGENT_LOOP`、`FILES`)、路由、表名均与仓库代码一一对应。
+图中的绑定名(`DB`、`SESSION_DO`、`FILES`)、路由、表名均与仓库代码一一对应。
 
 ## 1. 总目标架构
 
@@ -9,7 +9,7 @@
 
 - **管理面**(nano-console):浏览器经 Cloudflare Access 登录后使用 React SPA;SPA 的所有 API 调用走同源 `/glm/*` 代理,由 Worker 校验 Access JWT、注入 `GLM_API_KEY` 后转发到 GLM Managed Agents API,密钥永不进浏览器,SSE 流式透传。
 - **API 平面**(nano-api):Hono Worker,`/v1` 路由以 `API_KEY` Bearer 认证,管理 agents / skills / sessions 等元数据,落在 D1。
-- **会话运行时**:每个 Session 一个 `SESSION_DO` Durable Object(事件历史 + SSE 推流);每轮 Agent 循环由 `agent-loop` Workflow 持久化执行;工具在 Sandbox SDK 会话沙箱中运行;产出文件写 R2。
+- **会话运行时**:每个 Session 一个 `SESSION_DO` Durable Object——状态机、事件历史、SSE 推流与 Agent 循环执行(turn 执行器自管两级检查点与崩溃恢复,不使用 Workflows,见 [session/runtime.md](session/runtime.md));工具在 Sandbox SDK 会话沙箱中运行;产出文件写 R2。
 - **模型服务**:Agent 循环调用 GLM 模型 API 完成推理。
 
 ```mermaid
@@ -34,8 +34,7 @@ flowchart TB
     end
 
     subgraph RUNTIME["会话运行时(每个 Session)"]
-        DO["SESSION_DO · Durable Object<br/>事件历史存储 + SSE 推流"]
-        WF["agent-loop · Workflow<br/>每轮 Agent 循环的持久化执行"]
+        DO["SESSION_DO · Durable Object<br/>状态机 + 事件历史 + SSE 推流<br/>+ turn 执行器(自管检查点与恢复)"]
         SANDBOX["Sandbox SDK 会话沙箱<br/>read · write · edit · bash · grep · find · ls"]
     end
 
@@ -58,13 +57,11 @@ flowchart TB
     CLIENT -->|"Bearer API_KEY"| ROUTES
     ROUTES --> SERVICE
     SERVICE -->|"Drizzle ORM"| D1
-    SERVICE -->|"创建 Session"| DO
-    DO -->|"触发一轮循环"| WF
-    WF -->|"模型请求(context + 工具定义)"| GLM_LLM
-    GLM_LLM -->|"响应 / 流式增量"| WF
-    WF -->|"工具调用"| SANDBOX
+    SERVICE -->|"创建 Session / 追加事件"| DO
+    DO -->|"模型请求(context + 工具定义,流式)"| GLM_LLM
+    GLM_LLM -->|"流式增量 / 响应"| DO
+    DO -->|"工具调用"| SANDBOX
     SANDBOX -->|"产出文件"| R2
-    WF -->|"追加事件(thinking / message / tool_use / tool_result …)"| DO
     DO ==>|"SSE · /sessions/:id/events/stream"| CLIENT
 ```
 

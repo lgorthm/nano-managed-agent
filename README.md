@@ -8,8 +8,7 @@ API 定义 Agent → 启动有状态 Session → 平台驱动 Agent 循环 → �
 | Cloudflare 组件 | 角色 |
 | --- | --- |
 | Workers | API 网关(`/v1/agents`、`/v1/sessions` 等) |
-| Durable Objects | 每个 Session 一个:事件历史 + SSE 推流(二期) |
-| Workflows | 每轮 Agent 循环的持久执行(二期) |
+| Durable Objects | 每个 Session 一个:事件历史 + SSE 推流 + Agent 循环执行(二期,自管检查点与恢复、不使用 Workflows,见 [docs/session/runtime.md](docs/session/runtime.md)) |
 | Sandbox SDK | 会话沙箱:bash / 文件工具(二期) |
 | D1 | 元数据:agents / skills / files(内容在 R2)/ environments / sessions |
 | R2 | File 资源内容存储(`FILES` 绑定,见 [docs/files/schema.md](docs/files/schema.md));会话产出文件(二期) |
@@ -32,7 +31,7 @@ packages/
 
 资源模块内部的代码目录结构与分层规则见 [docs/agent/structure.md](docs/agent/structure.md)(以 Agent 模块为样板),按接口推进的实现计划见 [docs/agent/work-plan.md](docs/agent/work-plan.md)。
 
-Session 资源(一期元数据控制面,事件与运行时属二期)的设计文档见 [docs/session/](docs/session/):[schema.md](docs/session/schema.md)(表结构)、[structure.md](docs/session/structure.md)(模块结构)、[api/](docs/session/api/)(10 个端点)、[work-plan.md](docs/session/work-plan.md)(实现计划)。
+Session 资源的设计文档见 [docs/session/](docs/session/):[schema.md](docs/session/schema.md)(一期表结构)、[structure.md](docs/session/structure.md)(模块结构)、[api/](docs/session/api/)(13 个端点)、[work-plan.md](docs/session/work-plan.md)(一期实现计划)、[runtime.md](docs/session/runtime.md)(二期运行时定稿:事件、流式输出与 Agent 循环)、[runtime-work-plan.md](docs/session/runtime-work-plan.md)(二期实现计划)。
 
 管理后台的部署与 Cloudflare Access 配置见 [docs/console.md](docs/console.md)。
 
