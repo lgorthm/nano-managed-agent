@@ -6,11 +6,13 @@
  */
 import {
   countActiveSessionMounts,
+  countActiveSessionOutputs,
   deleteFile as deleteFileRow,
   findFile,
+  findFileWithScope,
   getDb,
   insertFile,
-  listFilesBySessionMountPage,
+  listFilesBySessionScopePage,
   listFilesPage,
   newFileId,
 } from "@nano/db";
@@ -91,19 +93,24 @@ export const fileService = {
     });
   },
 
-  /** 获取元数据;不存在时抛 404 */
+  /** 获取元数据;不存在时抛 404。产出文件恒回显 scope(一对一归属) */
   async getFile(env: Env, fileId: string): Promise<FileResponse> {
-    const row = await findFile(getDb(env), fileId);
-    if (!row) {
+    const found = await findFileWithScope(getDb(env), fileId);
+    if (!found) {
       throw notFoundError(`File "${fileId}" not found.`);
     }
-    return serializeFile(row);
+    return serializeFile(
+      found.file,
+      found.scopeSessionId !== null ? { type: "session", id: found.scopeSessionId } : undefined,
+    );
   },
 
   /**
    * 分页列出 File,按 (created_at, id) keyset。
-   * scope_id 过滤:列出被该会话挂载的 File 并在每条回显 scope;
-   * 会话不存在或无挂载时自然返回空页。租户级列表不输出 scope。
+   * scope_id 过滤:列出与该会话相关的 File(挂载 ∪ 产出);会话不存在或
+   * 无关联时自然返回空页。
+   * scope 回显:产出文件在任何列表都带自己的归属 scope(一对一,恒可回显);
+   * 挂载的 File 是多对多,只在 scope_id 过滤时回显该会话,租户级列表不输出。
    */
   async listFiles(
     env: Env,
@@ -119,16 +126,23 @@ export const fileService = {
     const { rows, nextCursor } =
       params.scopeId === undefined
         ? await listFilesPage(getDb(env), { limit: params.limit, order: params.order, cursor })
-        : await listFilesBySessionMountPage(getDb(env), {
+        : await listFilesBySessionScopePage(getDb(env), {
             sessionId: params.scopeId,
             limit: params.limit,
             order: params.order,
             cursor,
           });
-    const scope: FileScope | undefined =
+    const mountScope: FileScope | undefined =
       params.scopeId === undefined ? undefined : { type: "session", id: params.scopeId };
     return {
-      data: rows.map((row) => serializeFile(row, scope)),
+      data: rows.map((entry) =>
+        serializeFile(
+          entry.file,
+          entry.scopeSessionId !== null
+            ? { type: "session", id: entry.scopeSessionId }
+            : mountScope,
+        ),
+      ),
       next_page: nextCursor
         ? encodeCursor({
             kind: FILES_CURSOR_KIND,
@@ -160,8 +174,9 @@ export const fileService = {
   },
 
   /**
-   * 删除:引用检查(被未归档会话挂载的 File 拒绝删除)→ 删元数据(0 行受影响 → 404)
-   * → 尽力清理 R2 对象。已归档会话的挂载不阻止删除(docs/files/schema.md 的联动条款)。
+   * 删除:引用检查(被未归档会话挂载,或是未归档会话的产出 → 拒绝删除)
+   * → 删元数据与产出映射行(0 行受影响 → 404)→ 尽力清理 R2 对象。
+   * 已归档会话的挂载与产出都不阻止删除(docs/files/schema.md 的联动条款)。
    */
   async deleteFile(env: Env, fileId: string): Promise<FileDeletedResponse> {
     const mounts = await countActiveSessionMounts(getDb(env), fileId);
@@ -169,6 +184,13 @@ export const fileService = {
       throw invalidRequestError(
         `File is mounted by ${mounts} active session(s) and cannot be deleted.`,
         { param: "fileId", mounts },
+      );
+    }
+    const outputs = await countActiveSessionOutputs(getDb(env), fileId);
+    if (outputs > 0) {
+      throw invalidRequestError(
+        `File is an output of ${outputs} active session(s) and cannot be deleted.`,
+        { param: "fileId", outputs },
       );
     }
     const deleted = await deleteFileRow(getDb(env), fileId);

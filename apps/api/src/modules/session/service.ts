@@ -10,6 +10,7 @@ import {
   findFile,
   findFilesByIds,
   findSession,
+  findSessionOutputsBySession,
   findSessionResource,
   findSessionResourcesBySessionIds,
   getDb,
@@ -41,6 +42,7 @@ import {
   MAX_SESSION_FILE_RESOURCES,
   agentConfigIssues,
   deepEqual,
+  fileObjectKey,
   mergeMetadata,
   normalizeMountPath,
   overlapsAnyMountPath,
@@ -398,8 +400,10 @@ export const sessionService = {
   },
 
   /**
-   * 硬删除会话及其挂载记录;已归档会话允许删除(与"归档即终态"的直觉相反,
-   * GLM 语义如此)。running 拒绝。挂载的 File 是独立资源,不受影响。
+   * 硬删除会话及其挂载记录与产出编目;已归档会话允许删除(与"归档即终态"的
+   * 直觉相反,GLM 语义如此)。running 拒绝。挂载的 File 是独立资源,不受影响;
+   * 产出的 File 生命周期从属于会话,连行带 R2 对象一起清(先 D1 后 R2,
+   * 失败留下的孤儿对象不影响正确性,与 delete-file 同一口径)。
    */
   async deleteSession(env: Env, sessionId: string): Promise<SessionDeletedResponse> {
     const db = getDb(env);
@@ -410,13 +414,20 @@ export const sessionService = {
     if (row.status === "running") {
       throw conflictError("Session is running; interrupt the session before deleting.");
     }
-    const deleted = await deleteSessionRow(db, sessionId);
+    const outputs = await findSessionOutputsBySession(db, sessionId);
+    const outputFileIds = outputs.map((output) => output.fileId);
+    const deleted = await deleteSessionRow(db, { sessionId, outputFileIds });
     if (!deleted) {
       const current = await findSession(db, sessionId);
       if (!current) {
         throw notFoundError(`Session "${sessionId}" not found.`);
       }
       throw conflictError("Session is running; interrupt the session before deleting.");
+    }
+    for (const fileId of outputFileIds) {
+      await env.FILES.delete(fileObjectKey(fileId)).catch((err) => {
+        console.error(`orphan R2 object after session delete: ${fileObjectKey(fileId)}`, err);
+      });
     }
     return { id: sessionId, type: "session_deleted" };
   },

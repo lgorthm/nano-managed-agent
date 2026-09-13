@@ -6,6 +6,7 @@
  * 统一返回 false,由 service 重读一次区分错误码。
  */
 import { and, asc, desc, eq, gt, gte, inArray, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
+import type { BatchItem } from "drizzle-orm/batch";
 import type {
   NormalizedEnvironmentConfig,
   SessionAgentConfig,
@@ -13,10 +14,12 @@ import type {
   SessionStatus,
 } from "@nano/shared";
 import type { Db } from "../client";
-import { sessionResources, sessions } from "../schema";
+import type { FileInsertValues } from "../file/repo";
+import { files, sessionOutputs, sessionResources, sessions } from "../schema";
 
 export type SessionRow = typeof sessions.$inferSelect;
 export type SessionResourceRow = typeof sessionResources.$inferSelect;
+export type SessionOutputRow = typeof sessionOutputs.$inferSelect;
 
 /** 创建会话时写入的可变业务字段(状态与用量三列走列默认值) */
 export interface CreateSessionValues {
@@ -188,16 +191,26 @@ export async function archiveSession(db: Db, sessionId: string, now: Date): Prom
 }
 
 /**
- * 硬删除会话及其挂载记录(同一 batch)。已归档会话允许删除;
+ * 硬删除会话及其挂载记录与产出编目(同一 batch)。已归档会话允许删除;
  * running 拒绝(WHERE status != 'running'),受影响 0 行返回 false。
- * 挂载的 File 是独立资源,只清挂载记录,不动 files 表。
+ * 挂载的 File 是独立资源,只清挂载记录;产出的 File 生命周期从属于会话,
+ * 连行带映射一起删(FK 顺序:先 session_outputs 后 files)。outputFileIds
+ * 由调用方先行查出(R2 清理复用同一份列表),batch 内不做子查询——
+ * 先删映射再按 id 删 files,子查询会因映射已清空而失效。
  */
-export async function deleteSession(db: Db, sessionId: string): Promise<boolean> {
-  const results = await db.batch([
+export async function deleteSession(
+  db: Db,
+  input: { sessionId: string; outputFileIds: string[] },
+): Promise<boolean> {
+  const { sessionId, outputFileIds } = input;
+  const statements: [BatchItem<"sqlite">, ...BatchItem<"sqlite">[]] = [
     db.delete(sessionResources).where(eq(sessionResources.sessionId, sessionId)),
+    db.delete(sessionOutputs).where(eq(sessionOutputs.sessionId, sessionId)),
+    ...(outputFileIds.length > 0 ? [db.delete(files).where(inArray(files.id, outputFileIds))] : []),
     db.delete(sessions).where(and(eq(sessions.id, sessionId), ne(sessions.status, "running"))),
-  ]);
-  const deleteResult = results[1] as unknown as { meta?: { changes?: number } };
+  ];
+  const results = await db.batch(statements);
+  const deleteResult = results[results.length - 1] as unknown as { meta?: { changes?: number } };
   return (deleteResult.meta?.changes ?? 0) > 0;
 }
 
@@ -328,6 +341,113 @@ export async function countActiveSessionMounts(db: Db, fileId: string): Promise<
     .from(sessionResources)
     .innerJoin(sessions, eq(sessions.id, sessionResources.sessionId))
     .where(and(eq(sessionResources.fileId, fileId), isNull(sessions.archivedAt)));
+  return rows[0]?.count ?? 0;
+}
+
+// ---------- 会话产出编目(docs/files/schema.md「与 Session 的联动」) ----------
+
+/** 该会话的全部产出映射(收割对比 / 物化回填 / 删除前取 fileIds);按路径正序 */
+export async function findSessionOutputsBySession(
+  db: Db,
+  sessionId: string,
+): Promise<SessionOutputRow[]> {
+  return db
+    .select()
+    .from(sessionOutputs)
+    .where(eq(sessionOutputs.sessionId, sessionId))
+    .orderBy(asc(sessionOutputs.path));
+}
+
+/** 新产出编目:file 行与映射行同一 batch 原子插入;调用方需先完成 R2 put */
+export async function createSessionOutput(
+  db: Db,
+  input: { file: FileInsertValues; sessionId: string; path: string; contentSha256: string; now: Date },
+): Promise<void> {
+  await db.batch([
+    db.insert(files).values(input.file),
+    db.insert(sessionOutputs).values({
+      fileId: input.file.id,
+      sessionId: input.sessionId,
+      path: input.path,
+      contentSha256: input.contentSha256,
+      createdAt: input.now,
+      updatedAt: input.now,
+    }),
+  ]);
+}
+
+/**
+ * 内容变化的换代:新 file 行插入、映射行改指新行、旧 file 行删除,同一 batch。
+ * File 保持不可变——「更新」落地为换 id。返回旧 fileId 供调用方清理 R2 对象;
+ * 映射行不存在(理论不该发生,收割先查后写)时返回 null,仅插入新行。
+ */
+export async function replaceSessionOutput(
+  db: Db,
+  input: { file: FileInsertValues; sessionId: string; path: string; contentSha256: string; now: Date },
+): Promise<string | null> {
+  const existing = await db
+    .select()
+    .from(sessionOutputs)
+    .where(and(eq(sessionOutputs.sessionId, input.sessionId), eq(sessionOutputs.path, input.path)))
+    .limit(1);
+  const old = existing[0];
+  await db.batch([
+    db.insert(files).values(input.file),
+    ...(old !== undefined
+      ? [
+          db
+            .update(sessionOutputs)
+            .set({
+              fileId: input.file.id,
+              contentSha256: input.contentSha256,
+              updatedAt: input.now,
+            })
+            .where(eq(sessionOutputs.fileId, old.fileId)),
+          db.delete(files).where(eq(files.id, old.fileId)),
+        ]
+      : [
+          db.insert(sessionOutputs).values({
+            fileId: input.file.id,
+            sessionId: input.sessionId,
+            path: input.path,
+            contentSha256: input.contentSha256,
+            createdAt: input.now,
+            updatedAt: input.now,
+          }),
+        ]),
+  ]);
+  return old?.fileId ?? null;
+}
+
+/**
+ * 沙箱内已消失的产出:映射行与 file 行同一 batch 删除(FK 顺序:先映射后本体)。
+ * 返回被删的 fileId 供调用方清理 R2 对象;映射不存在返回 null。
+ */
+export async function deleteSessionOutput(
+  db: Db,
+  keys: { sessionId: string; path: string },
+): Promise<string | null> {
+  const existing = await db
+    .select()
+    .from(sessionOutputs)
+    .where(and(eq(sessionOutputs.sessionId, keys.sessionId), eq(sessionOutputs.path, keys.path)))
+    .limit(1);
+  const row = existing[0];
+  if (row === undefined) return null;
+  await db.batch([
+    db.delete(sessionOutputs).where(eq(sessionOutputs.fileId, row.fileId)),
+    db.delete(files).where(eq(files.id, row.fileId)),
+  ]);
+  return row.fileId;
+}
+
+/** 该 File 是未归档会话产出的次数;file 删除检查用(与挂载门禁同语义) */
+export async function countActiveSessionOutputs(db: Db, fileId: string): Promise<number> {
+  const rows = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(sessionOutputs)
+    .innerJoin(sessions, eq(sessions.id, sessionOutputs.sessionId))
+    .where(and(eq(sessionOutputs.fileId, fileId), isNull(sessions.archivedAt)));
   return rows[0]?.count ?? 0;
 }
 

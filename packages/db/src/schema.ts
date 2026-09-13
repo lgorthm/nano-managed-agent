@@ -14,9 +14,10 @@
  * Environment 资源的一张表,设计见 docs/environment/schema.md:
  * - environments: 单表当前态(无版本快照,config 以归一化形态存储)
  *
- * Session 资源的两张表,设计见 docs/session/schema.md:
+ * Session 资源的三张表,设计见 docs/session/schema.md:
  * - sessions: 会话当前态(agent_config / environment_snapshot 创建时固化)
  * - session_resources: 会话挂载的 File 资源(随会话删除级联清理)
+ * - session_outputs: 会话产出文件的编目映射(随会话删除级联清理,并连带删 File 行)
  *
  * JSON 列存归一化后的形态(与 API 响应一致),类型由 @nano/shared 提供。
  */
@@ -261,5 +262,34 @@ export const sessionResources = sqliteTable(
     index("idx_session_resources_session").on(t.sessionId, t.createdAt, t.id),
     index("idx_session_resources_file_id").on(t.fileId),
     uniqueIndex("uq_session_resources_mount_path").on(t.sessionId, t.mountPath),
+  ],
+);
+
+/**
+ * 会话产出文件的编目映射(docs/files/schema.md):path 是沙箱 outputs 目录
+ * (/mnt/session/outputs)下的相对路径,file_id 指向当前代表的 File 行。
+ * File 本身不可变——内容变化 = 换新 file 行 + 新 R2 对象,本表就地改指;
+ * content_sha256 是收割幂等的判断依据(未变则跳过)。
+ * 差集同步:沙箱内已消失的产出连映射行带 File 行一起清理。
+ * 映射随会话删除级联清理(并连带删除 File 行,与挂载的「File 本体不删」相反:
+ * 产出 File 的生命周期从属于产出它的会话)。
+ */
+export const sessionOutputs = sqliteTable(
+  "session_outputs",
+  {
+    fileId: text("file_id")
+      .primaryKey()
+      .references(() => files.id),
+    sessionId: text("session_id")
+      .notNull()
+      .references(() => sessions.id),
+    path: text("path").notNull(),
+    contentSha256: text("content_sha256").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("uq_session_outputs_session_path").on(t.sessionId, t.path),
+    index("idx_session_outputs_session").on(t.sessionId, t.updatedAt, t.fileId),
   ],
 );
