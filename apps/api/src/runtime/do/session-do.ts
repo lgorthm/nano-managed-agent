@@ -11,6 +11,7 @@ import { DurableObject } from "cloudflare:workers";
 import { getSandbox } from "@cloudflare/sandbox";
 import {
   findSession,
+  findSessionOutputsBySession,
   findSessionResourcesBySessionIds,
   findSkillVersion,
   getDb,
@@ -615,6 +616,10 @@ export class SessionDo extends DurableObject<Env> {
       fileId: resource.fileId,
       mountPath: resource.mountPath,
     }));
+    const outputs = (await findSessionOutputsBySession(db, sessionId)).map((output) => ({
+      fileId: output.fileId,
+      path: output.path,
+    }));
     const skills = [];
     for (const reference of row.agentConfig.skills) {
       if (reference.type !== "custom") continue;
@@ -632,6 +637,7 @@ export class SessionDo extends DurableObject<Env> {
     return createToolRunner(this.env, {
       sessionId,
       resources,
+      outputs,
       skills,
       packages: row.environmentSnapshot.packages ?? null,
     });

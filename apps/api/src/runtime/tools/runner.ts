@@ -16,9 +16,7 @@ import {
   type NormalizedEnvironmentPackages,
 } from "@nano/shared";
 import type { Env } from "../../env";
-
-/** 会话产出在 R2 的键前缀(wire 层暂不暴露,M4 定稿编目语义) */
-export const outputsPrefix = (sessionId: string): string => `sessions/${sessionId}/outputs/`;
+import { harvestSessionOutputs, type HarvestedOutput } from "./catalog";
 
 const WORKSPACE = "/workspace";
 const UPLOADS_ROOT = "/mnt/session/uploads";
@@ -44,6 +42,8 @@ export interface ToolSessionContext {
   sessionId: string;
   /** 挂载文件:mounth_path 已归一化,内容在 R2(files/{file_id}) */
   resources: Array<{ fileId: string; mountPath: string }>;
+  /** 会话产出编目(session_outputs):冷启回填 outputs 目录用,内容在 R2 */
+  outputs: Array<{ fileId: string; path: string }>;
   /** skills 目录快照:内容已从 skill_files 读出 */
   skills: Array<{ directory: string; files: Array<{ path: string; content: Uint8Array }> }>;
   /** environment 快照的包声明(创建时固化;安装尽力而为,networking 三期) */
@@ -183,14 +183,11 @@ export class SandboxToolRunner implements ToolRunner {
       }
     }
 
-    const prefix = outputsPrefix(this.ctx.sessionId);
-    const existing = await this.env.FILES.list({ prefix });
-    for (const item of existing.objects) {
-      const object = await this.env.FILES.get(item.key);
+    for (const output of this.ctx.outputs) {
+      const object = await this.env.FILES.get(fileObjectKey(output.fileId));
       if (object === null) continue;
       const bytes = new Uint8Array(await object.arrayBuffer());
-      const relative = item.key.slice(prefix.length);
-      await this.sbx().writeFile(`${OUTPUTS_DIR}/${relative}`, bytesToBase64(bytes), { encoding: "base64" });
+      await this.sbx().writeFile(`${OUTPUTS_DIR}/${output.path}`, bytesToBase64(bytes), { encoding: "base64" });
     }
 
     if (this.ctx.packages !== null) await this.applyPackages(this.ctx.packages);
@@ -289,16 +286,19 @@ export class SandboxToolRunner implements ToolRunner {
     }
   }
 
+  /** turn 收尾:outputs 快照收敛成 File 资源编目(§4.5 物化协议,catalog.ts) */
   async harvestOutputs(): Promise<void> {
     try {
       await this.ensureMaterialized();
       const listed = await this.exec(`find ${OUTPUTS_DIR} -type f`);
       const paths = listed.stdout.split("\n").filter((line) => line !== "");
-      const prefix = outputsPrefix(this.ctx.sessionId);
+      const files: HarvestedOutput[] = [];
       for (const path of paths) {
+        if (!path.startsWith(`${OUTPUTS_DIR}/`)) continue;
         const file = await this.sbx().readFile(path, { encoding: "base64" });
-        await this.env.FILES.put(`${prefix}${path.slice(OUTPUTS_DIR.length + 1)}`, base64ToBytes(file.content));
+        files.push({ path: path.slice(OUTPUTS_DIR.length + 1), bytes: base64ToBytes(file.content) });
       }
+      await harvestSessionOutputs(this.env, this.ctx.sessionId, files);
     } catch (err) {
       console.error("sandbox outputs harvest failed:", err);
     }
