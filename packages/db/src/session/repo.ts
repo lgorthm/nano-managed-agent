@@ -330,3 +330,42 @@ export async function countActiveSessionMounts(db: Db, fileId: string): Promise<
     .where(and(eq(sessionResources.fileId, fileId), isNull(sessions.archivedAt)));
   return rows[0]?.count ?? 0;
 }
+
+// ---------- 运行时投影回写(docs/session/runtime.md §8) ----------
+
+/** turn 终局的 usage 增量;DO 状态机是事实源,D1 只做投影 */
+export interface SessionUsageDelta {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadInputTokens: number;
+}
+
+/**
+ * SESSION_DO 回写状态投影:status 迁移即时、usage 按 turn 终局增量累计。
+ * 不带 archived/running 守卫——归档与删除的门禁在控制面(D1)先行裁决;
+ * 行不存在(会话已删)返回 false,投影丢失被容忍:事实源已随删除终结。
+ */
+export async function updateSessionRuntimeState(
+  db: Db,
+  input: { sessionId: string; status?: SessionStatus; usageDelta?: SessionUsageDelta; now: Date },
+): Promise<boolean> {
+  const delta = input.usageDelta;
+  const hasUsageDelta =
+    delta !== undefined &&
+    (delta.inputTokens !== 0 || delta.outputTokens !== 0 || delta.cacheReadInputTokens !== 0);
+  const result = (await db
+    .update(sessions)
+    .set({
+      ...(input.status !== undefined ? { status: input.status } : {}),
+      ...(hasUsageDelta && delta !== undefined
+        ? {
+            inputTokens: sql`${sessions.inputTokens} + ${delta.inputTokens}`,
+            outputTokens: sql`${sessions.outputTokens} + ${delta.outputTokens}`,
+            cacheReadInputTokens: sql`${sessions.cacheReadInputTokens} + ${delta.cacheReadInputTokens}`,
+          }
+        : {}),
+      updatedAt: input.now,
+    })
+    .where(eq(sessions.id, input.sessionId))) as unknown as { meta?: { changes?: number } };
+  return (result.meta?.changes ?? 0) > 0;
+}
