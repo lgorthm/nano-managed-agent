@@ -21,11 +21,13 @@ import {
 import {
   BUILTIN_TOOL_DEFINITIONS,
   resolveBuiltinTools,
+  validateToolInvocation,
   type ChatToolDefinition,
   type DeltaEventType,
   type EventInput,
   type EventListFilters,
   type EventType,
+  type JsonValue,
   type PersistedEventJson,
   type SessionStatus,
   type StopReason,
@@ -37,6 +39,7 @@ import {
   initialTurnSnapshot,
   parseTurnSnapshot,
   runTurn,
+  type PendingConfirmationRecord,
   type TurnModelConfig,
   type TurnResume,
   type TurnSnapshot,
@@ -128,6 +131,15 @@ export class SessionDo extends DurableObject<Env> {
       CREATE TABLE IF NOT EXISTS session_state (
         key   TEXT PRIMARY KEY,
         value TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS pending_confirmations (
+        tool_use_id     TEXT PRIMARY KEY,  -- agent.tool_use 事件 id(§2.1)
+        name            TEXT NOT NULL,
+        input_json      TEXT NOT NULL,
+        result_event_id TEXT NOT NULL,     -- 预生成的 tool_result 事件 id
+        decision        TEXT,              -- NULL = 待审批;allow / deny
+        deny_message    TEXT,
+        created_at      INTEGER NOT NULL
       );
     `);
   }
@@ -223,19 +235,75 @@ export class SessionDo extends DurableObject<Env> {
     }
     const persisted: PersistedEventJson[] = [];
     let hasMessage = false;
+    let hasConfirmation = false;
+    const confirmedInBatch = new Set<string>();
     for (const event of events) {
       if (event.type === "user.tool_confirmation") {
-        // M0 无 always_ask 工具,待审批集合恒空;确认一律无效(M3 挂起语义就位后放开)
-        return doFailure(400, `No pending tool confirmation for tool_use_id "${event.tool_use_id}".`);
+        // 权限文档:tool_use_id 必须恰在待审批集合中;同批同 id 只允许一条确认
+        if (confirmedInBatch.has(event.tool_use_id)) {
+          return doFailure(400, `Duplicate confirmation for tool_use_id "${event.tool_use_id}" in one request.`);
+        }
+        confirmedInBatch.add(event.tool_use_id);
+        const outcome = this.confirmPending(event.tool_use_id, event.result, event.deny_message ?? null);
+        if (outcome === "missing") {
+          return doFailure(400, `No pending tool confirmation for tool_use_id "${event.tool_use_id}".`);
+        }
+        if (outcome === "decided") {
+          return doFailure(400, `Tool use "${event.tool_use_id}" has already been confirmed.`);
+        }
+        hasConfirmation = true;
       }
       persisted.push(this.appendEvent(event.type, inputEventPayload(event), { processedAt: null }));
       if (event.type === "user.message") hasMessage = true;
       if (event.type === "user.interrupt") this.interruptFlag = true;
     }
+    if (hasConfirmation && this.allConfirmationsDecided()) {
+      // 全部待审批都有裁决 → 回 running 续跑(§4.3);排队消息由续跑的 turn 一并消费
+      void this.executeConfirmedTurn().catch((err) => {
+        console.error("confirmed turn resume failed:", err);
+        this.appendEvent("session.error", { message: "The confirmed turn failed to resume." });
+      });
+      return { ok: true, value: persisted.map((event) => JSON.stringify(event)) };
+    }
     if (hasMessage && this.status === "idle") {
       this.startTurn();
     }
     return { ok: true, value: persisted.map((event) => JSON.stringify(event)) };
+  }
+
+  /** 记录一条裁决(行内持久化——逐出后恢复入口可重入);missing/decided 为无效确认 */
+  private confirmPending(
+    toolUseId: string,
+    result: "allow" | "deny",
+    denyMessage: string | null,
+  ): "updated" | "missing" | "decided" {
+    for (const row of this.query("SELECT decision FROM pending_confirmations WHERE tool_use_id = ? LIMIT 1", toolUseId)) {
+      if (row.decision === null) {
+        this.exec(
+          "UPDATE pending_confirmations SET decision = ?, deny_message = ? WHERE tool_use_id = ?",
+          result,
+          denyMessage,
+          toolUseId,
+        );
+        return "updated";
+      }
+      return "decided";
+    }
+    return "missing";
+  }
+
+  /** 待审批集合非空且每条都有裁决(有空缺时继续等待,§4.3「所有待审批事件都被处理后」) */
+  private allConfirmationsDecided(): boolean {
+    let any = false;
+    for (const _row of this.query("SELECT 1 FROM pending_confirmations LIMIT 1")) {
+      any = true;
+      break;
+    }
+    if (!any) return false;
+    for (const _row of this.query("SELECT 1 FROM pending_confirmations WHERE decision IS NULL LIMIT 1")) {
+      return false;
+    }
+    return true;
   }
 
   // ---------- RPC:事件列表(GET /events,§2.4) ----------
@@ -408,6 +476,10 @@ export class SessionDo extends DurableObject<Env> {
   /** idle→running:落 status_running、插 turn 行(带完整初始检查点)、保活、fire-and-forget 执行 */
   private startTurn(): void {
     if (this.status !== "idle" || this.turnActive) return;
+    // 挂起待审批期间不开新 turn(§4.3):排队消息由确认链续跑的 turn 一并消费
+    for (const _row of this.query("SELECT 1 FROM pending_confirmations LIMIT 1")) {
+      return;
+    }
     this.status = "running";
     this.setState("status", "running");
     this.appendEvent("session.status_running", {});
@@ -424,8 +496,8 @@ export class SessionDo extends DurableObject<Env> {
     );
     this.turnActive = true;
     this.keepAlive();
-    // fire-and-forget:RPC 响应不等 turn 完成;keepAlive 兜住执行期的空闲逐出(§5)
     const token = ++this.currentExecutionToken;
+    // fire-and-forget:RPC 响应不等 turn 完成;keepAlive 兜住执行期的空闲逐出(§5)
     void runTurn(this, turnId, { iteration: 0, snapshot }).catch((err) =>
       this.turnFailed(turnId, token, err),
     );
@@ -505,10 +577,10 @@ export class SessionDo extends DurableObject<Env> {
     const sessionId = this.ctx.id.name;
     const row = sessionId !== undefined ? await findSession(getDb(this.env), sessionId) : null;
     const agentConfig = row?.agentConfig ?? { system: null as string | null, model: { id: "glm-5.3" }, tools: [] };
-    // M2 只放行 always_allow(模型看不到 always_ask 工具);挂起语义属 M3
-    const tools = resolveBuiltinTools(agentConfig.tools)
-      .filter((tool) => tool.permission === "always_allow")
-      .map((tool) => BUILTIN_TOOL_DEFINITIONS[tool.name]);
+    // always_ask 工具一并提供给模型(执行时才分叉挂起,§4.3)
+    const resolved = resolveBuiltinTools(agentConfig.tools);
+    const toolPermissions: Record<string, "always_allow" | "always_ask"> = {};
+    for (const tool of resolved) toolPermissions[tool.name] = tool.permission;
     return {
       system: agentConfig.system ?? null,
       model: {
@@ -516,7 +588,8 @@ export class SessionDo extends DurableObject<Env> {
         apiKey: this.env.GLM_API_KEY,
         model: agentConfig.model.id,
       },
-      tools,
+      tools: resolved.map((tool) => BUILTIN_TOOL_DEFINITIONS[tool.name]),
+      toolPermissions,
     };
   }
 
@@ -560,6 +633,123 @@ export class SessionDo extends DurableObject<Env> {
 
   isExecutionCurrent(token: number): boolean {
     return token === this.currentExecutionToken;
+  }
+
+  recordPendingConfirmations(records: PendingConfirmationRecord[]): void {
+    const now = Date.now();
+    for (const record of records) {
+      this.exec(
+        "INSERT OR IGNORE INTO pending_confirmations (tool_use_id, name, input_json, result_event_id, decision, deny_message, created_at) " +
+          "VALUES (?, ?, ?, ?, NULL, NULL, ?)",
+        record.toolUseId,
+        record.name,
+        record.inputJson,
+        record.resultEventId,
+        now,
+      );
+    }
+  }
+
+  /**
+   * 待审批集合全部裁决后的续跑(§4.3):回 running → 逐条执行裁决(allow 经入参
+   * 校验后执行;deny 合成含 deny_message 的拒绝结果)→ 删行 → 新 turn 让模型
+   * 带着全部 tool 结果继续。裁决在行内持久化,逐出后由恢复入口重入本方法
+   * (行还在 = 该条的 tool_result 未落库,幂等重执行)。
+   */
+  private async executeConfirmedTurn(): Promise<void> {
+    if (this.turnActive || this.deleted) return;
+    const decided: Array<{
+      toolUseId: string;
+      name: string;
+      inputJson: string;
+      resultEventId: string;
+      decision: string;
+      denyMessage: string | null;
+    }> = [];
+    for (const row of this.query(
+      "SELECT tool_use_id, name, input_json, result_event_id, decision, deny_message FROM pending_confirmations " +
+        "WHERE decision IS NOT NULL ORDER BY rowid", // rowid = 挂起批次的插入序 = 模型调用序(同毫秒插入时 created_at 会平局)
+    )) {
+      decided.push({
+        toolUseId: String(row.tool_use_id),
+        name: String(row.name),
+        inputJson: String(row.input_json),
+        resultEventId: String(row.result_event_id),
+        decision: String(row.decision),
+        denyMessage: typeof row.deny_message === "string" ? row.deny_message : null,
+      });
+    }
+    if (decided.length === 0) return;
+
+    // 权限文档:「所有待审批事件都被处理后,会话回到 running;被允许的工具执行」。
+    // 逐出恢复重入时 status 已是 running(session_state 恢复),不重复外发迁移事件;
+    // 执行代际让被取代的确认执行(逐出模拟 / 双重恢复)静默退出
+    const token = ++this.currentExecutionToken;
+    this.turnActive = true;
+    if (this.status !== "running") {
+      this.status = "running";
+      this.setState("status", "running");
+      this.appendEvent("session.status_running", {});
+      void this.writeback({ status: "running" });
+    }
+    this.keepAlive();
+
+    const runner = await this.createToolRunner();
+    let toolsRan = false;
+    for (const entry of decided) {
+      let content: string;
+      let isError: boolean;
+      if (entry.decision === "deny") {
+        content = `The tool call was rejected by the user${entry.denyMessage !== null ? `: ${entry.denyMessage}` : "."}`;
+        isError = true;
+      } else {
+        let input: JsonValue;
+        try {
+          input = JSON.parse(entry.inputJson) as JsonValue;
+        } catch {
+          input = { __invalid_json: entry.inputJson };
+        }
+        const invalid = validateToolInvocation(entry.name, input);
+        if (invalid !== null) {
+          content = invalid;
+          isError = true;
+        } else {
+          const outcome =
+            runner !== null
+              ? await runner.run({ toolUseId: entry.toolUseId, name: entry.name, input })
+              : { content: "Tool execution is unavailable: no sandbox binding is configured.", isError: true };
+          if (token !== this.currentExecutionToken) return; // 被取代:交由恢复重入
+          content = outcome.content;
+          isError = outcome.isError;
+          toolsRan = true;
+        }
+      }
+      this.appendEvent(
+        "agent.tool_result",
+        {
+          tool_use_id: entry.toolUseId,
+          content: [{ type: "text", text: content }],
+          ...(isError ? { is_error: true } : {}),
+        },
+        { id: entry.resultEventId, processedAt: new Date().toISOString() },
+      );
+      this.exec("DELETE FROM pending_confirmations WHERE tool_use_id = ?", entry.toolUseId);
+    }
+    if (toolsRan && runner !== null) await runner.harvestOutputs();
+
+    // 新 turn:模型经事件日志装配到全部 tool 结果后继续
+    const turnId = newTurnId();
+    const snapshot = initialTurnSnapshot(turnId);
+    this.exec(
+      "INSERT INTO session_turns (turn_id, iteration, snapshot, created_at) VALUES (?, ?, ?, ?)",
+      turnId,
+      0,
+      JSON.stringify(snapshot),
+      Date.now(),
+    );
+    void runTurn(this, turnId, { iteration: 0, snapshot }).catch((err) =>
+      this.turnFailed(turnId, token, err),
+    );
   }
 
   /** 终事件 seq 的估计值(delta 帧排序参考);真实 seq 以落库行为准 */
@@ -642,6 +832,11 @@ export class SessionDo extends DurableObject<Env> {
    */
   private async recoverOrphanTurnIfAny(): Promise<void> {
     if (this.turnActive || this.deleted) return;
+    // 确认执行被逐出打断(有裁决的行仍在):先续跑确认链,turn 由其内部接管
+    for (const _row of this.query("SELECT 1 FROM pending_confirmations WHERE decision IS NOT NULL LIMIT 1")) {
+      await this.executeConfirmedTurn();
+      return;
+    }
     let turnId: string | null = null;
     let iteration = 0;
     let snapshot: TurnSnapshot | null = null;

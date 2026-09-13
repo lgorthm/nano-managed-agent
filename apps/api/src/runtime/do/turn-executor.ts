@@ -38,6 +38,14 @@ export interface PendingToolCall {
   resultAppended: boolean;
 }
 
+/** 挂起待审批的条目(§4.3):DO 持久化为待审批集合,确认后由 DO 续跑 */
+export interface PendingConfirmationRecord {
+  toolUseId: string;
+  name: string;
+  inputJson: string;
+  resultEventId: string;
+}
+
 /** 细粒度检查点(§3/§4.1):身份进列,这里只有循环内部状态;恢复时沿用预生成 id */
 export interface TurnSnapshot {
   iteration: number;
@@ -102,8 +110,10 @@ export function parseTurnSnapshot(raw: unknown): TurnSnapshot | null {
 export interface TurnModelConfig {
   system: string | null;
   model: GlmModelConfig;
-  /** 模型侧工具定义(M2 只含 always_allow;always_ask 挂起属 M3) */
+  /** 模型侧工具定义(always_ask 一并提供——模型看得见,执行时才分叉) */
   tools: ChatToolDefinition[];
+  /** 工具名 → 权限(always_ask 的调用挂起等待审批,§4.3) */
+  toolPermissions: Record<string, "always_allow" | "always_ask">;
 }
 
 /** 执行器可用的宿主能力(SessionDo 实现) */
@@ -143,6 +153,8 @@ export interface TurnHost {
   estimateNextSeq(): number;
   /** 工具执行层(§4.5 注入边界):无可用工具时返回 null */
   createToolRunner(): Promise<ToolRunner | null>;
+  /** always_ask 的调用记入待审批集合(§4.3:DO 持久状态,确认后续跑) */
+  recordPendingConfirmations(records: PendingConfirmationRecord[]): void;
   /** 当前执行代际:startTurn / 恢复各持唯一 token,被取代的执行静默退出 */
   executionToken(): number;
   isExecutionCurrent(token: number): boolean;
@@ -224,6 +236,7 @@ export async function runTurn(host: TurnHost, turnId: string, resume?: TurnResum
       }
       host.saveTurnSnapshot(turnId, iteration, snapshot);
       let interrupted = false;
+      const askCalls: PendingToolCall[] = [];
       for (const call of snapshot.pendingToolCalls) {
         if (call.resultAppended) continue; // §6:已落 tool_result 的不重跑
         if (host.isInterrupted() || host.isDeleted()) {
@@ -238,6 +251,11 @@ export async function runTurn(host: TurnHost, turnId: string, resume?: TurnResum
             { id: call.toolResultEventId },
           );
           call.resultAppended = true;
+          continue;
+        }
+        // §4.3:always_ask 的调用不执行,记入待审批集合,批次收尾时挂起
+        if ((config.toolPermissions[call.name] ?? "always_allow") === "always_ask") {
+          askCalls.push(call);
           continue;
         }
         const input = parseToolInput(call.inputJson);
@@ -267,6 +285,25 @@ export async function runTurn(host: TurnHost, turnId: string, resume?: TurnResum
         );
         call.resultAppended = true;
         host.saveTurnSnapshot(turnId, iteration, snapshot);
+      }
+      if (askCalls.length > 0) {
+        // 挂起(§4.3):待审批集合持久化后以 requires_action 收尾——行删除即挂起,
+        // 等待审批期间无心跳、无计费;usage 已发生,照常落事件与投影再挂起
+        host.recordPendingConfirmations(
+          askCalls.map((call) => ({
+            toolUseId: call.toolUseEventId,
+            name: call.name,
+            inputJson: call.inputJson,
+            resultEventId: call.toolResultEventId,
+          })),
+        );
+        host.appendProducedEvent("session.usage", { ...totalUsage });
+        await host.finishTurn(
+          turnId,
+          { type: "requires_action", event_ids: askCalls.map((call) => call.toolUseEventId) },
+          totalUsage,
+        );
+        return;
       }
       interrupted = host.isInterrupted() || host.isDeleted();
       snapshot.pendingToolCalls = [];

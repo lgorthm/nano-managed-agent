@@ -161,7 +161,7 @@ describe("M2 工具循环 — always_allow 闭环", () => {
     });
   });
 
-  it("always_ask 工具不进入模型 tools(M3 挂起语义就位前的 M2 行为)", async () => {
+  it("always_ask 工具随 tools 一同上行,执行时才分叉挂起(M3)", async () => {
     const agent = await createDefaultAgent({
       name: "ask-agent",
       model: "glm-5.3",
@@ -179,8 +179,8 @@ describe("M2 工具循环 — always_allow 闭环", () => {
     await pollForEvent(session.id, (list) => list.some((event) => event.type === "session.status_idle"));
     const [request] = await requestsFor("ask-policy probe");
     const names = request!.body.tools?.map((tool) => tool.function.name);
-    expect(names).toHaveLength(6);
-    expect(names).not.toContain("bash");
+    expect(names).toHaveLength(7);
+    expect(names).toContain("bash");  // 挂起分叉在执行侧(session-confirmations.test.ts 覆盖)
   });
 });
 

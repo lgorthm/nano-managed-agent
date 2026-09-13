@@ -3,7 +3,7 @@
 nano-managed-agent 的 Session 资源接口，请求 / 响应结构与 GLM Managed Agents（`zai-version: 2026-05-26`）保持一致。
 表结构设计见 [../schema.md](../schema.md)，代码结构见 [../structure.md](../structure.md)。
 
-Session 是一次会话运行的控制面记录：创建时把 Agent（钉住版本 ⊕ 会话级覆盖）与 Environment（配置快照）固化进会话，可挂载 File 资源供沙箱使用。事件端点（收发 / 检索 / SSE 订阅）、模型调用与沙箱工具执行（M2：always_allow 工具闭环）已落地（见文末「事件运行时」）；确认挂起（always_ask）属 M3，`status` 目前只在 `idle ↔ running` 间迁移，`rescheduling` / `terminated` 门禁为后续就位预留。
+Session 是一次会话运行的控制面记录：创建时把 Agent（钉住版本 ⊕ 会话级覆盖）与 Environment（配置快照）固化进会话，可挂载 File 资源供沙箱使用。事件端点（收发 / 检索 / SSE 订阅）、模型调用、沙箱工具执行与确认挂起/恢复（M3：always_ask 全链路）已落地（见文末「事件运行时」）；`status` 目前只在 `idle ↔ running` 间迁移，`rescheduling` / `terminated` 门禁为后续就位预留。
 
 ## 端点（13）
 
@@ -75,7 +75,7 @@ Session 是一次会话运行的控制面记录：创建时把 Agent（钉住版
 | 协议头 | 必须携带 `zai-version` / `zai-beta` | 不需要（协议版本由路径 `/v1` 携带） |
 | 服务地址 | `https://agent-api.bigmodel.cn/api` | 本地 dev / 自有 Worker 域名 |
 | 创建状态码 | `200` | `201`（沿用 nano 各资源创建端点惯例） |
-| 事件端点 | `POST/GET …/events`、`GET …/events/stream`（SSE） | 已实现；M1 对话闭环 + M2 沙箱工具（always_allow），确认挂起属 M3 |
+| 事件端点 | `POST/GET …/events`、`GET …/events/stream`（SSE） | 已实现；M1 对话闭环 + M2 沙箱工具 + M3 确认挂起/恢复（always_ask） |
 | `x-events-encrypted` / `x-checkpoint` | 创建时开关，事件按客户密钥加密 / 检查点 | 忽略（密钥管理单独设计，见 runtime.md §11） |
 | `status` 迁移 | idle / running / rescheduling / terminated 全量 | `idle ↔ running` 由运行时驱动；`rescheduling` / `terminated` 待三期沙箱与准入联动 |
 | `resources` 类型 | `file` + `memory_store` | 一期仅 `file`（无 Memory Store 资源），`memory_store` 返回 400 |
@@ -88,7 +88,7 @@ Session 是一次会话运行的控制面记录：创建时把 Agent（钉住版
 | 非 API 创建会话 | IM 渠道会话不可归档 / 删除（409） | 不适用（nano 只有 API 创建的会话） |
 | 环境归档联动 | 归档环境触发引用会话准入终止 | 一期无运行时无联动；创建时校验环境未归档已实现 |
 
-## 事件运行时（M0 / M1 / M2 已落地）
+## 事件运行时（M0–M3 已落地）
 
 GLM 的会话工作流是「先开 SSE 流、再发消息、会话进入 running、结束后回到 idle」。事件历史、SSE 推流与 Agent 循环执行落在 `SESSION_DO` Durable Object（循环在 DO 内自管执行、不使用 Workflows，定稿设计见 [../runtime.md](../runtime.md)；架构见 [architecture-diagrams.md](../../architecture-diagrams.md)）。当前状态：
 
@@ -98,4 +98,4 @@ GLM 的会话工作流是「先开 SSE 流、再发消息、会话进入 running
 - 崩溃恢复按 §6 策略 1（重发）落地：构造唤醒与 alarm 巡检发现孤儿 turn 后外发 `system.message` 并以同 turnId / 预生成事件 id 续跑（工具批次重入不重放模型请求）；`user.interrupt` 在流中途掐断模型请求、在途沙箱工具执行完再停；
 - `initial_events` 已放开（仅 `user.message`、content 不允许 document 块），创建时走同一条 append → 触发链路；
 - 更新端点在实际变更时外发 `session.updated` 事件；删除会话广播 `session.deleted`、销毁沙箱并清空 DO 存储；归档顺手销毁沙箱；
-- 确认挂起（always_ask）属 M3：该类工具暂不进入模型可用工具集，`user.tool_confirmation` 一律 400。
+- 确认挂起 / 恢复（M3）：always_ask 的调用使会话以 `status_idle{requires_action, event_ids}` 挂起（usage 照常落库）；`user.tool_confirmation` 逐条裁决（未知 / 已裁决 / 同批重复均 400），全部裁决后回 running——allow 执行、deny 合成含 `deny_message` 的 is_error 拒绝结果，新 turn 带全部结果继续；确认执行被逐出打断由恢复入口幂等重入。

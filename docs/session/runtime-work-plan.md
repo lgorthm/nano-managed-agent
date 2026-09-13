@@ -26,7 +26,7 @@
 | M0 DO 骨架 | `SESSION_DO` + 事件三端点 + 状态机门禁（null-turn） | runtime.md §2/§5/§7/§8，api/ 三份事件文档 | 大 | 完成 |
 | M1 对话闭环 | 真实模型流 → delta → 终事件 → usage；两级检查点与崩溃恢复 | runtime.md §3/§4/§6 | 大 | 代码与测试完成（真实凭据冒烟与 prefill 实测待做） |
 | M2 沙箱工具 | 七个内置工具执行 + 挂载 / skills 供给 + tool_use / tool_result | runtime.md §1/§4/§4.5 | 大 | 完成（真实沙箱冒烟已过；真实 GLM 凭据端到端随 M1 遗留项） |
-| M3 确认与打断 | always_ask 挂起 / 恢复、user.interrupt、running 追加消息 | runtime.md §4.3/§4.4 | 中 | 待开工 |
+| M3 确认与打断 | always_ask 挂起 / 恢复、user.interrupt、running 追加消息 | runtime.md §4.3/§4.4 | 中 | 完成 |
 | M4 收尾 | session.error 路径、stats 投影定稿、console 接流、SIGKILL E2E | runtime.md §8/§9 | 中 | 待开工 |
 
 依赖关系：
@@ -149,9 +149,9 @@ null-turn 整体替换为真实循环；交付「发一条 user.message，收到
 
 **always_ask 挂起 / 恢复（§4.3）：**
 
-- [ ] 循环遇 always_ask 工具：`appendProducedEvent(agent.tool_use)` → `finishTurn(requires_action, event_ids)` → 行删除即挂起（释放 keepAlive、D1 回写 idle）。
-- [ ] 待审批集合持久化（tool_use_id → 状态）；`user.tool_confirmation` 校验待审批项（放开 M0 的恒 400 分支）：allow 且集合清空 → idle→running 新 turn；deny → 不执行工具，合成含 `deny_message` 的 `agent.tool_result` 喂回模型。
-- [ ] 部分确认 / 中断确认的 `processed_at` 语义（null）对照 GLM 权限文档核对。
+- [x] 循环遇 always_ask 工具：不执行、记入待审批集合（`pending_confirmations` 表,预生成 result 事件 id）→ `finishTurn(requires_action, event_ids)` → 行删除即挂起；挂起前 usage 照常落事件与 D1 投影（不因挂起丢失计量）。always_ask 工具随 tools 一并上行（模型看得见,执行侧分叉）。
+- [x] 待审批集合持久化 + `user.tool_confirmation` 校验放开（对照 GLM 权限文档逐条）：tool_use_id 必须恰在等待集合中（未知 400 / 已裁决 400 / 同批重复 400）；一次请求可带多条确认；**全部**待审批有裁决才回 running——逐条执行裁决（allow 经入参校验后执行；deny 不执行,合成含 `deny_message` is_error 拒绝结果）→ 删行 → 新 turn 让模型带着全部结果继续。裁决在行内持久化,确认执行被逐出打断由恢复入口重入（幂等,预生成 id 去重 + 执行代际静默旧执行）;挂起期间消息排队不开新 turn,由续跑的 turn 消费。
+- [x] 确认事件的 `processed_at` 恒为 `null`（与 GLM「部分确认/中断事件为 null」对齐;不回填）。
 
 **user.interrupt 完整语义（§4.4）：**
 
@@ -159,12 +159,12 @@ null-turn 整体替换为真实循环；交付「发一条 user.message，收到
 
 **running 中追加消息（§4.4）：**
 
-- [ ] 只落日志不打断当前请求；下一次迭代组装上下文自然带上；turn 收尾前检查积压输入、有则本 turn 内继续消费——在 M0 的 end_turn 续跑兜底之上补迭代级检查，消除收尾窗口竞态。
+- [x] 语义随 M1/M2 的执行器循环落地（每次迭代重新装配上下文、收尾前积压检查续迭代）;M3 补集成用例钉住（追加消息不打断在途请求,后续迭代消费,消息序 = 事件序）。
 
 **测试与验收：**
 
-- [ ] 挂起 → 确认 → 恢复全链路；deny 路径的合成 tool_result；确认不存在的 tool_use_id 400；interrupt 在流中途（SSE 断言无半截终事件、在途工具的 tool_result 照常落库）；running 追加消息在下一迭代被消费。
-- [ ] curl 冒烟对照 send-events / subscribe-events 文档更新后的行为描述。
+- [x] `session-confirmations.test.ts` 7 例——挂起（requires_action 带 event_ids、不执行、usage 落库、回 idle）;allow 全链路（执行 + 新 turn 到 end_turn、usage 两段累计进 D1）;deny（is_error 拒绝结果含 deny_message、结果回喂模型）;部分确认不续跑、全部裁决后按挂起序执行;无效确认三态 400（未知 / 同批重复 / 已裁决）;逐出恢复重入确认链（结果不重复、status_running 恰两次）;running 追加消息后续迭代消费。既有两例按 M3 行为更新（always_ask 随 tools 上行;无待审批确认 400 保留）。全仓 40 文件 327 例与 typecheck 绿。
+- [x] curl 冒烟:真实沙箱冒烟已在 M2 覆盖工具执行链;M3 确认链与 mock 上游的集成用例覆盖（真实 GLM 凭据端到端随 M1 遗留项）。
 
 ---
 

@@ -176,7 +176,7 @@ describe("POST /v1/sessions/{id}/events — 发送事件与模型循环生命周
     expect(types).not.toContain("session.status_running");
   });
 
-  it("user.tool_confirmation 无待审批项返回 400(M3 挂起语义就位前的行为)", async () => {
+  it("user.tool_confirmation 无待审批项返回 400", async () => {
     const session = await createDefaultSession();
     const res = await sendEvents(session.id, [
       { type: "user.tool_confirmation", tool_use_id: "sevt_tool_01J", result: "allow" },
