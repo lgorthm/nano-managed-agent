@@ -65,6 +65,11 @@ export async function harvestSessionOutputs(
   );
 
   for (const file of sandboxFiles) {
+    // 先取后删:previous 供对比,同时把该 path 移出差集基准——
+    // 出现在快照里的 path 一律不算「消失」,包括被跳过编目的
+    // (超限/非法路径/内容未变)
+    const previous = existing.get(file.path);
+    existing.delete(file.path);
     if (!validRelativePath(file.path)) {
       console.error(`session output path rejected (not a safe relative path): ${file.path}`);
       continue;
@@ -81,7 +86,6 @@ export async function harvestSessionOutputs(
       continue;
     }
     const contentSha256 = await sha256Hex(file.bytes);
-    const previous = existing.get(file.path);
     if (previous !== undefined && previous.contentSha256 === contentSha256) {
       result.skippedUnchanged += 1;
       continue;
@@ -131,7 +135,6 @@ export async function harvestSessionOutputs(
     if (replacedOldFileId !== null) {
       await env.FILES.delete(fileObjectKey(replacedOldFileId)).catch(() => {});
     }
-    existing.delete(file.path);
   }
 
   // 差集:编目过但沙箱里已消失的产出(物化协议保证编目内容必已回填,
