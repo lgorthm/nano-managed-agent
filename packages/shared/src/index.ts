@@ -16,6 +16,7 @@ export * from "./environment/normalize";
 export * from "./environment/merge";
 export * from "./session/schemas";
 export * from "./session/events";
+export * from "./session/context";
 export * from "./session/resolve";
 export * from "./session/mount-path";
 
