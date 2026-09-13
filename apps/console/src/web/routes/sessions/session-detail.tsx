@@ -1,6 +1,6 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { PersistedEvent, SessionFileResource, SessionResourceResponse, StreamEvent } from "@nano/shared/glm";
-import { Archive, Inbox, Paperclip, Send, Unlink } from "lucide-react";
+import { Archive, Ban, Inbox, Paperclip, Send, Unlink } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router";
 import { listFiles } from "@/api/files";
@@ -262,6 +262,112 @@ function AddSessionFileDialog({ sessionId, disabled }: { sessionId: string; disa
   );
 }
 
+/** 待审批工具调用(§4.3):最后一个 status_idle 为 requires_action 且尚未有 tool_result 的 tool_use */
+function PendingApprovals({
+  sessionId,
+  events,
+  archived,
+}: {
+  sessionId: string;
+  events: EventLike[];
+  archived: boolean;
+}) {
+  const queryClient = useQueryClient();
+  const [reasons, setReasons] = useState<Record<string, string>>({});
+  const confirmMutation = useMutation({
+    mutationFn: (input: { toolUseId: string; result: "allow" | "deny" }) =>
+      sendSessionEvents(sessionId, {
+        events: [
+          {
+            type: "user.tool_confirmation",
+            tool_use_id: input.toolUseId,
+            result: input.result,
+            ...(input.result === "deny" && reasons[input.toolUseId]?.trim()
+              ? { deny_message: reasons[input.toolUseId]!.trim() }
+              : {}),
+          },
+        ],
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["sessions", sessionId] });
+      void queryClient.invalidateQueries({ queryKey: ["sessions", sessionId, "events"] });
+    },
+  });
+
+  const list = [...events].reverse();
+  const lastIdle = list.find((event) => (event as Record<string, unknown>).type === "session.status_idle");
+  const stop = (lastIdle as Record<string, unknown> | undefined)?.stop_reason as
+    | { type?: string; event_ids?: string[] }
+    | undefined;
+  const pendingIds = stop?.type === "requires_action" ? (stop.event_ids ?? []) : [];
+  const resultIds = new Set(
+    events
+      .filter((event) => (event as Record<string, unknown>).type === "agent.tool_result")
+      .map((event) => (event as Record<string, unknown>).tool_use_id),
+  );
+  const pending = pendingIds
+    .filter((id) => !resultIds.has(id))
+    .map((id) => ({
+      id,
+      use: events.find((event) => event.id === id && (event as Record<string, unknown>).type === "agent.tool_use"),
+    }))
+    .filter((item): item is { id: string; use: EventLike } => item.use !== undefined);
+
+  if (pending.length === 0 || archived) return null;
+
+  return (
+    <SectionCard title="等待审批" contentClassName="space-y-3">
+      <p className="text-muted-foreground text-sm">
+        Agent 请求调用受审批策略(always_ask)约束的工具,会话已挂起;全部裁决后会自动继续。
+      </p>
+      {pending.map(({ id, use }) => {
+        const record = use as Record<string, unknown>;
+        return (
+          <div key={id} className="space-y-2 rounded-lg border p-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="outline" className="font-mono text-[11px] font-normal">
+                {String(record.name)}
+              </Badge>
+              <span className="text-muted-foreground font-mono text-xs">{shortId(id)}</span>
+            </div>
+            <pre className="bg-muted max-h-40 overflow-auto rounded-md p-2 font-mono text-xs">
+              {JSON.stringify(record.input ?? {}, null, 2)}
+            </pre>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <Input
+                className="flex-1"
+                placeholder="拒绝原因(仅拒绝时随 deny_message 提交,可选)"
+                value={reasons[id] ?? ""}
+                onChange={(e) => setReasons((prev) => ({ ...prev, [id]: e.target.value }))}
+              />
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  disabled={confirmMutation.isPending}
+                  onClick={() => confirmMutation.mutate({ toolUseId: id, result: "allow" })}
+                >
+                  允许
+                </Button>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  disabled={confirmMutation.isPending}
+                  onClick={() => confirmMutation.mutate({ toolUseId: id, result: "deny" })}
+                >
+                  拒绝
+                </Button>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+      {confirmMutation.isError ? (
+        <p className="text-destructive text-sm">{(confirmMutation.error as Error).message}</p>
+      ) : null}
+    </SectionCard>
+  );
+}
+
 /** 资源挂载卡片:列出已挂载的文件与 memory store;文件可移除,memory store 随会话 */
 function ResourcesSection({ sessionId, archived }: { sessionId: string; archived: boolean }) {
   const queryClient = useQueryClient();
@@ -402,22 +508,41 @@ export function SessionDetailPage() {
     return typeof id !== "string" || !historyIds.has(id);
   });
 
+  // 重连协议(§7):先补历史再订阅,按事件 id 去重;断线后指数退避自动重连
   useEffect(() => {
     if (!live || !sessionId) return;
     const controller = new AbortController();
-    setStreamError(null);
-    subscribeSessionEvents(
-      sessionId,
-      (event) => setLiveEvents((prev) => [...prev, event]),
-      controller.signal,
-    ).catch((err: unknown) => {
-      if (!controller.signal.aborted) {
-        setStreamError(err instanceof Error ? err.message : String(err));
-        setLive(false);
+    let stopped = false;
+    let attempts = 0;
+    void (async () => {
+      while (!stopped && !controller.signal.aborted) {
+        try {
+          await queryClient.invalidateQueries({ queryKey: ["sessions", sessionId] });
+          await queryClient.invalidateQueries({ queryKey: ["sessions", sessionId, "events"] });
+          setStreamError(null);
+          await subscribeSessionEvents(
+            sessionId,
+            (event) => {
+              attempts = 0; // 收到事件视为连接健康,重置退避
+              setLiveEvents((prev) => [...prev, event]);
+            },
+            controller.signal,
+          );
+        } catch {
+          // 断线(或主动 abort):走下方的重连等待
+        }
+        if (stopped || controller.signal.aborted) break;
+        const delay = Math.min(1000 * 2 ** Math.min(attempts, 4), 15000);
+        attempts += 1;
+        setStreamError(`实时流断开,约 ${Math.round(delay / 1000)}s 后自动重连(重连前先补拉历史)…`);
+        await new Promise((resolve) => setTimeout(resolve, delay));
       }
-    });
-    return () => controller.abort();
-  }, [live, sessionId]);
+    })();
+    return () => {
+      stopped = true;
+      controller.abort();
+    };
+  }, [live, sessionId, queryClient]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -430,6 +555,14 @@ export function SessionDetailPage() {
       }),
     onSuccess: () => {
       setDraft("");
+      void queryClient.invalidateQueries({ queryKey: ["sessions", sessionId, "events"] });
+    },
+  });
+
+  const interruptMutation = useMutation({
+    mutationFn: () => sendSessionEvents(sessionId!, { events: [{ type: "user.interrupt" }] }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["sessions", sessionId] });
       void queryClient.invalidateQueries({ queryKey: ["sessions", sessionId, "events"] });
     },
   });
@@ -450,6 +583,16 @@ export function SessionDetailPage() {
         actions={
           <>
             <SessionStatusBadge status={session.status} />
+            {!session.archived_at && session.status === "running" ? (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={interruptMutation.isPending}
+                onClick={() => interruptMutation.mutate()}
+              >
+                <Ban /> {interruptMutation.isPending ? "打断中…" : "打断"}
+              </Button>
+            ) : null}
             {!session.archived_at ? <ArchiveSessionDialog sessionId={session.id} /> : null}
             <label className="text-muted-foreground flex items-center gap-2 text-sm">
               <span
@@ -474,6 +617,7 @@ export function SessionDetailPage() {
         <StatCell label="活跃时长" value={session.stats.active_seconds.toFixed(1)} unit="s" />
       </div>
 
+      <PendingApprovals sessionId={session.id} archived={session.archived_at !== null} events={[...history, ...mergedLive]} />
       <ResourcesSection sessionId={session.id} archived={session.archived_at !== null} />
 
       <SectionCard
