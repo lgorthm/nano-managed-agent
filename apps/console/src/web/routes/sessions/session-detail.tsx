@@ -1,9 +1,9 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { PersistedEvent, SessionFileResource, SessionResourceResponse, StreamEvent } from "@nano/shared/glm";
-import { Archive, Ban, Inbox, Paperclip, Send, Unlink } from "lucide-react";
+import type { ManagedFile, PersistedEvent, SessionFileResource, SessionResourceResponse, StreamEvent } from "@nano/shared/glm";
+import { Archive, Ban, Download, Inbox, Paperclip, Send, Unlink } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router";
-import { listFiles } from "@/api/files";
+import { downloadFile, listFiles } from "@/api/files";
 import {
   addSessionFileResource,
   archiveSession,
@@ -44,8 +44,29 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { formatNumber, formatTime, formatTimeShort, shortId } from "@/lib/format";
+import { formatBytes, formatNumber, formatTime, formatTimeShort, shortId } from "@/lib/format";
+import { saveBlob } from "@/lib/save-blob";
 import { cn } from "@/lib/utils";
+
+/** 下载单个会话文件(挂载或产出):取回 blob 后交给浏览器保存 */
+function DownloadFileButton({ file }: { file: ManagedFile }) {
+  const mutation = useMutation({
+    mutationFn: () => downloadFile(file),
+    onSuccess: ({ blob, filename }) => saveBlob(blob, filename),
+  });
+  return (
+    <Button
+      size="icon"
+      variant="ghost"
+      className="text-muted-foreground size-7"
+      aria-label={`下载 ${file.filename}`}
+      disabled={!file.downloadable || mutation.isPending}
+      onClick={() => mutation.mutate()}
+    >
+      <Download className={cn("size-3.5", mutation.isPending && "animate-pulse")} />
+    </Button>
+  );
+}
 
 type EventLike = PersistedEvent | StreamEvent;
 
@@ -194,6 +215,7 @@ function AddSessionFileDialog({ sessionId, disabled }: { sessionId: string; disa
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["sessions", sessionId, "resources"] });
+      void queryClient.invalidateQueries({ queryKey: ["sessions", sessionId, "files"] });
       close();
     },
   });
@@ -368,54 +390,75 @@ function PendingApprovals({
   );
 }
 
-/** 资源挂载卡片:列出已挂载的文件与 memory store;文件可移除,memory store 随会话 */
+/**
+ * 会话文件卡片:数据源是 files 的 scope_id 过滤(挂载 ∪ 产出),
+ * 用 session_resources 的挂载集合给行标注来源;产出行提供下载,
+ * 挂载行可移除。memory store 资源仍来自 session_resources。
+ */
 function ResourcesSection({ sessionId, archived }: { sessionId: string; archived: boolean }) {
   const queryClient = useQueryClient();
-  const query = useQuery({
+  const resourcesQuery = useQuery({
     queryKey: ["sessions", sessionId, "resources"],
     queryFn: () => listSessionResources(sessionId, { limit: 200 }),
+  });
+  const filesQuery = useQuery({
+    queryKey: ["sessions", sessionId, "files"],
+    queryFn: () => listFiles({ scope_id: sessionId, limit: 200 }),
   });
   const removeMutation = useMutation({
     mutationFn: (resourceId: string) => deleteSessionFileResource(sessionId, resourceId),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["sessions", sessionId, "resources"] });
+      void queryClient.invalidateQueries({ queryKey: ["sessions", sessionId, "files"] });
     },
   });
 
-  const resources = query.data?.data ?? [];
+  const resources = resourcesQuery.data?.data ?? [];
   const fileResources = resources.filter((item): item is SessionFileResource => item.type === "file");
+  const mountsByFileId = new Map(fileResources.map((resource) => [resource.file_id, resource]));
   const memoryResources = resources.filter(
     (item): item is Extract<SessionResourceResponse, { type: "memory_store" }> => item.type === "memory_store",
   );
+  const files = filesQuery.data?.data ?? [];
+  const loading = resourcesQuery.isPending || filesQuery.isPending;
 
   return (
     <SectionCard
-      title="资源挂载"
+      title="会话文件"
       action={
         <>
-          <RefreshButton isFetching={query.isFetching} onClick={() => void query.refetch()}>
+          <RefreshButton
+            isFetching={resourcesQuery.isFetching || filesQuery.isFetching}
+            onClick={() => {
+              void resourcesQuery.refetch();
+              void filesQuery.refetch();
+            }}
+          >
             刷新
           </RefreshButton>
           <AddSessionFileDialog sessionId={sessionId} disabled={archived} />
         </>
       }
     >
-      {query.isPending ? (
+      {loading ? (
         <p className="text-muted-foreground text-sm">加载中…</p>
-      ) : query.isError ? (
-        <QueryError error={query.error} />
-      ) : resources.length === 0 ? (
+      ) : resourcesQuery.isError ? (
+        <QueryError error={resourcesQuery.error} />
+      ) : filesQuery.isError ? (
+        <QueryError error={filesQuery.error} />
+      ) : files.length === 0 && memoryResources.length === 0 ? (
         <EmptyState
           icon={Paperclip}
-          title="暂无挂载资源"
-          description="挂载托管文件后,会话可在沙箱的 /mnt/session/uploads 下读取它。"
+          title="暂无会话文件"
+          description="挂载的文件会出现在沙箱的 /mnt/session/uploads 下;Agent 写入 /mnt/session/outputs 的产出也会编目到这里,可随时下载。"
         />
       ) : (
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>资源</TableHead>
-              <TableHead className="hidden md:table-cell">挂载路径</TableHead>
+              <TableHead>文件</TableHead>
+              <TableHead className="hidden md:table-cell">沙箱路径</TableHead>
+              <TableHead className="hidden sm:table-cell">大小</TableHead>
               <TableHead className="text-right">操作</TableHead>
             </TableRow>
           </TableHeader>
@@ -436,38 +479,58 @@ function ResourcesSection({ sessionId, archived }: { sessionId: string; archived
                 <TableCell className="text-muted-foreground hidden font-mono text-xs md:table-cell">
                   {resource.mount_path}
                 </TableCell>
+                <TableCell className="hidden sm:table-cell" />
                 <TableCell className="text-right text-muted-foreground text-xs">—</TableCell>
               </TableRow>
             ))}
-            {fileResources.map((resource) => (
-              <TableRow key={resource.id}>
-                <TableCell>
-                  <span className="flex items-center gap-2">
-                    <Badge variant="outline" className="font-mono text-[11px] font-normal">
-                      file
-                    </Badge>
-                    <span className="font-mono text-xs">{shortId(resource.file_id)}</span>
-                  </span>
-                  <span className="text-muted-foreground mt-0.5 block text-xs tabular-nums">
-                    挂载于 {formatTime(resource.created_at)}
-                  </span>
-                </TableCell>
-                <TableCell className="text-muted-foreground hidden font-mono text-xs md:table-cell">
-                  {resource.mount_path}
-                </TableCell>
-                <TableCell className="text-right">
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="text-destructive"
-                    disabled={archived || removeMutation.isPending}
-                    onClick={() => removeMutation.mutate(resource.id)}
-                  >
-                    <Unlink /> 移除
-                  </Button>
-                </TableCell>
-              </TableRow>
-            ))}
+            {files.map((file) => {
+              const mount = mountsByFileId.get(file.id);
+              const isOutput = file.scope?.id === sessionId && mount === undefined;
+              return (
+                <TableRow key={file.id}>
+                  <TableCell>
+                    <span className="flex items-center gap-2">
+                      {isOutput ? (
+                        <StatusBadge tint="tint-positive" className="font-mono text-[11px] font-normal">
+                          产出
+                        </StatusBadge>
+                      ) : (
+                        <Badge variant="outline" className="font-mono text-[11px] font-normal">
+                          挂载
+                        </Badge>
+                      )}
+                      <span className="font-mono text-xs">{shortId(file.id)}</span>
+                    </span>
+                    <span className="text-muted-foreground mt-0.5 block max-w-[28rem] truncate text-xs tabular-nums">
+                      {file.filename} · {formatTime(file.created_at)}
+                    </span>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground hidden font-mono text-xs md:table-cell">
+                    {mount ? mount.mount_path : `/mnt/session/outputs/${file.filename}`}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground hidden font-mono text-xs tabular-nums sm:table-cell">
+                    {formatBytes(file.size_bytes)}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <span className="inline-flex items-center gap-1">
+                      <DownloadFileButton file={file} />
+                      {mount ? (
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="text-muted-foreground hover:text-destructive size-7"
+                          aria-label="移除挂载"
+                          disabled={archived || removeMutation.isPending}
+                          onClick={() => removeMutation.mutate(mount.id)}
+                        >
+                          <Unlink className="size-3.5" />
+                        </Button>
+                      ) : null}
+                    </span>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
           </TableBody>
         </Table>
       )}
@@ -522,6 +585,7 @@ export function SessionDetailPage() {
         try {
           await queryClient.invalidateQueries({ queryKey: ["sessions", sessionId] });
           await queryClient.invalidateQueries({ queryKey: ["sessions", sessionId, "events"] });
+          await queryClient.invalidateQueries({ queryKey: ["sessions", sessionId, "files"] });
           setStreamError(null);
           await subscribeSessionEvents(
             sessionId,
@@ -559,6 +623,7 @@ export function SessionDetailPage() {
     onSuccess: () => {
       setDraft("");
       void queryClient.invalidateQueries({ queryKey: ["sessions", sessionId, "events"] });
+      void queryClient.invalidateQueries({ queryKey: ["sessions", sessionId, "files"] });
     },
   });
 

@@ -67,34 +67,34 @@ describe("harvestSessionOutputs(收割编目)", () => {
     for (const row of rows) {
       expect(await objectExistsInR2(row.file_id)).toBe(true);
     }
-    const report = await fileRow(rows[1].file_id);
+    const report = await fileRow(rows[1]!.file_id);
     expect(report).toEqual({ filename: "report.md", mime_type: "text/markdown" });
-    const png = await fileRow(rows[0].file_id);
+    const png = await fileRow(rows[0]!.file_id);
     expect(png).toEqual({ filename: "charts/a.png", mime_type: "image/png" });
   });
 
   it("幂等:同内容重复收割零写入,file id 稳定", async () => {
     const session = await createDefaultSession();
     await harvest(session.id, [{ path: "a.txt", content: "v1" }]);
-    const first = (await outputRows(session.id))[0];
+    const first = (await outputRows(session.id))[0]!;
 
     const result = await harvest(session.id, [{ path: "a.txt", content: "v1" }]);
     expect(result.skippedUnchanged).toBe(1);
     expect(result.created).toBe(0);
 
-    const second = (await outputRows(session.id))[0];
+    const second = (await outputRows(session.id))[0]!;
     expect(second.file_id).toBe(first.file_id);
   });
 
   it("换代:内容变化换新 file id,旧行旧对象清理,新对象内容即新内容", async () => {
     const session = await createDefaultSession();
     await harvest(session.id, [{ path: "a.txt", content: "v1" }]);
-    const oldFileId = (await outputRows(session.id))[0].file_id;
+    const oldFileId = (await outputRows(session.id))[0]!.file_id;
 
     const result = await harvest(session.id, [{ path: "a.txt", content: "v2" }]);
     expect(result).toEqual({ created: 0, replaced: 1, removed: 0, skippedUnchanged: 0 });
 
-    const newFileId = (await outputRows(session.id))[0].file_id;
+    const newFileId = (await outputRows(session.id))[0]!.file_id;
     expect(newFileId).not.toBe(oldFileId);
     expect(await objectExistsInR2(oldFileId)).toBe(false);
     expect(await objectExistsInR2(newFileId)).toBe(true);
@@ -146,7 +146,7 @@ describe("会话产出的 File wire 语义", () => {
   async function sessionWithOutput(content = "payload"): Promise<{ session: SessionJson; fileId: string }> {
     const session = await createDefaultSession();
     await harvest(session.id, [{ path: "out/report.txt", content }]);
-    const row = (await outputRows(session.id))[0];
+    const row = (await outputRows(session.id))[0]!;
     return { session, fileId: row.file_id };
   }
 
