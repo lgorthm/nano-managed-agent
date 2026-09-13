@@ -110,6 +110,9 @@ export function bootApi({ port, modelPort, persistTo }) {
       "dev",
       "--port",
       String(port),
+      // inspector 端口随机化:与并行的 pnpm dev(默认 9229)互不抢占
+      "--inspector-port",
+      "0",
       "--persist-to",
       persistTo,
       "--var",
