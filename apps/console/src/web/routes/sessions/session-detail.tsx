@@ -1,7 +1,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ManagedFile, PersistedEvent, Session, SessionFileResource, SessionResourceResponse, StreamEvent } from "@nano/shared/glm";
 import { Archive, Ban, Check, Copy, Download, Inbox, Paperclip, Send, Unlink, X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router";
 import { downloadFile, listFiles } from "@/api/files";
 import {
@@ -19,13 +19,8 @@ import { EmptyState } from "@/components/empty-state";
 import { QueryError } from "@/components/query-error";
 import { RefreshButton } from "@/components/refresh-button";
 import { KeyValueRow, SectionCard } from "@/components/section-card";
-import {
-  buildTimelineItems,
-  formatSpanDuration,
-  laneOfType,
-  SessionTimeline,
-  type TimelineLane,
-} from "@/components/session-timeline";
+import { SessionLedger, type SessionLedgerHandle } from "@/components/session-ledger";
+import { SessionTimeline } from "@/components/session-timeline";
 import { SessionStatusBadge, StatusBadge } from "@/components/status-badges";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -51,7 +46,22 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { formatBytes, formatNumber, formatTime, formatTimeShort, shortId } from "@/lib/format";
+import {
+  buildLedger,
+  collapseRecords,
+  collapsibleSteps,
+  collapsibleTurns,
+  deriveTimelineSpans,
+  filterRecords,
+  formatSpanDuration,
+  recordMatchesSearch,
+  stepKey,
+  timelineFocusKeys,
+  type LedgerLane,
+  type TimelineMode,
+  type TimelineRange,
+} from "@/lib/session-ledger";
+import { formatBytes, formatNumber, formatTime, shortId } from "@/lib/format";
 import { saveBlob } from "@/lib/save-blob";
 import { cn } from "@/lib/utils";
 
@@ -77,28 +87,6 @@ function DownloadFileButton({ file }: { file: ManagedFile }) {
 
 type EventLike = PersistedEvent | StreamEvent;
 
-/** 从事件载荷里尽力提取一段人类可读的摘要 */
-function summarizeEvent(event: EventLike): string {
-  const record = event as Record<string, unknown>;
-  const content = record.content;
-  if (Array.isArray(content)) {
-    return content
-      .map((block) => {
-        if (typeof block === "object" && block !== null && "text" in block) {
-          return String((block as { text: unknown }).text);
-        }
-        return typeof block === "object" && block !== null && "type" in block
-          ? `[${String((block as { type: unknown }).type)}]`
-          : "";
-      })
-      .join(" ")
-      .slice(0, 300);
-  }
-  if (typeof record.text === "string") return record.text.slice(0, 300);
-  if (typeof record.message === "string") return record.message.slice(0, 300);
-  return "";
-}
-
 /** 事件类型徽章:user 消息走描边、agent 走正向 tint、错误走负向 tint,其余中性 */
 function EventBadge({ type }: { type: string | undefined }) {
   if (!type) return <StatusBadge tint="tint-neutral">event</StatusBadge>;
@@ -110,49 +98,6 @@ function EventBadge({ type }: { type: string | undefined }) {
     return <StatusBadge tint="tint-positive" className="font-mono text-[11px] font-normal">{type}</StatusBadge>;
   }
   return <StatusBadge tint="tint-neutral" className="font-mono text-[11px] font-normal">{type}</StatusBadge>;
-}
-
-/** 事件行:点击选中,联动时间线高亮与右栏详情;原始载荷挪进详情面板 */
-function EventItem({
-  event,
-  selected,
-  onSelect,
-}: {
-  event: EventLike;
-  selected: boolean;
-  onSelect: () => void;
-}) {
-  const record = event as Record<string, unknown>;
-  const summary = summarizeEvent(event);
-  const time = formatTime(record.processed_at as string | null | undefined);
-  const shortTime = formatTimeShort(record.processed_at as string | null | undefined);
-  return (
-    <li
-      id={`event-row-${typeof record.id === "string" ? record.id : ""}`}
-      className={cn("transition-colors hover:bg-accent/50", selected && "bg-accent")}
-    >
-      <button
-        type="button"
-        onClick={onSelect}
-        className="flex w-full flex-col gap-1.5 px-3 py-3 text-left text-sm sm:flex-row sm:items-start sm:gap-4"
-      >
-        <div className="flex w-full items-center justify-between gap-3 sm:w-48 sm:shrink-0 sm:justify-start">
-          <EventBadge type={record.type as string | undefined} />
-          <span className="text-muted-foreground text-xs whitespace-nowrap tabular-nums sm:hidden">{shortTime}</span>
-        </div>
-        <div className="min-w-0 flex-1">
-          {summary ? (
-            <p className="line-clamp-3 whitespace-pre-wrap break-words leading-relaxed">{summary}</p>
-          ) : (
-            <p className="text-muted-foreground text-xs">(无文本载荷)</p>
-          )}
-        </div>
-        <div className="text-muted-foreground hidden w-40 shrink-0 text-right text-xs tabular-nums sm:block">
-          {time}
-        </div>
-      </button>
-    </li>
-  );
 }
 
 /** content 块数组 → 富文本渲染(文本/图片/文档),供事件行摘要与详情面板共用 */
@@ -782,12 +727,14 @@ export function SessionDetailPage() {
   const [liveEvents, setLiveEvents] = useState<EventLike[]>([]);
   const [streamError, setStreamError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [laneFilter, setLaneFilter] = useState<"all" | TimelineLane>("all");
+  const [laneFilter, setLaneFilter] = useState<"all" | LedgerLane>("all");
   const [search, setSearch] = useState("");
+  const [timelineMode, setTimelineMode] = useState<TimelineMode>("sequence");
+  const [focusRange, setFocusRange] = useState<TimelineRange | null>(null);
+  const [collapsedTurns, setCollapsedTurns] = useState<Set<number>>(new Set());
+  const [collapsedSteps, setCollapsedSteps] = useState<Set<string>>(new Set());
   const isDesktop = useIsDesktop();
-  const listRef = useRef<HTMLDivElement>(null);
-  // 事件列表是否"贴底跟随":用户向上翻历史时暂停自动滚动,滚回底部恢复
-  const pinnedRef = useRef(true);
+  const ledgerRef = useRef<SessionLedgerHandle>(null);
 
   const sessionQuery = useQuery({
     queryKey: ["sessions", sessionId],
@@ -814,41 +761,76 @@ export function SessionDetailPage() {
   });
 
   const allEvents = useMemo(() => [...history, ...mergedLive], [history, mergedLive]);
-  const timelineItems = useMemo(() => buildTimelineItems(allEvents as Array<Record<string, unknown>>), [allEvents]);
 
-  // 泳道筛选与搜索作用于事件列表;时间线轴区间取全量,块显示跟随泳道筛选
-  const visibleEvents = useMemo(() => {
-    const keyword = search.trim().toLowerCase();
-    return allEvents.filter((event) => {
-      const record = event as Record<string, unknown>;
-      if (laneFilter !== "all" && laneOfType(record.type) !== laneFilter) return false;
-      if (!keyword) return true;
-      return (
-        String(record.type ?? "").includes(keyword) ||
-        (typeof record.id === "string" && record.id.includes(keyword)) ||
-        summarizeEvent(event).toLowerCase().includes(keyword)
-      );
-    });
-  }, [allEvents, laneFilter, search]);
-  const timelineVisible = useMemo(
-    () => (laneFilter === "all" ? timelineItems : timelineItems.filter((item) => item.lane === laneFilter)),
-    [timelineItems, laneFilter],
+  // 台账数据管线:事件 → 记录(turn/step/配对) → 时间线投影 → 过滤 → 折叠行
+  const ledger = useMemo(() => buildLedger(allEvents as Array<Record<string, unknown>>), [allEvents]);
+  const timelineModel = useMemo(() => deriveTimelineSpans(ledger, timelineMode), [ledger, timelineMode]);
+  const ledgerRecords = useMemo(
+    () => filterRecords(ledger, laneFilter, search),
+    [ledger, laneFilter, search],
   );
+  const ledgerRows = useMemo(
+    () => collapseRecords(ledgerRecords, collapsedTurns, collapsedSteps),
+    [ledgerRecords, collapsedTurns, collapsedSteps],
+  );
+  // 搜索命中集合(不限泳道):台账过滤与时间线高亮共用;无关键词时为 null
+  const searchMatchKeys = useMemo(() => {
+    if (!search.trim()) return null;
+    return new Set(ledger.filter((record) => recordMatchesSearch(record, search)).map((record) => record.key));
+  }, [ledger, search]);
+  // 选区内 key 集合:驱动台账行「选区外压暗」与聚焦滚动
+  const focusKeys = useMemo(
+    () => (timelineModel && focusRange ? timelineFocusKeys(timelineModel, focusRange) : null),
+    [timelineModel, focusRange],
+  );
+  const collapsibleTurnSet = useMemo(() => collapsibleTurns(ledgerRecords), [ledgerRecords]);
+  const collapsibleStepSet = useMemo(() => collapsibleSteps(ledgerRecords), [ledgerRecords]);
 
   const selectedEvent = useMemo(
     () => allEvents.find((event) => (event as Record<string, unknown>).id === selectedId) ?? null,
     [allEvents, selectedId],
   );
   const selectedDuration = useMemo(() => {
-    const item = timelineItems.find((item) => item.key === selectedId);
-    return item ? item.end - item.start : undefined;
-  }, [timelineItems, selectedId]);
+    const record = ledger.find((item) => item.key === selectedId);
+    return record?.durationMs ?? undefined;
+  }, [ledger, selectedId]);
 
-  // 时间线/列表点击选中后,把列表滚动到对应行(时间线块的 key 即事件 id)
+  // 展开 key 所在的 turn/step(时间线/选区定位到被折叠的记录时由台账回调)
+  const revealKey = useCallback(
+    (key: string) => {
+      const record = ledger.find((item) => item.key === key);
+      if (!record) return;
+      setCollapsedSteps((prev) => {
+        const keyToRemove = stepKey(record.turn, record.step);
+        if (!prev.has(keyToRemove)) return prev;
+        const next = new Set(prev);
+        next.delete(keyToRemove);
+        return next;
+      });
+      setCollapsedTurns((prev) => {
+        if (!prev.has(record.turn)) return prev;
+        const next = new Set(prev);
+        next.delete(record.turn);
+        return next;
+      });
+    },
+    [ledger],
+  );
+
+  // 时间线/台账点击选中后滚动到对应行;行被折叠时先展开再滚(展开后 ledgerRows 变化重跑本 effect)
   useEffect(() => {
-    if (!selectedId) return;
-    document.getElementById(`event-row-${selectedId}`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-  }, [selectedId]);
+    if (!selectedId || tab !== "events") return;
+    if (ledgerRows.some((row) => row.record?.key === selectedId)) {
+      ledgerRef.current?.scrollToKey(selectedId);
+    } else {
+      revealKey(selectedId);
+    }
+  }, [selectedId, ledgerRows, tab, revealKey]);
+
+  // 拖选提交后滚动到聚焦行(高于一屏顶对齐,否则居中)
+  useEffect(() => {
+    if (focusRange && focusKeys) ledgerRef.current?.scrollToFocus(focusKeys);
+  }, [focusRange, focusKeys]);
 
   // 重连协议(§7):先补历史再订阅,按事件 id 去重;断线后指数退避自动重连
   useEffect(() => {
@@ -887,17 +869,10 @@ export function SessionDetailPage() {
     };
   }, [live, sessionId, queryClient]);
 
-  // 进入(或切回)事件流 tab 时重新贴底
+  // 进入(或切回)事件流 tab 时恢复贴底;新事件到达的跟随由台账组件内部按贴底状态处理
   useEffect(() => {
-    if (tab === "events") pinnedRef.current = true;
+    if (tab === "events") ledgerRef.current?.jumpToTail();
   }, [tab]);
-
-  // 新事件到达时,仅在贴底状态下列表自动滚到最新
-  useEffect(() => {
-    if (tab !== "events" || !pinnedRef.current) return;
-    const el = listRef.current;
-    el?.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-  }, [tab, history.length, mergedLive.length]);
 
   const sendMutation = useMutation({
     mutationFn: (text: string) =>
@@ -995,9 +970,9 @@ export function SessionDetailPage() {
           />
         </div>
 
-        {/* 工具栏:泳道筛选 + 搜索 + 计数 + 刷新历史;时间线块与列表共用泳道筛选 */}
+        {/* 工具栏:泳道筛选 + 搜索 + 计数 + 折叠开关 + 刷新历史;时间线轴取全量,不受筛选影响 */}
         <div className="flex shrink-0 flex-wrap items-center gap-2">
-          <Select value={laneFilter} onValueChange={(value) => setLaneFilter(value as "all" | TimelineLane)}>
+          <Select value={laneFilter} onValueChange={(value) => setLaneFilter(value as "all" | LedgerLane)}>
             <SelectTrigger className="w-28 text-xs">
               <SelectValue />
             </SelectTrigger>
@@ -1015,8 +990,32 @@ export function SessionDetailPage() {
             onChange={(e) => setSearch(e.target.value)}
           />
           <span className="text-muted-foreground ml-auto text-xs tabular-nums">
-            {visibleEvents.length}/{allEvents.length} 条
+            {ledgerRecords.length}/{ledger.length} 条
           </span>
+          {collapsibleTurnSet.size > 0 || collapsibleStepSet.size > 0 ? (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 px-2 text-xs"
+              onClick={() => {
+                const allCollapsed =
+                  [...collapsibleTurnSet].every((turn) => collapsedTurns.has(turn)) &&
+                  [...collapsibleStepSet].every((key) => collapsedSteps.has(key));
+                if (allCollapsed) {
+                  setCollapsedTurns(new Set());
+                  setCollapsedSteps(new Set());
+                } else {
+                  setCollapsedTurns(new Set(collapsibleTurnSet));
+                  setCollapsedSteps(new Set(collapsibleStepSet));
+                }
+              }}
+            >
+              {[...collapsibleTurnSet].every((turn) => collapsedTurns.has(turn)) &&
+              [...collapsibleStepSet].every((key) => collapsedSteps.has(key))
+                ? "展开全部"
+                : "折叠全部"}
+            </Button>
+          ) : null}
           <RefreshButton
             isFetching={eventsQuery.isFetching}
             onClick={() => void queryClient.invalidateQueries({ queryKey: ["sessions", sessionId, "events"] })}
@@ -1025,23 +1024,47 @@ export function SessionDetailPage() {
           </RefreshButton>
         </div>
 
-        {/* 三泳道时间线 mini-map:常驻可见,点击块选中事件并联动列表滚动 */}
-        {timelineVisible.length > 0 ? (
+        {/* 交互式时间线:拖选区间聚焦台账、滚轮缩放、右键平移;模式切换在卡片头部右侧 */}
+        {timelineModel ? (
           <div className="shrink-0 rounded-lg border bg-card px-4 py-3">
-            <SessionTimeline items={timelineVisible} selectedId={selectedId} onSelect={setSelectedId} />
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <span className="text-muted-foreground text-xs font-medium">时间线</span>
+              <div className="flex items-center gap-0.5 rounded-md border p-0.5" role="group" aria-label="时间线模式">
+                {(["sequence", "duration"] as const).map((value) => (
+                  <button
+                    key={value}
+                    type="button"
+                    aria-pressed={timelineMode === value}
+                    className={cn(
+                      "rounded-[5px] px-2 py-0.5 text-xs transition-colors",
+                      timelineMode === value
+                        ? "bg-background border shadow-xs"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                    onClick={() => setTimelineMode(value)}
+                  >
+                    {value === "sequence" ? "顺序" : "耗时"}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <SessionTimeline
+              model={timelineModel}
+              mode={timelineMode}
+              range={focusRange}
+              onRangeChange={setFocusRange}
+              selectedKey={selectedId}
+              searchMatchKeys={searchMatchKeys}
+              laneFilter={laneFilter}
+              onItemSelect={setSelectedId}
+              onItemFocus={setSelectedId}
+            />
           </div>
         ) : null}
 
         <div className="flex min-h-0 flex-1 gap-4">
-          <div
-            ref={listRef}
-            onScroll={() => {
-              const el = listRef.current;
-              if (!el) return;
-              pinnedRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
-            }}
-            className="border-border/70 min-h-0 min-w-0 grow overflow-y-auto rounded-lg border bg-card"
-          >
+          {/* flex 容器:内部台账滚动容器靠 grow 撑满剩余高度,普通 block 会让 grow 失效导致无法滚动 */}
+          <div className="border-border/70 flex min-h-0 min-w-0 grow flex-col overflow-hidden rounded-lg border bg-card">
             {eventsQuery.isError ? (
               <div className="p-4">
                 <QueryError error={eventsQuery.error} />
@@ -1058,23 +1081,34 @@ export function SessionDetailPage() {
                 <Skeleton className="h-12 w-full" />
                 <Skeleton className="h-12 w-full" />
               </div>
-            ) : visibleEvents.length === 0 ? (
+            ) : ledgerRows.length === 0 ? (
               <p className="text-muted-foreground py-8 text-center text-sm">没有匹配筛选条件的事件。</p>
             ) : (
-              <ul className="divide-y divide-border/70">
-                {visibleEvents.map((event, i) => {
-                  const id = (event as Record<string, unknown>).id as string | undefined;
-                  const key = id ?? `live-${i}`;
-                  return (
-                    <EventItem
-                      key={key}
-                      event={event}
-                      selected={selectedId === key}
-                      onSelect={() => setSelectedId(key)}
-                    />
-                  );
-                })}
-              </ul>
+              <SessionLedger
+                ref={ledgerRef}
+                rows={ledgerRows}
+                selectedKey={selectedId}
+                focusKeys={focusKeys}
+                onSelect={setSelectedId}
+                onToggleTurn={(turn) =>
+                  setCollapsedTurns((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(turn)) next.delete(turn);
+                    else next.add(turn);
+                    return next;
+                  })
+                }
+                onToggleStep={(turn, step) =>
+                  setCollapsedSteps((prev) => {
+                    const key = stepKey(turn, step);
+                    const next = new Set(prev);
+                    if (next.has(key)) next.delete(key);
+                    else next.add(key);
+                    return next;
+                  })
+                }
+                onRevealKey={revealKey}
+              />
             )}
           </div>
 
@@ -1088,7 +1122,7 @@ export function SessionDetailPage() {
               />
             ) : (
               <div className="text-muted-foreground rounded-lg border border-dashed p-4 text-center text-xs">
-                点击时间线块或列表行查看事件详情
+                点击时间线块或台账行查看事件详情
               </div>
             )}
           </aside>
