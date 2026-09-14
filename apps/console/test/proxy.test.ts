@@ -203,6 +203,35 @@ describe("nano 分支", () => {
     expect(upstream.headers.get("zai-beta")).toBeNull();
   });
 
+  it("配置了 NANO_API_SERVICE 绑定时经绑定出网,不走普通 fetch(生产同账号直连通道)", async () => {
+    const captured: Request[] = [];
+    const bindingEnv = {
+      ...devEnv,
+      NANO_API_SERVICE: {
+        fetch: (input: RequestInfo) => {
+          captured.push(input as Request);
+          return Promise.resolve(
+            new Response(JSON.stringify({ data: [], next_page: null }), {
+              status: 200,
+              headers: { "content-type": "application/json" },
+            }),
+          );
+        },
+      },
+    } as unknown as Env;
+
+    const res = await handleRequest(
+      new Request("http://localhost/nano/agent/managed/v1/agents?limit=5"),
+      bindingEnv,
+      noNetwork,
+    );
+    expect(res.status).toBe(200);
+    expect(captured).toHaveLength(1);
+    expect(captured[0]!.url).toBe("http://127.0.0.1:8787/v1/agents?limit=5");
+    expect(captured[0]!.headers.get("authorization")).toBe("Bearer nano-key");
+    await expect(res.json()).resolves.toEqual({ data: [], next_page: null });
+  });
+
   it("files 列表:after_id 映射为 page,响应适配出 has_more/first_id/last_id", async () => {
     const captured: Request[] = [];
     const upstreamPage = new Response(

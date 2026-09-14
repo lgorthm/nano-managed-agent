@@ -21,6 +21,10 @@ sidebar 底部的 Select 决定所有 API 请求走哪个后端,选择存 localS
 - **GLM**:九个资源全部可用,协议头(`zai-version`/`zai-beta`)与分页均为 GLM 原生。
 - **nano**:目前实现了 agents / environments / skills / files 四个资源;Sessions、Deployments、Memories、Vaults 的请求会得到 404,页面显示错误态属预期。浏览器侧始终发 GLM 形状的路径(`/agent/managed/v1/*`)与参数,协议差异全部由 worker 的 `/nano` 分支消化:路径改写为 `/v1/*`、鉴权换成 `NANO_API_KEY`、不带 zai 头;files 列表分页是唯一的 wire 差异点,GLM 的 `after_id`/`has_more`/`last_id` 与 nano 的 opaque `page` 游标/`next_page` 在代理层互转(`src/worker/proxy.ts` 的 `proxyToNano`)。
 
+### nano 后端的传输(Service Binding)
+
+nano-api 与 nano-console 部署在同一个 Cloudflare 账号下,而 Cloudflare **不允许同账号的 Worker 之间用普通 fetch 互访**——边缘会直接返回 404 与 "error code: 1042",请求根本到不了 nano-api。因此生产环境的 `/nano/*` 请求经 `wrangler.jsonc` 里的 Service Binding(`NANO_API_SERVICE` → `nano-api` Worker)直连:绑定的 fetch 忽略 URL 主机、按绑定路由,`NANO_API_BASE` 只用来构造路径与查询串(以及 Settings 页展示)。本地 `vite dev` 不建立该绑定,`proxyToNano` 在无绑定时回退普通 fetch,仍按 `.dev.vars` 的 `NANO_API_BASE` 连本地 `wrangler dev` 的 api;vitest 里由 `vitest.config.ts` 的 `miniflare.workers` 提供同名桩服务,保证 workerd 能启动。注意绑定要求 nano-api 先于 nano-console 存在,`pnpm deploy:init` 的部署顺序已保证。
+
 ## 上线步骤
 
 ### 1. 配置 GLM API Key(secret)
@@ -52,7 +56,7 @@ pnpm exec wrangler secret put GLM_API_KEY   # 粘贴 https://bigmodel.cn/usercen
 
 ```bash
 cd apps/console
-pnpm deploy        # vite build && wrangler deploy
+pnpm run deploy    # vite build && wrangler deploy(裸 pnpm deploy 是 pnpm 内置命令,须带 run)
 ```
 
 部署完成后访问域名,未登录会被 Access 拦截;登录后 SPA 里所有 GLM 请求都走同域 `/glm/*`。

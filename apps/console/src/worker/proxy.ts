@@ -166,8 +166,13 @@ export async function proxyToNano(
   const upstreamUrl = isFileList
     ? buildNanoFileListUrl(url, env.NANO_API_BASE)
     : buildNanoUpstreamUrl(url, env.NANO_API_BASE);
-  const upstream = await fetchImpl(
-    buildUpstreamRequest(request, upstreamUrl, env.NANO_API_KEY, false),
-  );
+  const upstreamRequest = buildUpstreamRequest(request, upstreamUrl, env.NANO_API_KEY, false);
+  // 生产经 Service Binding(wrangler.jsonc services → nano-api)直连 Worker:
+  // 同账号 Worker 间的普通 fetch 会被 Cloudflare 拒绝(404 "error code: 1042"),
+  // 绑定的 fetch 忽略 URL 主机、按绑定路由,上面的绝对 URL 只提供路径与查询串。
+  // 本地 vite dev 不建立绑定,回退普通 fetch,仍按 NANO_API_BASE 连本地 api。
+  const upstream = env.NANO_API_SERVICE
+    ? await env.NANO_API_SERVICE.fetch(upstreamRequest)
+    : await fetchImpl(upstreamRequest);
   return isFileList ? adaptFileListResponse(upstream) : passthroughResponse(upstream);
 }
