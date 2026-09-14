@@ -61,6 +61,25 @@
 
 ![文件库页面](docs/images/console-files.png)
 
+同一套界面也适配手机，随时随地跟进正在运行的会话：
+
+<table>
+  <tr>
+    <td><img src="docs/images/console-mobile-agents.png" width="170" alt="移动端 Agents" /></td>
+    <td><img src="docs/images/console-mobile-sessions.png" width="170" alt="移动端 Sessions" /></td>
+    <td><img src="docs/images/console-mobile-session-events.png" width="170" alt="移动端会话事件流" /></td>
+    <td><img src="docs/images/console-mobile-session-files.png" width="170" alt="移动端会话文件" /></td>
+    <td><img src="docs/images/console-mobile-files.png" width="170" alt="移动端文件库" /></td>
+  </tr>
+  <tr>
+    <td align="center">Agents</td>
+    <td align="center">Sessions</td>
+    <td align="center">会话 · 事件流</td>
+    <td align="center">会话 · 文件</td>
+    <td align="center">文件库</td>
+  </tr>
+</table>
+
 ## 架构
 
 | Cloudflare 组件 | 在本项目中的角色 |

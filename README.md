@@ -61,6 +61,25 @@ The bundled console manages the whole control plane and gives you a live window 
 
 ![Files page](docs/images/console-files.png)
 
+The same UI adapts to phones, so you can keep an eye on a running session from anywhere:
+
+<table>
+  <tr>
+    <td><img src="docs/images/console-mobile-agents.png" width="170" alt="Agents on mobile" /></td>
+    <td><img src="docs/images/console-mobile-sessions.png" width="170" alt="Sessions on mobile" /></td>
+    <td><img src="docs/images/console-mobile-session-events.png" width="170" alt="Session event stream on mobile" /></td>
+    <td><img src="docs/images/console-mobile-session-files.png" width="170" alt="Session files on mobile" /></td>
+    <td><img src="docs/images/console-mobile-files.png" width="170" alt="Files on mobile" /></td>
+  </tr>
+  <tr>
+    <td align="center">Agents</td>
+    <td align="center">Sessions</td>
+    <td align="center">Session · events</td>
+    <td align="center">Session · files</td>
+    <td align="center">Files</td>
+  </tr>
+</table>
+
 ## Architecture
 
 | Cloudflare component | Role in this project |
