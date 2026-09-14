@@ -118,8 +118,14 @@ export function AppLayout() {
         </div>
       </header>
 
-      <main className="min-w-0 flex-1">
-        <div className="mx-auto max-w-[96rem] p-4 md:p-8">
+      {/* main 限高一屏:内容超出时在 main 内滚动,页面本身不滚(滚动条贴 main 右缘)。
+          移动端扣除吸顶 header 的 h-14(3.5rem);桌面端 sidebar 行高即整屏。
+          flex-1 仅桌面启用:flex-col 下 flex-basis:0 会覆盖显式高度。 */}
+      <main className="h-[calc(100svh-3.5rem)] min-w-0 overflow-y-auto md:h-svh md:flex-1">
+        {/* min-h-full + flex-col:把 main 的高度基准传给页面根元素,页面用 flex-1 撑满一屏;
+            内容超出时容器自然撑高,仍由 main 统一滚动。
+            relative:供会话详情页等"应用式"页面把根元素 absolute 定位到一屏内 */}
+        <div className="relative mx-auto flex min-h-full w-full max-w-[96rem] flex-col p-3 md:p-5 md:pl-3">
           <Outlet />
         </div>
       </main>

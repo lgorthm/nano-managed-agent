@@ -1,6 +1,6 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { ManagedFile, PersistedEvent, SessionFileResource, SessionResourceResponse, StreamEvent } from "@nano/shared/glm";
-import { Archive, Ban, Download, Inbox, Paperclip, Send, Unlink } from "lucide-react";
+import type { ManagedFile, PersistedEvent, Session, SessionFileResource, SessionResourceResponse, StreamEvent } from "@nano/shared/glm";
+import { Archive, Ban, Check, Copy, Download, Inbox, Paperclip, Send, Unlink, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router";
 import { downloadFile, listFiles } from "@/api/files";
@@ -16,10 +16,16 @@ import {
 } from "@/api/sessions";
 import { BackLink } from "@/components/back-link";
 import { EmptyState } from "@/components/empty-state";
-import { PageHeader } from "@/components/page-header";
 import { QueryError } from "@/components/query-error";
 import { RefreshButton } from "@/components/refresh-button";
-import { SectionCard } from "@/components/section-card";
+import { KeyValueRow, SectionCard } from "@/components/section-card";
+import {
+  buildTimelineItems,
+  formatSpanDuration,
+  laneOfType,
+  SessionTimeline,
+  type TimelineLane,
+} from "@/components/session-timeline";
 import { SessionStatusBadge, StatusBadge } from "@/components/status-badges";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -42,6 +48,7 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatBytes, formatNumber, formatTime, formatTimeShort, shortId } from "@/lib/format";
@@ -105,32 +112,168 @@ function EventBadge({ type }: { type: string | undefined }) {
   return <StatusBadge tint="tint-neutral" className="font-mono text-[11px] font-normal">{type}</StatusBadge>;
 }
 
-function EventItem({ event }: { event: EventLike }) {
+/** 事件行:点击选中,联动时间线高亮与右栏详情;原始载荷挪进详情面板 */
+function EventItem({
+  event,
+  selected,
+  onSelect,
+}: {
+  event: EventLike;
+  selected: boolean;
+  onSelect: () => void;
+}) {
   const record = event as Record<string, unknown>;
   const summary = summarizeEvent(event);
   const time = formatTime(record.processed_at as string | null | undefined);
   const shortTime = formatTimeShort(record.processed_at as string | null | undefined);
   return (
-    <li className="flex flex-col gap-1.5 py-3 text-sm sm:flex-row sm:items-start sm:gap-4">
-      <div className="flex w-full items-center justify-between gap-3 sm:w-48 sm:shrink-0 sm:justify-start">
-        <EventBadge type={record.type as string | undefined} />
-        <span className="text-muted-foreground text-xs whitespace-nowrap tabular-nums sm:hidden">{shortTime}</span>
-      </div>
-      <div className="min-w-0 flex-1">
-        {summary ? <p className="whitespace-pre-wrap break-words leading-relaxed">{summary}</p> : null}
-        <details className="mt-1 group">
-          <summary className="text-muted-foreground hover:text-foreground cursor-pointer text-xs transition-colors select-none">
-            原始载荷
-          </summary>
-          <pre className="bg-muted mt-1.5 max-h-64 overflow-auto rounded-md p-2.5 font-mono text-xs leading-relaxed">
-            {JSON.stringify(event, null, 2)}
-          </pre>
-        </details>
-      </div>
-      <div className="text-muted-foreground hidden w-40 shrink-0 text-right text-xs tabular-nums sm:block">
-        {time}
-      </div>
+    <li
+      id={`event-row-${typeof record.id === "string" ? record.id : ""}`}
+      className={cn("transition-colors hover:bg-accent/50", selected && "bg-accent")}
+    >
+      <button
+        type="button"
+        onClick={onSelect}
+        className="flex w-full flex-col gap-1.5 px-3 py-3 text-left text-sm sm:flex-row sm:items-start sm:gap-4"
+      >
+        <div className="flex w-full items-center justify-between gap-3 sm:w-48 sm:shrink-0 sm:justify-start">
+          <EventBadge type={record.type as string | undefined} />
+          <span className="text-muted-foreground text-xs whitespace-nowrap tabular-nums sm:hidden">{shortTime}</span>
+        </div>
+        <div className="min-w-0 flex-1">
+          {summary ? (
+            <p className="line-clamp-3 whitespace-pre-wrap break-words leading-relaxed">{summary}</p>
+          ) : (
+            <p className="text-muted-foreground text-xs">(无文本载荷)</p>
+          )}
+        </div>
+        <div className="text-muted-foreground hidden w-40 shrink-0 text-right text-xs tabular-nums sm:block">
+          {time}
+        </div>
+      </button>
     </li>
+  );
+}
+
+/** content 块数组 → 富文本渲染(文本/图片/文档),供事件行摘要与详情面板共用 */
+function ContentBlocks({ content }: { content: unknown[] }) {
+  return (
+    <div className="space-y-2">
+      {content.map((block, i) => {
+        if (typeof block !== "object" || block === null) return null;
+        const b = block as Record<string, unknown>;
+        if (b.type === "text" && typeof b.text === "string") {
+          return (
+            <p key={i} className="whitespace-pre-wrap break-words leading-relaxed">
+              {b.text}
+            </p>
+          );
+        }
+        if (b.type === "image") {
+          const source = b.source as { type?: string; media_type?: string; data?: string } | undefined;
+          if (source?.type === "base64" && source.media_type && source.data) {
+            return (
+              <img
+                key={i}
+                src={`data:${source.media_type};base64,${source.data}`}
+                alt={`图片块 ${i + 1}`}
+                className="max-h-48 rounded-md border"
+              />
+            );
+          }
+          return null;
+        }
+        if (b.type === "document") {
+          return (
+            <p key={i} className="text-muted-foreground text-xs">
+              [文档] {typeof b.title === "string" ? b.title : `块 ${i + 1}`}
+            </p>
+          );
+        }
+        return (
+          <p key={i} className="text-muted-foreground text-xs">
+            [{String(b.type ?? "block")}]
+          </p>
+        );
+      })}
+    </div>
+  );
+}
+
+/** 事件详情:类型/时间/Event ID/配对耗时 + 载荷富文本 + 原始 JSON;onClose 省略时隐藏关闭按钮(弹窗场景) */
+function EventDetailPanel({
+  event,
+  duration,
+  onClose,
+}: {
+  event: EventLike;
+  duration?: number;
+  onClose?: () => void;
+}) {
+  const record = event as Record<string, unknown>;
+  const type = record.type as string | undefined;
+  const id = record.id as string | undefined;
+  const hasDuration = duration !== undefined && duration > 0;
+
+  return (
+    <div className="border-border/70 bg-card min-w-0 space-y-4 rounded-lg border p-4 shadow-xs">
+      <div className="flex items-start justify-between gap-2">
+        <EventBadge type={type} />
+        {onClose ? (
+          <Button size="icon" variant="ghost" className="text-muted-foreground size-7" aria-label="关闭详情" onClick={onClose}>
+            <X className="size-3.5" />
+          </Button>
+        ) : null}
+      </div>
+
+      <div className="space-y-2 text-sm">
+        <KeyValueRow label="时间">{formatTime(record.processed_at as string | null | undefined)}</KeyValueRow>
+        {hasDuration ? <KeyValueRow label="耗时">{formatSpanDuration(duration!)}</KeyValueRow> : null}
+        {typeof id === "string" ? (
+          <KeyValueRow label="Event ID">
+            <span className="font-mono text-xs break-all">{id}</span>
+          </KeyValueRow>
+        ) : null}
+      </div>
+
+      <div className="border-border/70 space-y-3 border-t pt-3 text-sm">
+        <h4 className="text-muted-foreground text-[13px] font-medium tracking-wide">载荷内容</h4>
+        {Array.isArray(record.content) ? (
+          <ContentBlocks content={record.content} />
+        ) : typeof record.name === "string" ? (
+          <div className="space-y-2">
+            <span className="font-mono text-xs break-all">{String(record.name)}</span>
+            <pre className="bg-muted max-h-56 overflow-auto rounded-md p-2.5 font-mono text-xs leading-relaxed">
+              {JSON.stringify(record.input ?? {}, null, 2)}
+            </pre>
+          </div>
+        ) : typeof record.text === "string" ? (
+          <p className="whitespace-pre-wrap break-words leading-relaxed">{record.text}</p>
+        ) : typeof record.message === "string" ? (
+          <p className="whitespace-pre-wrap break-words leading-relaxed">{record.message}</p>
+        ) : record.stop_reason ? (
+          <pre className="bg-muted max-h-56 overflow-auto rounded-md p-2.5 font-mono text-xs leading-relaxed">
+            {JSON.stringify(record.stop_reason, null, 2)}
+          </pre>
+        ) : (
+          <p className="text-muted-foreground text-xs">无可渲染的文本载荷,查看下方原始 JSON。</p>
+        )}
+        {record.is_error === true ? (
+          <StatusBadge tint="tint-negative" className="font-mono text-[11px] font-normal">
+            is_error
+          </StatusBadge>
+        ) : null}
+      </div>
+
+      <details className="group border-border/70 border-t pt-3">
+        <summary className="text-muted-foreground hover:text-foreground cursor-pointer text-xs transition-colors select-none">
+          原始载荷
+        </summary>
+        <pre className="bg-muted mt-1.5 max-h-64 overflow-auto rounded-md p-2.5 font-mono text-xs leading-relaxed">
+          {JSON.stringify(event, null, 2)}
+        </pre>
+      </details>
+    </div>
   );
 }
 
@@ -143,6 +286,29 @@ function StatCell({ label, value, unit }: { label: string; value: string; unit?:
         {unit ? <span className="text-muted-foreground ml-0.5 text-sm font-normal">{unit}</span> : null}
       </div>
     </div>
+  );
+}
+
+/** 长 ID 复制按钮:点击写入剪贴板,短暂显示对勾反馈 */
+function CopyIdButton({ value }: { value: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      aria-label="复制"
+      className="text-muted-foreground hover:text-foreground inline-flex cursor-pointer items-center transition-colors"
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(value);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1500);
+        } catch {
+          // 剪贴板不可用(非安全上下文等):静默失败
+        }
+      }}
+    >
+      {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
+    </button>
   );
 }
 
@@ -390,6 +556,56 @@ function PendingApprovals({
   );
 }
 
+/** Token 用量 tab:顶部指标条 + 会话元信息 */
+function UsageSection({ session }: { session: Session }) {
+  const metadataEntries = Object.entries(session.metadata ?? {});
+  return (
+    <>
+      {/* 单块指标条:发丝线分隔,避免四张等宽小卡片碎 */}
+      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border bg-border md:grid-cols-4">
+        <StatCell label="输入 tokens" value={formatNumber(session.usage.input_tokens)} />
+        <StatCell label="输出 tokens" value={formatNumber(session.usage.output_tokens)} />
+        <StatCell label="缓存命中" value={formatNumber(session.usage.cache_read_input_tokens)} />
+        <StatCell label="活跃时长" value={session.stats.active_seconds.toFixed(1)} unit="s" />
+      </div>
+
+      <SectionCard title="会话信息" contentClassName="grid gap-x-8 gap-y-3 sm:grid-cols-2">
+        <KeyValueRow label="Session ID">
+          <span className="inline-flex items-center gap-1.5">
+            <span className="font-mono text-xs break-all">{session.id}</span>
+            <CopyIdButton value={session.id} />
+          </span>
+        </KeyValueRow>
+        <KeyValueRow label="Agent">
+          {session.agent.name}
+          <span className="text-muted-foreground text-xs"> · v{session.agent.version}</span>
+        </KeyValueRow>
+        <KeyValueRow label="Environment">
+          <span className="inline-flex items-center gap-1.5">
+            <span className="font-mono text-xs">{session.environment_id}</span>
+            <CopyIdButton value={session.environment_id} />
+          </span>
+        </KeyValueRow>
+        <KeyValueRow label="创建时间">{formatTime(session.created_at)}</KeyValueRow>
+        <KeyValueRow label="最近更新">{formatTime(session.updated_at)}</KeyValueRow>
+        {session.archived_at ? <KeyValueRow label="归档时间">{formatTime(session.archived_at)}</KeyValueRow> : null}
+        {session.vault_ids.length > 0 ? (
+          <KeyValueRow label="Vaults">
+            <span className="font-mono text-xs">{session.vault_ids.map((id) => shortId(id)).join(", ")}</span>
+          </KeyValueRow>
+        ) : null}
+        {metadataEntries.map(([key, value]) => (
+          <KeyValueRow key={key} label={key}>
+            <span className="font-mono text-xs break-all">
+              {typeof value === "string" ? value : JSON.stringify(value)}
+            </span>
+          </KeyValueRow>
+        ))}
+      </SectionCard>
+    </>
+  );
+}
+
 /**
  * 会话文件卡片:数据源是 files 的 scope_id 过滤(挂载 ∪ 产出),
  * 用 session_resources 的挂载集合给行标注来源;产出行提供下载,
@@ -541,14 +757,37 @@ function ResourcesSection({ sessionId, archived }: { sessionId: string; archived
   );
 }
 
+type SessionTab = "events" | "usage" | "files";
+
+/** 是否 ≥ lg 断点(与 CSS lg: 一致);用于只在移动端挂载事件详情弹窗 */
+function useIsDesktop() {
+  const [isDesktop, setIsDesktop] = useState(
+    () => window.matchMedia("(min-width: 64rem)").matches,
+  );
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 64rem)");
+    const onChange = (e: MediaQueryListEvent) => setIsDesktop(e.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+  return isDesktop;
+}
+
 export function SessionDetailPage() {
   const { sessionId } = useParams();
   const queryClient = useQueryClient();
+  const [tab, setTab] = useState<SessionTab>("events");
   const [live, setLive] = useState(false);
   const [draft, setDraft] = useState("");
   const [liveEvents, setLiveEvents] = useState<EventLike[]>([]);
   const [streamError, setStreamError] = useState<string | null>(null);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [laneFilter, setLaneFilter] = useState<"all" | TimelineLane>("all");
+  const [search, setSearch] = useState("");
+  const isDesktop = useIsDesktop();
+  const listRef = useRef<HTMLDivElement>(null);
+  // 事件列表是否"贴底跟随":用户向上翻历史时暂停自动滚动,滚回底部恢复
+  const pinnedRef = useRef(true);
 
   const sessionQuery = useQuery({
     queryKey: ["sessions", sessionId],
@@ -573,6 +812,43 @@ export function SessionDetailPage() {
     const id = (e as Record<string, unknown>).id;
     return typeof id !== "string" || !historyIds.has(id);
   });
+
+  const allEvents = useMemo(() => [...history, ...mergedLive], [history, mergedLive]);
+  const timelineItems = useMemo(() => buildTimelineItems(allEvents as Array<Record<string, unknown>>), [allEvents]);
+
+  // 泳道筛选与搜索作用于事件列表;时间线轴区间取全量,块显示跟随泳道筛选
+  const visibleEvents = useMemo(() => {
+    const keyword = search.trim().toLowerCase();
+    return allEvents.filter((event) => {
+      const record = event as Record<string, unknown>;
+      if (laneFilter !== "all" && laneOfType(record.type) !== laneFilter) return false;
+      if (!keyword) return true;
+      return (
+        String(record.type ?? "").includes(keyword) ||
+        (typeof record.id === "string" && record.id.includes(keyword)) ||
+        summarizeEvent(event).toLowerCase().includes(keyword)
+      );
+    });
+  }, [allEvents, laneFilter, search]);
+  const timelineVisible = useMemo(
+    () => (laneFilter === "all" ? timelineItems : timelineItems.filter((item) => item.lane === laneFilter)),
+    [timelineItems, laneFilter],
+  );
+
+  const selectedEvent = useMemo(
+    () => allEvents.find((event) => (event as Record<string, unknown>).id === selectedId) ?? null,
+    [allEvents, selectedId],
+  );
+  const selectedDuration = useMemo(() => {
+    const item = timelineItems.find((item) => item.key === selectedId);
+    return item ? item.end - item.start : undefined;
+  }, [timelineItems, selectedId]);
+
+  // 时间线/列表点击选中后,把列表滚动到对应行(时间线块的 key 即事件 id)
+  useEffect(() => {
+    if (!selectedId) return;
+    document.getElementById(`event-row-${selectedId}`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [selectedId]);
 
   // 重连协议(§7):先补历史再订阅,按事件 id 去重;断线后指数退避自动重连
   useEffect(() => {
@@ -611,9 +887,17 @@ export function SessionDetailPage() {
     };
   }, [live, sessionId, queryClient]);
 
+  // 进入(或切回)事件流 tab 时重新贴底
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [history.length, liveEvents.length]);
+    if (tab === "events") pinnedRef.current = true;
+  }, [tab]);
+
+  // 新事件到达时,仅在贴底状态下列表自动滚到最新
+  useEffect(() => {
+    if (tab !== "events" || !pinnedRef.current) return;
+    const el = listRef.current;
+    el?.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+  }, [tab, history.length, mergedLive.length]);
 
   const sendMutation = useMutation({
     mutationFn: (text: string) =>
@@ -640,127 +924,239 @@ export function SessionDetailPage() {
   if (sessionQuery.isError) return <QueryError error={sessionQuery.error} />;
 
   const session = sessionQuery.data;
+  const archived = session.archived_at !== null;
+  const interruptible = !archived && session.status === "running";
 
   return (
-    <div className="space-y-4">
+    // 事件流 tab 下页面根 absolute 定位到 app-layout 容器(padding 对应 inset)的一屏内:
+    // 脱离文档流后高度确定,固有高度不再把页面撑高,工具栏/时间线/输入框固定、仅列表内部滚动。
+    // 其余 tab 保持静态流,内容自然撑开、由 main 滚动。
+    <Tabs
+      value={tab}
+      onValueChange={(value) => setTab(value as SessionTab)}
+      className={cn(
+        "flex-1 flex-col gap-4",
+        tab === "events"
+          ? "absolute inset-x-3 top-3 bottom-3 md:inset-x-5 md:left-3 md:top-5 md:bottom-5"
+          : "min-h-full",
+      )}
+    >
       <title>nano console — {session.title ?? shortId(session.id)}</title>
-      <BackLink to="/sessions" label="返回 Sessions" />
-      <PageHeader
-        title={session.title ?? shortId(session.id)}
-        description={`Agent: ${session.agent.name} · environment: ${shortId(session.environment_id)}`}
-        actions={
-          <>
-            <SessionStatusBadge status={session.status} />
-            {!session.archived_at && session.status === "running" ? (
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={interruptMutation.isPending}
-                onClick={() => interruptMutation.mutate()}
-              >
-                <Ban /> {interruptMutation.isPending ? "打断中…" : "打断"}
-              </Button>
-            ) : null}
-            {!session.archived_at ? <ArchiveSessionDialog sessionId={session.id} /> : null}
-            <label className="text-muted-foreground flex items-center gap-2 text-sm">
-              <span
-                aria-hidden
-                className={cn(
-                  "size-2 rounded-full",
-                  live ? "bg-pine-600 animate-pulse dark:bg-pine-500" : "bg-muted-foreground/40",
-                )}
-              />
-              实时
-              <Switch checked={live} onCheckedChange={setLive} />
-            </label>
-          </>
-        }
-      />
-
-      {/* 单块指标条:发丝线分隔,避免四张等宽小卡片碎 */}
-      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border bg-border md:grid-cols-4">
-        <StatCell label="输入 tokens" value={formatNumber(session.usage.input_tokens)} />
-        <StatCell label="输出 tokens" value={formatNumber(session.usage.output_tokens)} />
-        <StatCell label="缓存命中" value={formatNumber(session.usage.cache_read_input_tokens)} />
-        <StatCell label="活跃时长" value={session.stats.active_seconds.toFixed(1)} unit="s" />
+      {/* 标题与 Agent/环境信息内联在返回链接右侧,与页面级操作同行,压缩头部占高 */}
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+        <div className="flex min-w-0 flex-1 items-center gap-3">
+          {/* desktopOnly 样式即"始终显示",此处作为面包屑用 */}
+          <BackLink to="/sessions" label="返回 Sessions" desktopOnly />
+          <h1 className="min-w-0 truncate text-sm font-semibold">{session.title ?? shortId(session.id)}</h1>
+          <span className="text-muted-foreground hidden min-w-0 truncate text-xs sm:inline">
+            Agent: {session.agent.name} · environment: {shortId(session.environment_id)}
+          </span>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <SessionStatusBadge status={session.status} />
+          {!archived ? <ArchiveSessionDialog sessionId={session.id} /> : null}
+          <label className="text-muted-foreground flex items-center gap-2 text-sm">
+            <span
+              aria-hidden
+              className={cn(
+                "size-2 rounded-full",
+                live ? "bg-pine-600 animate-pulse dark:bg-pine-500" : "bg-muted-foreground/40",
+              )}
+            />
+            实时
+            <Switch checked={live} onCheckedChange={setLive} />
+          </label>
+        </div>
       </div>
 
-      <PendingApprovals sessionId={session.id} archived={session.archived_at !== null} events={[...history, ...mergedLive]} />
-      <ResourcesSection sessionId={session.id} archived={session.archived_at !== null} />
+      {/* Cloudflare 风格胶囊导航 */}
+      <div className="flex flex-wrap items-center gap-2">
+        <TabsList className="border-border/70 border bg-muted/50">
+          <TabsTrigger value="events">事件流</TabsTrigger>
+          <TabsTrigger value="usage">Token 用量</TabsTrigger>
+          <TabsTrigger value="files">会话文件</TabsTrigger>
+        </TabsList>
+      </div>
 
-      <SectionCard
-        title="事件流"
-        action={
+      {/* ---------------------------------------------------------------- 事件流(默认 tab)
+          整页限高一屏:工具栏/时间线/输入框固定,仅事件列表内部滚动;新事件仅在贴底时自动跟随 */}
+      <TabsContent value="events" className="flex min-h-0 flex-col gap-3">
+        {streamError ? (
+          <p className="text-destructive shrink-0 rounded-md border border-border bg-muted/50 px-3 py-2 text-sm">
+            实时流断开:{streamError}
+          </p>
+        ) : null}
+
+        <div className="shrink-0">
+          <PendingApprovals
+            sessionId={session.id}
+            archived={archived}
+            events={[...history, ...mergedLive]}
+          />
+        </div>
+
+        {/* 工具栏:泳道筛选 + 搜索 + 计数 + 刷新历史;时间线块与列表共用泳道筛选 */}
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
+          <Select value={laneFilter} onValueChange={(value) => setLaneFilter(value as "all" | TimelineLane)}>
+            <SelectTrigger className="w-28 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">全部事件</SelectItem>
+              <SelectItem value="input">输入</SelectItem>
+              <SelectItem value="model">模型</SelectItem>
+              <SelectItem value="tool">工具</SelectItem>
+            </SelectContent>
+          </Select>
+          <Input
+            className="w-48 text-xs"
+            placeholder="搜索类型 / 内容 / ID"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          <span className="text-muted-foreground ml-auto text-xs tabular-nums">
+            {visibleEvents.length}/{allEvents.length} 条
+          </span>
           <RefreshButton
             isFetching={eventsQuery.isFetching}
             onClick={() => void queryClient.invalidateQueries({ queryKey: ["sessions", sessionId, "events"] })}
           >
             刷新历史
           </RefreshButton>
-        }
-      >
-        {streamError ? (
-          <p className="text-destructive mb-3 rounded-md border border-border bg-muted/50 px-3 py-2 text-sm">
-            实时流断开:{streamError}
-          </p>
-        ) : null}
-        {eventsQuery.isError ? (
-          <QueryError error={eventsQuery.error} />
-        ) : history.length === 0 && mergedLive.length === 0 && !eventsQuery.isPending ? (
-          <EmptyState
-            icon={Inbox}
-            title="暂无事件"
-            description="这个会话还没有任何事件;在下方发送一条 user.message 就能看到事件流跑起来。"
-          />
-        ) : eventsQuery.isPending ? (
-          <div className="space-y-4 py-2">
-            <Skeleton className="h-12 w-full" />
-            <Skeleton className="h-12 w-full" />
-            <Skeleton className="h-12 w-full" />
-          </div>
-        ) : (
-          <ul className="divide-y divide-border/70">
-            {history.map((event) => (
-              <EventItem key={event.id} event={event} />
-            ))}
-            {mergedLive.map((event, i) => (
-              <EventItem key={(event as Record<string, unknown>).id as string | undefined ?? `live-${i}`} event={event} />
-            ))}
-          </ul>
-        )}
-        <div ref={bottomRef} />
-      </SectionCard>
-
-      <SectionCard title="发送消息" contentClassName="space-y-3">
-        <Textarea
-          rows={3}
-          value={draft}
-          placeholder="发送 user.message 给会话…"
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && draft.trim()) {
-              sendMutation.mutate(draft.trim());
-            }
-          }}
-        />
-        <div className="flex items-center justify-between">
-          <span className="text-muted-foreground hidden font-mono text-xs sm:inline">⌘/Ctrl + Enter 发送</span>
-          <Button
-            size="sm"
-            disabled={!draft.trim() || sendMutation.isPending}
-            onClick={() => sendMutation.mutate(draft.trim())}
-          >
-            <Send /> {sendMutation.isPending ? "发送中…" : "发送"}
-          </Button>
         </div>
-        {sendMutation.isError ? (
-          <p className="text-destructive text-sm">{(sendMutation.error as Error).message}</p>
-        ) : null}
-      </SectionCard>
 
-      <div className="hidden md:block">
-        <BackLink to="/sessions" label="返回 Sessions" desktopOnly />
-      </div>
-    </div>
+        {/* 三泳道时间线 mini-map:常驻可见,点击块选中事件并联动列表滚动 */}
+        {timelineVisible.length > 0 ? (
+          <div className="shrink-0 rounded-lg border bg-card px-4 py-3">
+            <SessionTimeline items={timelineVisible} selectedId={selectedId} onSelect={setSelectedId} />
+          </div>
+        ) : null}
+
+        <div className="flex min-h-0 flex-1 gap-4">
+          <div
+            ref={listRef}
+            onScroll={() => {
+              const el = listRef.current;
+              if (!el) return;
+              pinnedRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+            }}
+            className="border-border/70 min-h-0 min-w-0 grow overflow-y-auto rounded-lg border bg-card"
+          >
+            {eventsQuery.isError ? (
+              <div className="p-4">
+                <QueryError error={eventsQuery.error} />
+              </div>
+            ) : history.length === 0 && mergedLive.length === 0 && !eventsQuery.isPending ? (
+              <EmptyState
+                icon={Inbox}
+                title="暂无事件"
+                description="这个会话还没有任何事件;在下方发送一条 user.message 就能看到事件流跑起来。"
+              />
+            ) : eventsQuery.isPending ? (
+              <div className="space-y-4 p-4">
+                <Skeleton className="h-12 w-full" />
+                <Skeleton className="h-12 w-full" />
+                <Skeleton className="h-12 w-full" />
+              </div>
+            ) : visibleEvents.length === 0 ? (
+              <p className="text-muted-foreground py-8 text-center text-sm">没有匹配筛选条件的事件。</p>
+            ) : (
+              <ul className="divide-y divide-border/70">
+                {visibleEvents.map((event, i) => {
+                  const id = (event as Record<string, unknown>).id as string | undefined;
+                  const key = id ?? `live-${i}`;
+                  return (
+                    <EventItem
+                      key={key}
+                      event={event}
+                      selected={selectedId === key}
+                      onSelect={() => setSelectedId(key)}
+                    />
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+
+          {/* 事件详情:桌面端右栏独立滚动;移动端走下方弹窗 */}
+          <aside className="hidden w-[21rem] shrink-0 min-h-0 overflow-y-auto lg:block">
+            {selectedEvent ? (
+              <EventDetailPanel
+                event={selectedEvent}
+                duration={selectedDuration}
+                onClose={() => setSelectedId(null)}
+              />
+            ) : (
+              <div className="text-muted-foreground rounded-lg border border-dashed p-4 text-center text-xs">
+                点击时间线块或列表行查看事件详情
+              </div>
+            )}
+          </aside>
+        </div>
+
+        {/* 输入框:作为 flex 尾项常驻视口底部,不随列表滚动 */}
+        <div className="border-border/70 shrink-0 rounded-xl border bg-card p-3 shadow-xs">
+          <Textarea
+            rows={2}
+            value={draft}
+            disabled={archived}
+            placeholder={archived ? "会话已归档(只读),不能发送消息" : "发送 user.message 给会话…"}
+            onChange={(e) => setDraft(e.target.value)}
+            className="max-h-44 min-h-10 resize-none overflow-y-auto border-0 px-1 py-1 shadow-none focus-visible:border-transparent focus-visible:ring-0 dark:bg-transparent"
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && draft.trim() && !archived) {
+                sendMutation.mutate(draft.trim());
+              }
+            }}
+          />
+          <div className="flex items-center justify-between gap-2 pt-1.5">
+            <span className="text-muted-foreground hidden font-mono text-xs sm:inline">⌘/Ctrl + Enter 发送</span>
+            <div className="flex items-center gap-2">
+              {interruptible ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={interruptMutation.isPending}
+                  onClick={() => interruptMutation.mutate()}
+                >
+                  <Ban /> {interruptMutation.isPending ? "打断中…" : "打断"}
+                </Button>
+              ) : null}
+              <Button
+                size="sm"
+                disabled={archived || !draft.trim() || sendMutation.isPending}
+                onClick={() => sendMutation.mutate(draft.trim())}
+              >
+                <Send /> {sendMutation.isPending ? "发送中…" : "发送"}
+              </Button>
+            </div>
+          </div>
+          {sendMutation.isError ? (
+            <p className="text-destructive pt-2 text-sm">{(sendMutation.error as Error).message}</p>
+          ) : null}
+        </div>
+      </TabsContent>
+
+      {/* 移动端事件详情弹窗(桌面端用右栏 aside),仅小屏挂载避免遮罩压暗页面 */}
+      {!isDesktop ? (
+        <Dialog open={selectedEvent !== null} onOpenChange={(open) => { if (!open) setSelectedId(null); }}>
+          <DialogContent className="max-h-[85svh] overflow-x-hidden overflow-y-auto sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle>事件详情</DialogTitle>
+              <DialogDescription className="sr-only">查看事件载荷与元信息</DialogDescription>
+            </DialogHeader>
+            {selectedEvent ? <EventDetailPanel event={selectedEvent} duration={selectedDuration} /> : null}
+          </DialogContent>
+        </Dialog>
+      ) : null}
+
+      <TabsContent value="usage" className="flex flex-col gap-4">
+        <UsageSection session={session} />
+      </TabsContent>
+
+      <TabsContent value="files" className="flex flex-col">
+        <ResourcesSection sessionId={session.id} archived={archived} />
+      </TabsContent>
+    </Tabs>
   );
 }

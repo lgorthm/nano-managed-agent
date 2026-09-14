@@ -227,7 +227,7 @@ export function MemoryStoreDetailPage() {
   const refreshAll = () => void queryClient.invalidateQueries({ queryKey: ["memory-stores", memoryStoreId] });
 
   return (
-    <div className="space-y-4">
+    <div className="flex flex-1 flex-col gap-4">
       <title>nano console — {store.name}</title>
       <BackLink to="/memories" label="返回 Memory Stores" />
       <PageHeader

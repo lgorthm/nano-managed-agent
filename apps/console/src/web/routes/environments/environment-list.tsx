@@ -51,7 +51,7 @@ export function EnvironmentListPage() {
   const hasNext = query.data?.next_page != null;
 
   return (
-    <div>
+    <div className="flex flex-1 flex-col">
       <title>nano console — Environments</title>
       <PageHeader
         title="Environments"

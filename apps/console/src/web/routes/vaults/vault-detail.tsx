@@ -315,7 +315,7 @@ export function VaultDetailPage() {
   const credentials = credentialsQuery.data?.data ?? [];
 
   return (
-    <div className="space-y-4">
+    <div className="flex flex-1 flex-col gap-4">
       <title>nano console — {vault.display_name}</title>
       <BackLink to="/vaults" label="返回 Vaults" />
       <PageHeader

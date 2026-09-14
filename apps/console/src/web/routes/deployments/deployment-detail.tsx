@@ -183,7 +183,7 @@ export function DeploymentDetailPage() {
   const mutationError = (runMutation.error ?? pauseMutation.error ?? resumeMutation.error) as Error | null;
 
   return (
-    <div className="space-y-4">
+    <div className="flex flex-1 flex-col gap-4">
       <title>nano console — {deployment.name}</title>
       <BackLink to="/deployments" label="返回 Deployments" />
       <PageHeader

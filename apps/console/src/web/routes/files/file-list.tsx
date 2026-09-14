@@ -129,7 +129,7 @@ export function FileListPage() {
   }
 
   return (
-    <div>
+    <div className="flex flex-1 flex-col">
       <title>nano console — Files</title>
       <PageHeader
         title="Files"

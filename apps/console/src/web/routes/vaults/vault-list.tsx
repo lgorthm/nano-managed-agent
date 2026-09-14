@@ -39,7 +39,7 @@ export function VaultListPage() {
   const hasNext = query.data?.next_page != null;
 
   return (
-    <div>
+    <div className="flex flex-1 flex-col">
       <title>nano console — Vaults</title>
       <PageHeader
         title="Vaults"

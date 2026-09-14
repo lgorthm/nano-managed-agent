@@ -207,7 +207,7 @@ export function EnvironmentDetailPage() {
   const metadataEntries = Object.entries(environment.metadata);
 
   return (
-    <div className="space-y-4">
+    <div className="flex flex-1 flex-col gap-4">
       <title>nano console — {environment.name}</title>
       <BackLink to="/environments" label="返回 Environments" />
       <PageHeader

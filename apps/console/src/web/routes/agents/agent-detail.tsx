@@ -62,7 +62,7 @@ export function AgentDetailPage() {
   const agent = agentQuery.data;
 
   return (
-    <div className="space-y-4">
+    <div className="flex flex-1 flex-col gap-4">
       <title>nano console — {agent.name}</title>
       <BackLink to="/agents" label="返回 Agents" />
       <PageHeader

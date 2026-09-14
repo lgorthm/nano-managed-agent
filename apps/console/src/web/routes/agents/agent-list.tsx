@@ -147,7 +147,7 @@ export function AgentListPage() {
   const hasNext = query.data?.next_page != null;
 
   return (
-    <div>
+    <div className="flex flex-1 flex-col">
       <title>nano console — Agents</title>
       <PageHeader
         title="Agents"

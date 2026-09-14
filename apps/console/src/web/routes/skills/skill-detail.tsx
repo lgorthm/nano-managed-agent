@@ -184,7 +184,7 @@ export function SkillDetailPage() {
   const title = skill.display_title ?? latest?.name ?? skill.id;
 
   return (
-    <div className="space-y-4">
+    <div className="flex flex-1 flex-col gap-4">
       <title>nano console — {title}</title>
       <BackLink to="/skills" label="返回 Skills" />
       <PageHeader
