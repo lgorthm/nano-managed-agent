@@ -37,6 +37,30 @@ Every building block is a managed primitive — Workers as the API gateway, one 
 - **An admin console with zero-password login.** A React single-page application sits behind Cloudflare Access (email OTP, GitHub, and other SSO methods). All API keys live as worker secrets and are injected by a small server-side proxy — keys never reach the browser, and SSE streams pass through unbuffered. The console can talk to both the GLM hosted API and this self-hosted runtime, switchable at runtime from the sidebar.
 - **Tests run on the real Workers runtime.** Unit and integration tests execute in vitest backed by `@cloudflare/vitest-plugin` (real D1, real Durable Objects), and script-level E2E suites drive `wrangler dev` with a mocked model and sandbox to cover the full session lifecycle and crash recovery.
 
+## Screenshots
+
+The bundled console manages the whole control plane and gives you a live window into every session:
+
+**Agents** — versioned agent configurations (model, system prompt, tools, skills):
+
+![Agents page](docs/images/console-agents.png)
+
+**Session · event stream** — a three-lane timeline (input / model / tool) over a compact event ledger, with the selected event's payload in the detail panel:
+
+![Session event stream](docs/images/console-session-events.png)
+
+**Session · token usage** — real model metering accumulated across loop iterations:
+
+![Session token usage](docs/images/console-session-usage.png)
+
+**Session · files** — mounted resources plus sandbox outputs harvested at the end of each turn, all downloadable:
+
+![Session files](docs/images/console-session-files.png)
+
+**File library** — files outlive sessions and can be mounted into any new one:
+
+![Files page](docs/images/console-files.png)
+
 ## Architecture
 
 | Cloudflare component | Role in this project |

@@ -37,6 +37,30 @@
 - **零口令登录的管理后台。** React 单页应用部署在 Cloudflare Access 之后（邮箱一次性验证码、GitHub 等 SSO 方式登录）。所有 API Key 都以 worker secret 形式保存在服务端、由一个极小的代理注入——密钥永不进浏览器，SSE 流不做缓冲地透传。后台可同时对接 GLM 官方 API 与这套自建运行时，在侧边栏随时切换。
 - **测试跑在真实 Workers 运行时上。** 单元与集成测试由 `@cloudflare/vitest-plugin` 支撑的 vitest 执行（真实 D1、真实 Durable Objects）；脚本级 E2E 用 mock 的模型与沙箱驱动 `wrangler dev`，覆盖会话完整生命周期与崩溃恢复。
 
+## 界面预览
+
+自带的管理后台覆盖整个控制面，并为每个会话提供实时可视窗口：
+
+**Agents** —— 版本化管理的智能体配置（模型、系统提示词、工具、技能）：
+
+![Agents 页面](docs/images/console-agents.png)
+
+**会话 · 事件流** —— 三泳道时间线（输入 / 模型 / 工具）叠加紧凑的事件台账，右侧面板展示选中事件的完整载荷：
+
+![会话事件流](docs/images/console-session-events.png)
+
+**会话 · Token 用量** —— 跨循环迭代累计的真实模型计量：
+
+![会话 Token 用量](docs/images/console-session-usage.png)
+
+**会话 · 会话文件** —— 挂载资源与回合收尾收割的沙箱产出，均可下载：
+
+![会话文件](docs/images/console-session-files.png)
+
+**文件库** —— 文件独立于会话生命周期，可挂载进任意新会话：
+
+![文件库页面](docs/images/console-files.png)
+
 ## 架构
 
 | Cloudflare 组件 | 在本项目中的角色 |
