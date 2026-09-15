@@ -138,11 +138,11 @@ export class SessionDo extends DurableObject<Env> {
         value TEXT NOT NULL
       );
       CREATE TABLE IF NOT EXISTS pending_confirmations (
-        tool_use_id     TEXT PRIMARY KEY,  -- agent.tool_use 事件 id(§2.1)
+        tool_use_id     TEXT PRIMARY KEY,  -- agent.tool_use event id (§2.1)
         name            TEXT NOT NULL,
         input_json      TEXT NOT NULL,
-        result_event_id TEXT NOT NULL,     -- 预生成的 tool_result 事件 id
-        decision        TEXT,              -- NULL = 待审批;allow / deny
+        result_event_id TEXT NOT NULL,     -- pre-generated tool_result event id
+        decision        TEXT,              -- NULL = pending approval; allow / deny
         deny_message    TEXT,
         created_at      INTEGER NOT NULL
       );
@@ -599,13 +599,6 @@ export class SessionDo extends DurableObject<Env> {
     }
     if (this.env.AI_API_BASE === undefined && this.env.CLOUDFLARE_ACCOUNT_ID === undefined) {
       throw new Error("Model API is not configured: missing var CLOUDFLARE_ACCOUNT_ID.");
-    }
-    // deploy.sh 正常会回填真实值;占位值未替换时提前给出可诊断的错误,
-    // 而不是把占位串拼进上游 URL 后收到难懂的 404
-    if (this.env.CLOUDFLARE_ACCOUNT_ID?.startsWith("填入") || this.env.AI_GATEWAY_ID?.startsWith("填入")) {
-      throw new Error(
-        "Model API is not configured: CLOUDFLARE_ACCOUNT_ID / AI_GATEWAY_ID in wrangler.jsonc still hold placeholders.",
-      );
     }
     const baseUrl =
       this.env.AI_API_BASE ??
