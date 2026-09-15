@@ -3,6 +3,9 @@ import { defineConfig } from "vitest/config";
 // node 侧 mock 模型上游随配置加载启动(vitest.config 在 node 进程执行),
 // 下面的 miniflare 绑定把 AI_API_BASE 指向它;存活至 vitest 进程结束
 import { startMockModelServer } from "./test/mock-model/server";
+// 测试鉴权键与用例侧常量同源:CI 上没有 .dev.vars(不入库),被测 Worker
+// 的 API_KEY 必须由这里注入,否则所有鉴权用例 500
+import { API_KEY } from "./test/helpers";
 
 void startMockModelServer();
 
@@ -15,6 +18,7 @@ export default defineConfig({
       // 巡检可等;工具执行走 mock 实现(沙箱依赖容器,进不了 vitest,runtime.md §9)
       miniflare: {
         bindings: {
+          API_KEY,
           AI_API_BASE: "http://127.0.0.1:18234",
           CLOUDFLARE_ACCOUNT_ID: "test-account",
           AI_GATEWAY_ID: "test-gateway",
