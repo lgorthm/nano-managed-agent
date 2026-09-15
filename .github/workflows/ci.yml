@@ -20,10 +20,10 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 22
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
@@ -43,10 +43,10 @@ jobs:
       # (非敏感,与 apps/api vars 中已提交的值一致)
       CLOUDFLARE_ACCOUNT_ID: 6b4a1467a610d4bfb174c7a18f62f160
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 22
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @nano/api exec wrangler d1 migrations apply DB --remote
