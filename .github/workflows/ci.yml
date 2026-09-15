@@ -1,6 +1,14 @@
-# 最小 CI(NMA-33 顺带补齐:仓库此前没有任何 CI)。
-# 只跑 README 约定的质量门:typecheck + test(test 链含 lint:deps 与
-# lint:lang 中文守卫)。test:e2e 依赖本地 dev 服务起栈,不纳入最小 CI。
+# CI 与自动部署(NMA-33 补齐最小 CI,NMA-34 增加部署):
+#   check  —— push/PR 都跑:typecheck + test(test 链含 lint:deps 与
+#             lint:lang 中文守卫);test:e2e 依赖本地 dev 服务起栈,不纳入。
+#   deploy —— 仅 push 到 master 且 check 通过后执行:远端 D1 迁移 →
+#             部署 apps/api(含 DO 迁移与沙箱容器镜像)→ 重生成 worker
+#             类型 → 部署 apps/console。迁移先于部署,新代码上线时 schema
+#             已就绪。
+# 部署凭据走仓库 secret CLOUDFLARE_API_TOKEN(部署专用 token,建议权限
+# Account 级 Workers Scripts / D1 / R2 / Containers 均 Edit)。业务 secret
+# (API_KEY、运行时 CLOUDFLARE_API_TOKEN、GLM_API_KEY、NANO_API_KEY 等)由
+# deploy.sh 首次部署写入 Cloudflare,CI 部署不会触碰。
 name: ci
 
 on:
@@ -20,3 +28,28 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
       - run: pnpm test
+
+  deploy:
+    needs: check
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    # 连续 push 排队执行,不取消进行中的部署
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      # wrangler.jsonc 未写 account_id,CI 经环境变量提供
+      # (非敏感,与 apps/api vars 中已提交的值一致)
+      CLOUDFLARE_ACCOUNT_ID: 6b4a1467a610d4bfb174c7a18f62f160
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @nano/api exec wrangler d1 migrations apply DB --remote
+      - run: pnpm --filter @nano/api deploy
+      - run: pnpm types
+      - run: pnpm --filter @nano/console deploy
