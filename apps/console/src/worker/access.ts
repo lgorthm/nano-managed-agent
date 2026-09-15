@@ -29,7 +29,7 @@ export async function assertAccess(
         error: {
           type: "config_error",
           message:
-            "CF_ACCESS_TEAM_DOMAIN / CF_ACCESS_AUD 未配置:请在 wrangler.jsonc vars 中填入 Zero Trust 应用的 Team Domain 与 AUD Tag,见 docs/console.md",
+            "CF_ACCESS_TEAM_DOMAIN / CF_ACCESS_AUD not configured: set the Zero Trust application's Team Domain and AUD Tag in wrangler.jsonc vars, see docs/console.md",
         },
       },
       { status: 503 },
@@ -40,7 +40,7 @@ export async function assertAccess(
   const token = request.headers.get("Cf-Access-Jwt-Assertion");
   if (!token) {
     return Response.json(
-      { error: { type: "unauthorized", message: "缺少 Cloudflare Access JWT(未通过 Access 登录)" } },
+      { error: { type: "unauthorized", message: "Missing Cloudflare Access JWT (not signed in via Access)" } },
       { status: 401 },
     );
   }
@@ -55,7 +55,7 @@ export async function assertAccess(
       {
         error: {
           type: "unauthorized",
-          message: `Cloudflare Access JWT 校验失败(team=${teamDomain}, aud=${aud.slice(0, 8)}…):${reason}`,
+          message: `Cloudflare Access JWT validation failed (team=${teamDomain}, aud=${aud.slice(0, 8)}…): ${reason}`,
         },
       },
       { status: 401 },
