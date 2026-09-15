@@ -1,0 +1,22 @@
+# 最小 CI(NMA-33 顺带补齐:仓库此前没有任何 CI)。
+# 只跑 README 约定的质量门:typecheck + test(test 链含 lint:deps 与
+# lint:lang 中文守卫)。test:e2e 依赖本地 dev 服务起栈,不纳入最小 CI。
+name: ci
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm test
