@@ -5,6 +5,7 @@ import { auth } from "../lib/auth";
 import { agentRoutes } from "../modules/agent/routes";
 import { environmentRoutes } from "../modules/environment/routes";
 import { fileRoutes } from "../modules/file/routes";
+import { modelRoutes } from "../modules/model/routes";
 import { sessionRoutes } from "../modules/session/routes";
 import { skillRoutes } from "../modules/skill/routes";
 
@@ -21,3 +22,4 @@ v1.route("/skills", skillRoutes);
 v1.route("/files", fileRoutes);
 v1.route("/environments", environmentRoutes);
 v1.route("/sessions", sessionRoutes);
+v1.route("/models", modelRoutes);

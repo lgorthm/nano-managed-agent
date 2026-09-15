@@ -120,7 +120,7 @@ flowchart TB
         R2[("R2 · 文件内容与会话产出")]
     end
 
-    GLM["GLM 模型 API · open.bigmodel.cn<br/>glm-5.3 / glm-5.3-flash"]
+    GLM["Cloudflare AI Gateway REST API<br/>/ai/v1/chat/completions · @cf/zai-org 模型"]
 
     BROWSER --> GATE --> SPA
     BROWSER --> PROXY --> ROUTES
@@ -165,7 +165,9 @@ scripts/          # deploy.sh(一键部署)与 E2E 测试脚本
 
 - **Node.js >= 20** 与 **pnpm**（`corepack enable` 启用，或 `npm i -g pnpm` 安装）。
 - **一个 Cloudflare 账号。** 请注意：会话沙箱使用 Cloudflare Containers，目前需要 Workers 付费计划——免费账号在部署 `apps/api` 一步会失败。
-- **一把 GLM API Key**，从 [bigmodel.cn](https://bigmodel.cn/usercenter/proj-mgmt/apikeys) 获取。智能体循环调用 GLM 模型 API（`glm-5.3` / `glm-5.3-flash`）完成推理。
+- **Node.js >= 20** 与 **pnpm**（`corepack enable` 启用，或 `npm i -g pnpm` 安装）。
+- **一个 Cloudflare 账号。** 注意会话沙箱使用 Cloudflare Containers，目前需要 Workers 付费计划——免费账号会在部署 `apps/api` 一步失败。
+- **一个 Cloudflare API Token，权限勾选 Workers AI > Read 与 AI Gateway > Edit**（控制台 My Profile → API Tokens 创建）。智能体循环经 Cloudflare AI Gateway REST API 调用 Cloudflare 托管的 `@cf/zai-org/*` 模型；模型 id 保持 `glm-5.3` / `glm-5.3-flash` 不变，请求时按模型目录映射。`@cf` 模型请求必须携带 `cf-aig-gateway-id` 头，因此部署脚本会查找（凭 Edit 权限则自动创建）一个名为 `nano` 的网关并把 id 写进 `apps/api/wrangler.jsonc`。智谱 Key 只有 console 的 GLM 平台代理（`/glm/*`）才需要，与模型推理无关。
 
 ## 快速开始(本地开发)
 
@@ -176,8 +178,9 @@ pnpm install
 
 # 为 API worker 准备本地 secret
 cp apps/api/.dev.vars.example apps/api/.dev.vars
-#   API_KEY=dev-key-change-me        # 任选一个本地 Key
-#   GLM_API_KEY=<你的真实 Key>       # 智能体循环需要一个真实的模型服务
+#   API_KEY=dev-key-change-me           # 任选一个本地 Key
+#   CLOUDFLARE_API_TOKEN=<真实 token>    # Workers AI Read;智能体循环的模型调用凭据
+#   (CLOUDFLARE_ACCOUNT_ID / AI_GATEWAY_ID 在 apps/api/wrangler.jsonc 的 vars 里)
 
 # 创建 D1 数据库(仅首次),把返回的 database_id 填入 apps/api/wrangler.jsonc,
 # 然后在本地应用迁移
@@ -255,7 +258,7 @@ bash scripts/deploy.sh    # 等价于 pnpm deploy:init
 2. 安装依赖。
 3. 创建或复用 D1 数据库 `nano-api-db`，并把 `database_id` 写回 `apps/api/wrangler.jsonc`；创建或复用 R2 桶 `nano-files`。
 4. 部署 `apps/api`（Durable Object 迁移与沙箱容器镜像随 deploy 一并完成），随后对远端 D1 应用全部迁移。
-5. 设置 secret：`API_KEY`（缺失时自动生成 48 位十六进制并展示一次）、`GLM_API_KEY`（环境变量传入或交互输入）。
+5. 设置 secret：`API_KEY`（缺失时自动生成 48 位十六进制并展示一次）、`CLOUDFLARE_API_TOKEN`（环境变量传入或交互输入）。脚本在更早的步骤还会把账号 ID 写回 `apps/api/wrangler.jsonc`，并查找或自动创建 `nano` 网关。
 6. 把 console 的 `NANO_API_BASE` 接到刚部署的 API 地址，部署 `apps/console`。
 
 已存在的资源与 secret 一律跳过；通过环境变量显式给出的值才会强制覆盖。支持的环境变量：
@@ -263,7 +266,9 @@ bash scripts/deploy.sh    # 等价于 pnpm deploy:init
 | 变量 | 含义 |
 | --- | --- |
 | `API_KEY` | nano API 自身的 Bearer 鉴权 Key |
-| `GLM_API_KEY` | GLM（智谱开放平台）API Key，https://bigmodel.cn |
+| `CLOUDFLARE_API_TOKEN` | 模型服务凭据：Cloudflare API Token，需 Workers AI > Read（再加 AI Gateway > Edit 可让脚本自动创建网关） |
+| `AI_GATEWAY_ID` | AI Gateway 网关 ID；缺省由脚本查找或自动创建名为 `nano` 的网关，写回 `apps/api/wrangler.jsonc` |
+| `GLM_API_KEY` | GLM（智谱开放平台）Key，仅 console 的 GLM 平台代理使用，https://bigmodel.cn |
 | `NANO_API_KEY` | console 连接 nano API 用的 Key（缺省复用 `API_KEY` 的值） |
 | `NANO_API_BASE` | nano API 上游地址；缺省用 API 部署输出的 workers.dev 地址 |
 | `CF_ACCESS_TEAM_DOMAIN` | Cloudflare Access 团队域名，`https://<team>.cloudflareaccess.com` |

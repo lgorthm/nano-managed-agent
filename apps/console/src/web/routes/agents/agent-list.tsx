@@ -3,6 +3,7 @@ import type { Agent, GlmModelId, ModelEffort } from "@nano/shared/glm";
 import { Bot, Plus } from "lucide-react";
 import { Link } from "react-router";
 import { createAgent, listAgents } from "@/api/agents";
+import { groupedModelOptions, useModelOptions } from "@/api/models";
 import { DataPager } from "@/components/data-pager";
 import { useCursorPage } from "@/hooks/use-cursor-page";
 import { TableCard } from "@/components/table-card";
@@ -28,7 +29,9 @@ import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -38,8 +41,9 @@ import { formatTime, formatTimeShort } from "@/lib/format";
 import { useState } from "react";
 
 function CreateAgentDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+  const { options: modelOptions, isLoading: modelsLoading } = useModelOptions();
   const [name, setName] = useState("");
-  const [model, setModel] = useState<GlmModelId>("glm-5.3");
+  const [model, setModel] = useState("glm-5.3");
   const [effort, setEffort] = useState<ModelEffort>("max");
   const [system, setSystem] = useState("");
   const [withToolset, setWithToolset] = useState(true);
@@ -49,7 +53,9 @@ function CreateAgentDialog({ open, onOpenChange }: { open: boolean; onOpenChange
     mutationFn: () =>
       createAgent({
         name: name.trim(),
-        model: { id: model, effort },
+        // 目录外 id(动态模型)对 nano 后端合法;glm 镜像类型保持窄类型,
+        // 此处收窄——provider=glm 时上游自然拒绝目录外值
+        model: { id: model as GlmModelId, effort },
         system: system.trim() || null,
         tools: withToolset ? [{ type: "agent_toolset_20260601" }] : [],
       }),
@@ -81,13 +87,38 @@ function CreateAgentDialog({ open, onOpenChange }: { open: boolean; onOpenChange
           <div className="grid grid-cols-2 gap-4">
             <div className="grid gap-2">
               <Label>模型</Label>
-              <Select value={model} onValueChange={(v) => setModel(v as GlmModelId)}>
+              <Select
+                value={model}
+                onValueChange={(v) => {
+                  setModel(v);
+                  // 切换模型时推理强度重置为该模型的默认档位
+                  const selected = modelOptions.find((option) => option.id === v);
+                  if (selected !== undefined) setEffort(selected.defaultEffort);
+                }}
+                disabled={modelsLoading}
+              >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="glm-5.3">glm-5.3</SelectItem>
-                  <SelectItem value="glm-5.3-flash">glm-5.3-flash</SelectItem>
+                  {groupedModelOptions(modelOptions).map((group) =>
+                    group.label === null ? (
+                      group.options.map((option) => (
+                        <SelectItem key={option.id} value={option.id}>
+                          {option.label}
+                        </SelectItem>
+                      ))
+                    ) : (
+                      <SelectGroup key={group.label}>
+                        <SelectLabel>{group.label}</SelectLabel>
+                        {group.options.map((option) => (
+                          <SelectItem key={option.id} value={option.id}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    ),
+                  )}
                 </SelectContent>
               </Select>
             </div>

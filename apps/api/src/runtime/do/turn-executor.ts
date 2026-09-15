@@ -22,7 +22,7 @@ import {
   type StopReason,
   type UsagePayload,
 } from "@nano/shared";
-import { ModelAbortedError, streamChatCompletion, type GlmModelConfig } from "../model-client";
+import { ModelAbortedError, streamChatCompletion, type ChatModelConfig } from "../model-client";
 import { newEventId } from "../ids";
 import type { ToolRunner } from "../tools/runner";
 
@@ -106,10 +106,10 @@ export function parseTurnSnapshot(raw: unknown): TurnSnapshot | null {
   }
 }
 
-/** 模型调用配置:model 与 tools 来自会话的 agent_config 快照,baseUrl/apiKey 来自 env */
+/** 模型调用配置:model 与 tools 来自会话的 agent_config 快照,baseUrl/apiKey/gatewayId 来自 env */
 export interface TurnModelConfig {
   system: string | null;
-  model: GlmModelConfig;
+  model: ChatModelConfig;
   /** 模型侧工具定义(always_ask 一并提供——模型看得见,执行时才分叉) */
   tools: ChatToolDefinition[];
   /** 工具名 → 权限(always_ask 的调用挂起等待审批,§4.3) */

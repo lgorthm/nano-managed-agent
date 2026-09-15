@@ -5,6 +5,7 @@
 export * from "./api/error";
 export * from "./api/pagination";
 export * from "./agent/schemas";
+export * from "./agent/models";
 export * from "./agent/normalize";
 export * from "./agent/merge";
 export * from "./skill/schemas";

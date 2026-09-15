@@ -1,20 +1,28 @@
 /**
- * GLM chat completions 流式客户端(runtime.md §1 的「GLM 模型 API」)。
+ * Cloudflare AI Gateway REST API 的 chat completions 流式客户端(runtime.md §1)。
  * 只负责传输与协议:退避 fetch + SSE 解析;delta 逐块回调给执行器,由执行器
- * 决定缓冲与落盘节奏。上游地址与凭据经 env 注入(集成测试指向本地 mock
- * 服务,真实凭据只用于 curl 冒烟)。
+ * 决定缓冲与落盘节奏。地址与凭据经 env 注入(集成测试的 AI_API_BASE 指向本地
+ * mock 服务,真实凭据只用于冒烟)。
  *
- * 协议按 GLM v4(OpenAI 兼容)形状实现:delta.reasoning_content → thinking,
- * delta.content → message,usage 随 include_usage 在末块返回。
+ * 端点是 /accounts/{id}/ai/v1/chat/completions(OpenAI chat 格式)。注:同服务的
+ * /ai/v1/responses 对 @cf 模型的支持按模型而定——实测 @cf/zai-org/* 不接受
+ * Responses 输入形状(上游 400,工具形状报嵌套 function.name),故走本端点;
+ * @cf 模型请求必带 cf-aig-gateway-id 头(官方要求,请求据此进网关日志)。
+ *
+ * 协议按 OpenAI 兼容形状实现:delta.reasoning_content → thinking,
+ * delta.content → message,usage 随 stream_options.include_usage 在末块返回。
  */
 import type { ChatMessage, ChatToolDefinition } from "@nano/shared";
 import type { UsagePayload } from "@nano/shared";
 
-/** 模型调用配置:baseUrl 与 apiKey 来自 env,model 来自会话的 agent_config 快照 */
-export interface GlmModelConfig {
+/** 模型调用配置:baseUrl/apiKey/gatewayId 来自 env,model 是目录解析的 wire 名称 */
+export interface ChatModelConfig {
   baseUrl: string;
   apiKey: string;
+  /** 请求体 model 字段,如 @cf/zai-org/glm-5.3 */
   model: string;
+  /** cf-aig-gateway-id 头的值(@cf 模型必带) */
+  gatewayId: string;
 }
 
 export type DeltaKind = "thinking" | "message";
@@ -129,7 +137,7 @@ function parseUsage(chunk: StreamChunk): UsagePayload | null {
 }
 
 export async function streamChatCompletion(
-  config: GlmModelConfig,
+  config: ChatModelConfig,
   messages: ChatMessage[],
   callbacks: StreamCallbacks,
   tools?: ChatToolDefinition[],
@@ -139,6 +147,8 @@ export async function streamChatCompletion(
     headers: {
       authorization: `Bearer ${config.apiKey}`,
       "content-type": "application/json",
+      // @cf 模型请求必带(官方要求);同时让请求进入指定网关的日志看板
+      "cf-aig-gateway-id": config.gatewayId,
     },
     body: JSON.stringify({
       model: config.model,

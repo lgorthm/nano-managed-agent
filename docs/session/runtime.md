@@ -31,7 +31,7 @@
 | `SESSION_DO`（每会话一个） | 单写者：状态机（idle/running 门禁）、事件日志、SSE fan-out、turn 执行器、alarm 复用器、崩溃恢复 |
 | Sandbox SDK | `agent_toolset_20260601` 七个内置工具的执行环境；skills 挂 `/mnt/skills`，上传文件挂 `/mnt/session/uploads`（只读），产出写 `/mnt/session/outputs` → turn 收尾收割编目为 File 资源（R2 `files/{id}` + D1 `session_outputs`，见 [../files/schema.md](../files/schema.md)「会话产出文件」） |
 | D1（`DB`） | 元数据事实源；`sessions.status` 与 usage 三列降级为**投影**（§8），由运行时回写 |
-| GLM 模型 API | chat completions（流式 + tools），凭据为 api worker secret |
+| Cloudflare AI Gateway REST API | 模型服务：`POST /accounts/{id}/ai/v1/chat/completions`（OpenAI chat 格式，流式 + tools），Cloudflare 托管的 `@cf/zai-org/*` 模型；凭据 `CLOUDFLARE_API_TOKEN`（Workers AI Read 权限），`@cf` 请求必带 `cf-aig-gateway-id` 头。同服务的 `/ai/v1/responses` 对 `@cf` 模型支持按模型而定——zai-org 实测不接受 Responses 输入形状（上游 400），故走 chat completions。存量模型 id `glm-5.3` / `glm-5.3-flash` 不变，wire 侧按 `@nano/shared` 的模型目录映射（`agent/models.ts`）；目录外 id 原样透传（动态模型）。已知限制：网关日志对流式请求的 token 成本统计不完整 |
 | console `/nano` 代理 | SSE 透传链路已就绪（与 `/glm` 共用） |
 
 ## 2. 事件模型

@@ -22,6 +22,7 @@ import {
 import {
   BUILTIN_TOOL_DEFINITIONS,
   resolveBuiltinTools,
+  resolveWireModel,
   validateToolInvocation,
   type ChatToolDefinition,
   type DeltaEventType,
@@ -588,6 +589,27 @@ export class SessionDo extends DurableObject<Env> {
     const sessionId = this.ctx.id.name;
     const row = sessionId !== undefined ? await findSession(getDb(this.env), sessionId) : null;
     const agentConfig = row?.agentConfig ?? { system: null as string | null, model: { id: "glm-5.3" }, tools: [] };
+    // 模型服务经 AI Gateway REST API(chat completions):env 缺失给出可诊断的错误,
+    // 经 runTurn 的 catch → turnFailed 落 session.error,会话回 idle
+    if (this.env.CLOUDFLARE_API_TOKEN === undefined) {
+      throw new Error("Model API is not configured: missing secret CLOUDFLARE_API_TOKEN.");
+    }
+    if (this.env.AI_GATEWAY_ID === undefined) {
+      throw new Error("Model API is not configured: missing var AI_GATEWAY_ID.");
+    }
+    if (this.env.AI_API_BASE === undefined && this.env.CLOUDFLARE_ACCOUNT_ID === undefined) {
+      throw new Error("Model API is not configured: missing var CLOUDFLARE_ACCOUNT_ID.");
+    }
+    // deploy.sh 正常会回填真实值;占位值未替换时提前给出可诊断的错误,
+    // 而不是把占位串拼进上游 URL 后收到难懂的 404
+    if (this.env.CLOUDFLARE_ACCOUNT_ID?.startsWith("填入") || this.env.AI_GATEWAY_ID?.startsWith("填入")) {
+      throw new Error(
+        "Model API is not configured: CLOUDFLARE_ACCOUNT_ID / AI_GATEWAY_ID in wrangler.jsonc still hold placeholders.",
+      );
+    }
+    const baseUrl =
+      this.env.AI_API_BASE ??
+      `https://api.cloudflare.com/client/v4/accounts/${this.env.CLOUDFLARE_ACCOUNT_ID}/ai/v1`;
     // always_ask 工具一并提供给模型(执行时才分叉挂起,§4.3)
     const resolved = resolveBuiltinTools(agentConfig.tools);
     const toolPermissions: Record<string, "always_allow" | "always_ask"> = {};
@@ -595,9 +617,11 @@ export class SessionDo extends DurableObject<Env> {
     return {
       system: agentConfig.system ?? null,
       model: {
-        baseUrl: this.env.GLM_API_BASE,
-        apiKey: this.env.GLM_API_KEY,
-        model: agentConfig.model.id,
+        baseUrl,
+        apiKey: this.env.CLOUDFLARE_API_TOKEN,
+        // 目录内 id 映射 wire 名称(存量 glm-5.3 保持不变);目录外 id 原样透传
+        model: resolveWireModel(agentConfig.model.id),
+        gatewayId: this.env.AI_GATEWAY_ID,
       },
       tools: resolved.map((tool) => BUILTIN_TOOL_DEFINITIONS[tool.name]),
       toolPermissions,

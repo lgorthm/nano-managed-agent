@@ -4,8 +4,10 @@
  * 服务放 node 侧、以固定端口暴露,脚本编排与请求捕获经 admin 端点控制
  * (workerd 侧走 test/mock-model/client.ts)。
  *
- * /chat/completions:按 match 匹配消费脚本(见 types.ts),否则下发内置
- * 缺省脚本(thinking + message + usage),保证未编排的 turn 也确定性完成。
+ * /chat/completions:按 match 匹配消费脚本(见 types.ts),否则下发内置缺省
+ * 脚本(thinking + message + usage),保证未编排的 turn 也确定性完成。发射的
+ * 是 OpenAI chat 兼容的 SSE delta 流,与生产上游(Cloudflare AI Gateway
+ * REST API 的 /ai/v1/chat/completions)同构。
  * admin:/__admin/script(enqueue)、/__admin/reset、/__admin/captured。
  */
 import http from "node:http";
@@ -59,6 +61,7 @@ async function handleCompletions(req: http.IncomingMessage, res: http.ServerResp
   captured.push({
     url: req.url ?? "",
     authorization: req.headers.authorization ?? "",
+    gatewayId: (req.headers["cf-aig-gateway-id"] as string | undefined) ?? "",
     body,
   });
 

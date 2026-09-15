@@ -1,8 +1,10 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { defaultModelEffort } from "@nano/shared";
 import type { Agent, AgentUpdateInput, GlmModelId, ModelEffort } from "@nano/shared/glm";
 import { Pencil } from "lucide-react";
 import { useState } from "react";
 import { updateAgent } from "@/api/agents";
+import { groupedModelOptions, useModelOptions, type ModelOption } from "@/api/models";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -18,17 +20,19 @@ import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 
-/** 各模型的默认推理档位,与服务端 DEFAULT_MODEL_EFFORT 一致 */
-const DEFAULT_EFFORT: Record<GlmModelId, ModelEffort> = {
-  "glm-5.3": "max",
-  "glm-5.3-flash": "high",
-};
+/** 编辑时当前模型若不在目录里(如动态模型尚未拉取),补进选项保证 Select 能回显 */
+function withCurrentModel(options: ModelOption[], currentId: string): ModelOption[] {
+  if (options.some((option) => option.id === currentId)) return options;
+  return [...options, { id: currentId, label: currentId, defaultEffort: defaultModelEffort(currentId) }];
+}
 
 /**
  * 编辑 Agent 的名称、描述、模型、系统提示词与内置工具集开关。
@@ -38,13 +42,12 @@ const DEFAULT_EFFORT: Record<GlmModelId, ModelEffort> = {
  * 携带 version 做乐观并发控制,并发修改时服务端返回 409。
  */
 export function UpdateAgentDialog({ agent }: { agent: Agent }) {
+  const { options: modelOptions, isLoading: modelsLoading } = useModelOptions();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState(agent.name);
   const [description, setDescription] = useState(agent.description ?? "");
-  const [model, setModel] = useState<GlmModelId>(agent.model.id as GlmModelId);
-  const [effort, setEffort] = useState<ModelEffort>(
-    agent.model.effort ?? DEFAULT_EFFORT[agent.model.id as GlmModelId],
-  );
+  const [model, setModel] = useState(agent.model.id);
+  const [effort, setEffort] = useState<ModelEffort>(agent.model.effort ?? defaultModelEffort(agent.model.id));
   const [system, setSystem] = useState(agent.system ?? "");
   const hasBuiltinToolset = agent.tools.some((toolset) => toolset.type === "agent_toolset_20260601");
   const hasOtherToolsets = agent.tools.some((toolset) => toolset.type !== "agent_toolset_20260601");
@@ -62,15 +65,15 @@ export function UpdateAgentDialog({ agent }: { agent: Agent }) {
   function openDialog() {
     setName(agent.name);
     setDescription(agent.description ?? "");
-    setModel(agent.model.id as GlmModelId);
-    setEffort(agent.model.effort ?? DEFAULT_EFFORT[agent.model.id as GlmModelId]);
+    setModel(agent.model.id);
+    setEffort(agent.model.effort ?? defaultModelEffort(agent.model.id));
     setSystem(agent.system ?? "");
     setWithToolset(hasBuiltinToolset);
     mutation.reset();
     setOpen(true);
   }
 
-  const effortInitial = agent.model.effort ?? DEFAULT_EFFORT[agent.model.id as GlmModelId];
+  const effortInitial = agent.model.effort ?? defaultModelEffort(agent.model.id);
   const dirty =
     name !== agent.name ||
     description !== (agent.description ?? "") ||
@@ -83,7 +86,8 @@ export function UpdateAgentDialog({ agent }: { agent: Agent }) {
     const patch: AgentUpdateInput = {
       version: agent.version,
       name: name.trim(),
-      model: { id: model, effort },
+      // 同创建侧:动态模型 id 经收窄上行,nano 后端接受任意非空 id
+      model: { id: model as GlmModelId, effort },
       system: system.trim() || null,
       description: description.trim() || null,
     };
@@ -120,13 +124,37 @@ export function UpdateAgentDialog({ agent }: { agent: Agent }) {
           <div className="grid grid-cols-2 gap-4">
             <div className="grid gap-2">
               <Label>模型</Label>
-              <Select value={model} onValueChange={(v) => setModel(v as GlmModelId)}>
+              <Select
+                value={model}
+                onValueChange={(v) => {
+                  setModel(v);
+                  const selected = modelOptions.find((option) => option.id === v);
+                  if (selected !== undefined) setEffort(selected.defaultEffort);
+                }}
+                disabled={modelsLoading}
+              >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="glm-5.3">glm-5.3</SelectItem>
-                  <SelectItem value="glm-5.3-flash">glm-5.3-flash</SelectItem>
+                  {groupedModelOptions(withCurrentModel(modelOptions, model)).map((group) =>
+                    group.label === null ? (
+                      group.options.map((option) => (
+                        <SelectItem key={option.id} value={option.id}>
+                          {option.label}
+                        </SelectItem>
+                      ))
+                    ) : (
+                      <SelectGroup key={group.label}>
+                        <SelectLabel>{group.label}</SelectLabel>
+                        {group.options.map((option) => (
+                          <SelectItem key={option.id} value={option.id}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    ),
+                  )}
                 </SelectContent>
               </Select>
             </div>

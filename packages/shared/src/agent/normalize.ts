@@ -17,7 +17,7 @@ import type {
   SkillReference,
   ToolDefaultConfigInputSchema,
 } from "./schemas";
-import { DEFAULT_MODEL_EFFORT } from "./schemas";
+import { defaultModelEffort } from "./models";
 import type { z } from "zod";
 
 export interface NormalizedModel {
@@ -86,14 +86,14 @@ export interface AgentResponse {
   archived_at: string | null;
 }
 
-/** 模型输入归一化:简写展开、默认 effort 按模型补全、speed 补为 standard(merge 也会复用) */
+/** 模型输入归一化:简写展开、默认 effort 按模型目录补全、speed 补为 standard(merge 也会复用) */
 export function normalizeModel(model: ModelInput): NormalizedModel {
   if (typeof model === "string") {
-    return { id: model, effort: DEFAULT_MODEL_EFFORT[model], speed: "standard" };
+    return { id: model, effort: defaultModelEffort(model), speed: "standard" };
   }
   return {
     id: model.id,
-    effort: model.effort ?? DEFAULT_MODEL_EFFORT[model.id],
+    effort: model.effort ?? defaultModelEffort(model.id),
     speed: model.speed ?? "standard",
   };
 }

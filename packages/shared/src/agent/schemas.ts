@@ -6,17 +6,18 @@ import { z } from "zod";
 
 // ---------- 枚举与常量 ----------
 
+/**
+ * 模型 id:非空字符串。静态目录(agent/models.ts)内的 id 有 wire 名称映射与
+ * 默认档位;目录外的 id 视为动态模型(如 /v1/models 从 Workers AI Models API
+ * 拉取的 @cf/... 模型),id 本身即 wire 名称,原样透传上游。
+ */
+export type ModelId = string;
+
+/** 静态目录内的模型 id(zod 不再收口为枚举,仅用于展示与测试) */
 export const MODEL_IDS = ["glm-5.3", "glm-5.3-flash"] as const;
-export type ModelId = (typeof MODEL_IDS)[number];
 
 export const MODEL_EFFORTS = ["low", "high", "max"] as const;
 export type ModelEffort = (typeof MODEL_EFFORTS)[number];
-
-/** 各模型的默认推理强度;省略或传 null 时使用 */
-export const DEFAULT_MODEL_EFFORT: Record<ModelId, ModelEffort> = {
-  "glm-5.3": "max",
-  "glm-5.3-flash": "high",
-};
 
 export const BUILTIN_TOOLSET_TYPE = "agent_toolset_20260601" as const;
 
@@ -99,11 +100,13 @@ export type McpServer = z.infer<typeof McpServerSchema>;
 
 // ---------- 模型与工具集 ----------
 
+const ModelIdSchema = z.string().min(1);
+
 /** 模型 ID 字符串简写,或包含 effort/speed 的对象形态 */
 export const ModelInputSchema = z.union([
-  z.enum(MODEL_IDS),
+  ModelIdSchema,
   z.strictObject({
-    id: z.enum(MODEL_IDS),
+    id: ModelIdSchema,
     effort: z.enum(MODEL_EFFORTS).nullish(),
     speed: z.literal("standard").nullish(),
   }),

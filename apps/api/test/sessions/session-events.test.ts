@@ -221,8 +221,11 @@ describe("M1 模型循环 — 上下文装配与凭据上行", () => {
 
     const requests = await requestsFor("hello");
     expect(requests).toHaveLength(1);
+    expect(requests[0]!.url).toBe("/chat/completions");
     expect(requests[0]!.authorization).toBe("Bearer test-model-key");
-    expect(requests[0]!.body.model).toBe("glm-5.3");
+    // @cf 模型请求必带的网关头;目录内 id 映射为 wire 名称上行
+    expect(requests[0]!.gatewayId).toBe("test-gateway");
+    expect(requests[0]!.body.model).toBe("@cf/zai-org/glm-5.3");
     expect(requests[0]!.body.stream).toBe(true);
     expect(requests[0]!.body.messages).toEqual([
       { role: "system", content: "Be terse." },
@@ -319,7 +322,7 @@ describe("M1 模型循环 — 打断与恢复", () => {
     const requests = await requestsFor("recover-me");
     expect(requests).toHaveLength(2);
     expect(requests[1]!.body.messages).toEqual(requests[0]!.body.messages);
-    expect(requests[1]!.body.model).toBe("glm-5.3");
+    expect(requests[1]!.body.model).toBe("@cf/zai-org/glm-5.3");
   });
 });
 

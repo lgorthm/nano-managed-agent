@@ -10,7 +10,7 @@
 - **管理面**(nano-console):浏览器经 Cloudflare Access 登录后使用 React SPA;SPA 的所有 API 调用走同源 `/glm/*` 代理,由 Worker 校验 Access JWT、注入 `GLM_API_KEY` 后转发到 GLM Managed Agents API,密钥永不进浏览器,SSE 流式透传。
 - **API 平面**(nano-api):Hono Worker,`/v1` 路由以 `API_KEY` Bearer 认证,管理 agents / skills / sessions 等元数据,落在 D1。
 - **会话运行时**:每个 Session 一个 `SESSION_DO` Durable Object——状态机、事件历史、SSE 推流与 Agent 循环执行(turn 执行器自管两级检查点与崩溃恢复,不使用 Workflows,见 [session/runtime.md](session/runtime.md));工具在 Sandbox SDK 会话沙箱中运行;产出文件写 R2。
-- **模型服务**:Agent 循环调用 GLM 模型 API 完成推理。
+- **模型服务**:Agent 循环经 Cloudflare AI Gateway REST API(`/accounts/{id}/ai/v1/chat/completions`,OpenAI chat 格式)调用 Cloudflare 托管的 `@cf/zai-org/*` 模型;存量模型 id `glm-5.3` / `glm-5.3-flash` 不变,wire 侧按模型目录映射。
 
 ```mermaid
 flowchart TB
@@ -43,9 +43,9 @@ flowchart TB
         R2[("R2 · nano-files(绑定 FILES)<br/>会话产出文件")]
     end
 
-    subgraph EXT["GLM 开放平台"]
-        GLM_API["GLM Managed Agents API<br/>agent-api.bigmodel.cn"]
-        GLM_LLM["GLM 模型 API<br/>LLM 推理(glm-5.3 / glm-5.3-flash)"]
+    subgraph EXT["上游服务"]
+        GLM_API["GLM Managed Agents API<br/>agent-api.bigmodel.cn(仅 console /glm 代理)"]
+        GLM_LLM["Cloudflare AI Gateway REST API<br/>/ai/v1/chat/completions · @cf/zai-org 模型"]
     end
 
     BROWSER -->|"登录"| ACCESS

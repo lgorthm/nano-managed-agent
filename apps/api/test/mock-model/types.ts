@@ -32,10 +32,12 @@ export interface MockModelScript {
   hang?: boolean;
 }
 
-/** mock 上游捕获的模型请求(上下文装配与凭据断言用) */
+/** mock 上游捕获的模型请求(上下文装配与凭据断言用),chat completions 请求体形状 */
 export interface CapturedModelRequest {
   url: string;
   authorization: string;
+  /** cf-aig-gateway-id 头(@cf 模型必带) */
+  gatewayId: string;
   body: {
     model: string;
     messages: Array<{

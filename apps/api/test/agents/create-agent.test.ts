@@ -121,8 +121,11 @@ describe("POST /v1/agents 校验失败返回 400", () => {
     await expectInvalid({ model: "glm-5.3" });
   });
 
-  it("model 非法", async () => {
-    await expectInvalid({ name: "a", model: "gpt-4" }, "model");
+  it("model 空字符串非法;目录外 id 是合法的动态模型(AI Gateway 透传)", async () => {
+    await expectInvalid({ name: "a", model: "" }, "model");
+    const res = await postAgent({ name: "dynamic-model-agent", model: "@cf/zai-org/glm-5.2" });
+    expect(res.status).toBe(201);
+    expect((await jsonBody<AgentJson>(res)).model.id).toBe("@cf/zai-org/glm-5.2");
   });
 
   it("name 超过 256 字符", async () => {

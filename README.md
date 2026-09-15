@@ -120,7 +120,7 @@ flowchart TB
         R2[("R2 · file content & session outputs")]
     end
 
-    GLM["GLM model API · open.bigmodel.cn<br/>glm-5.3 / glm-5.3-flash"]
+    GLM["Cloudflare AI Gateway REST API<br/>/ai/v1/chat/completions · @cf/zai-org models"]
 
     BROWSER --> GATE --> SPA
     BROWSER --> PROXY --> ROUTES
@@ -165,7 +165,7 @@ Internal packages are consumed as TypeScript source, with no build step: their `
 
 - **Node.js >= 20** and **pnpm** (enable with `corepack enable`, or install with `npm i -g pnpm`).
 - **A Cloudflare account.** Be aware that the session sandbox uses Cloudflare Containers, which currently requires the Workers paid plan — deploying `apps/api` fails on free accounts.
-- **A GLM API key** from [bigmodel.cn](https://bigmodel.cn/usercenter/proj-mgmt/apikeys). The agent loop calls the GLM model API (`glm-5.3` / `glm-5.3-flash`) for inference.
+- **A Cloudflare API token with the permissions *Workers AI > Read* and *AI Gateway > Edit*** (create one in My Profile → API Tokens). The agent loop calls Cloudflare-hosted `@cf/zai-org/*` models through the AI Gateway REST API; model ids stay `glm-5.3` / `glm-5.3-flash` and are mapped at request time. `@cf` model requests must carry the `cf-aig-gateway-id` header, so the deploy script looks up (or creates, with the Edit permission) a gateway named `nano` and writes its id into `apps/api/wrangler.jsonc`. A GLM key is only needed if you want the console's GLM-platform proxy (`/glm/*`), which is unrelated to model inference.
 
 ## Quick start (local development)
 
@@ -176,8 +176,9 @@ pnpm install
 
 # Local secrets for the API worker
 cp apps/api/.dev.vars.example apps/api/.dev.vars
-#   API_KEY=dev-key-change-me        # any local key you like
-#   GLM_API_KEY=<your real key>      # the agent loop needs a real model to talk to
+#   API_KEY=dev-key-change-me             # any local key you like
+#   CLOUDFLARE_API_TOKEN=<real token>     # Workers AI Read; the agent loop's model calls
+#   (CLOUDFLARE_ACCOUNT_ID / AI_GATEWAY_ID live in apps/api/wrangler.jsonc vars)
 
 # Create the D1 database (first time only), paste the returned
 # database_id into apps/api/wrangler.jsonc, then apply migrations locally
@@ -255,7 +256,7 @@ The script is idempotent and safe to re-run. It will:
 2. Install dependencies.
 3. Create or reuse the D1 database `nano-api-db` and write the `database_id` back into `apps/api/wrangler.jsonc`; create or reuse the R2 bucket `nano-files`.
 4. Deploy `apps/api` (Durable Object migrations and the sandbox container image go along with the deploy), then apply all D1 migrations to the remote database.
-5. Set secrets: `API_KEY` (auto-generated and printed once if missing) and `GLM_API_KEY` (from the environment or interactive input).
+5. Set secrets: `API_KEY` (auto-generated and printed once if missing) and `CLOUDFLARE_API_TOKEN` (from the environment or interactive input). Earlier in the run the script also writes the account id back into `apps/api/wrangler.jsonc` and looks up — or auto-creates — the `nano` AI Gateway.
 6. Point the console's `NANO_API_BASE` at the freshly deployed API and deploy `apps/console`.
 
 Anything that already exists is skipped; values passed explicitly through environment variables are forced. Supported variables:
@@ -263,7 +264,9 @@ Anything that already exists is skipped; values passed explicitly through enviro
 | Variable | Meaning |
 | --- | --- |
 | `API_KEY` | Bearer key for the `/v1` API itself |
-| `GLM_API_KEY` | GLM (Zhipu open platform) API key, from https://bigmodel.cn |
+| `CLOUDFLARE_API_TOKEN` | Model-service credential: a Cloudflare API token with *Workers AI > Read* (add *AI Gateway > Edit* so the script can auto-create the gateway) |
+| `AI_GATEWAY_ID` | AI Gateway id; defaults to a gateway named `nano` looked up or auto-created by the script, written into `apps/api/wrangler.jsonc` |
+| `GLM_API_KEY` | GLM (Zhipu) key, only used by the console's GLM-platform proxy, from https://bigmodel.cn |
 | `NANO_API_KEY` | Key the console uses to reach the API (defaults to `API_KEY`'s value) |
 | `NANO_API_BASE` | Upstream API address; defaults to the `workers.dev` URL from the API deploy |
 | `CF_ACCESS_TEAM_DOMAIN` | Cloudflare Access team domain, `https://<team>.cloudflareaccess.com` |

@@ -1,5 +1,6 @@
 import { env } from "cloudflare:workers";
 import { beforeAll, describe, expect, it } from "vitest";
+import type { Env } from "../../src/env";
 import {
   applyMigrations,
   archiveSessionViaApi,
