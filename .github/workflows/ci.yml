@@ -50,6 +50,6 @@ jobs:
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @nano/api exec wrangler d1 migrations apply DB --remote
-      - run: pnpm --filter @nano/api deploy
+      - run: pnpm --filter @nano/api run deploy
       - run: pnpm types
-      - run: pnpm --filter @nano/console deploy
+      - run: pnpm --filter @nano/console run deploy
