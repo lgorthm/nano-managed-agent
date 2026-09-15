@@ -25,7 +25,7 @@ export interface MockModelScript {
   /** 非 2xx:直接返回 JSON 错误体(不流式) */
   status?: number;
   chunks: MockModelChunk[];
-  /** 内容块之后发起的工具调用(单块完整下发,等价于分片累积的终态) */
+  /** 内容块之后发起的工具调用(server 按真实上游形状分片下发:首块 id/name,续块 name 为 null 追加 arguments) */
   tool_calls?: MockModelToolCall[];
   usage?: { prompt_tokens: number; completion_tokens: number; cached_tokens?: number };
   /** 建立连接后不下发任何块(模拟流挂起) */

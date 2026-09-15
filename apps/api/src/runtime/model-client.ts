@@ -89,11 +89,12 @@ interface StreamChunk {
     delta?: {
       content?: string | null;
       reasoning_content?: string | null;
-      /** OpenAI 兼容的流式工具调用:index 定位,arguments 分片累积 */
+      /** OpenAI 兼容的流式工具调用:index 定位,arguments 分片累积;续块的
+       * id / name / arguments 为 JSON null(OpenAI 兼容实现的常态,不是缺字段) */
       tool_calls?: Array<{
         index?: number;
-        id?: string;
-        function?: { name?: string; arguments?: string };
+        id?: string | null;
+        function?: { name?: string | null; arguments?: string | null } | null;
       }> | null;
     };
     finish_reason?: string | null;
@@ -112,11 +113,13 @@ function accumulateToolCall(
 ): void {
   const index = fragment.index ?? 0;
   const current = calls.get(index) ?? { id: "", name: "", arguments: "" };
-  if (fragment.id !== undefined && fragment.id !== "") current.id = fragment.id;
-  if (fragment.function?.name !== undefined && fragment.function.name !== "") {
+  // 只吸收字符串真值:续块的 name 等字段是 JSON null,null !== undefined 且
+  // null !== "" 都成立,宽松守卫会让它覆盖首块已累积的名字(曾产生 Unknown tool "null")
+  if (typeof fragment.id === "string" && fragment.id !== "") current.id = fragment.id;
+  if (typeof fragment.function?.name === "string" && fragment.function.name !== "") {
     current.name = fragment.function.name;
   }
-  if (fragment.function?.arguments !== undefined) current.arguments += fragment.function.arguments;
+  if (typeof fragment.function?.arguments === "string") current.arguments += fragment.function.arguments;
   calls.set(index, current);
 }
 

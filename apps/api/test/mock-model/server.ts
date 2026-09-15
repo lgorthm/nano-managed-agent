@@ -11,7 +11,7 @@
  * admin:/__admin/script(enqueue)、/__admin/reset、/__admin/captured。
  */
 import http from "node:http";
-import type { CapturedModelRequest, MockModelScript } from "./types";
+import type { CapturedModelRequest, MockModelScript, MockModelToolCall } from "./types";
 
 const PORT = 18234;
 const HOST = "127.0.0.1";
@@ -47,6 +47,34 @@ function writeChunk(res: http.ServerResponse, delta: Record<string, string>, fin
   );
 }
 
+/**
+ * 工具调用按真实上游(OpenAI 兼容实现)的分片习惯下发:首块携带 index/id/name
+ * 与首段 arguments,续块 name 为 JSON null、只追加 arguments 分片。单块完整
+ * 下发曾让累积逻辑的 null 守卫漏洞逃过测试(生产表现为 Unknown tool "null")。
+ */
+function writeToolCallFragments(res: http.ServerResponse, index: number, call: MockModelToolCall): void {
+  const pieces = splitArguments(call.arguments);
+  const fragments: Array<Record<string, unknown>> = [
+    {
+      index,
+      id: call.id ?? `call_mock_${index}`,
+      type: "function",
+      function: { name: call.name, arguments: pieces[0] ?? "" },
+    },
+    ...pieces.slice(1).map((piece) => ({ index, function: { name: null, arguments: piece } })),
+  ];
+  for (const fragment of fragments) {
+    res.write(`data: ${JSON.stringify({ choices: [{ delta: { tool_calls: [fragment] } }] })}\n\n`);
+  }
+}
+
+/** arguments 一分为二(长度 ≥ 2 时),保证续块路径总被走到 */
+function splitArguments(args: string): string[] {
+  if (args.length < 2) return [args];
+  const middle = Math.ceil(args.length / 2);
+  return [args.slice(0, middle), args.slice(middle)];
+}
+
 async function handleCompletions(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
   const chunks: Buffer[] = [];
   for await (const chunk of req) chunks.push(chunk as Buffer);
@@ -80,22 +108,9 @@ async function handleCompletions(req: http.IncomingMessage, res: http.ServerResp
     writeChunk(res, delta);
   }
   if ((script.tool_calls ?? []).length > 0) {
-    res.write(
-      `data: ${JSON.stringify({
-        choices: [
-          {
-            delta: {
-              tool_calls: (script.tool_calls ?? []).map((call, index) => ({
-                index,
-                id: call.id ?? `call_mock_${index}`,
-                type: "function",
-                function: { name: call.name, arguments: call.arguments },
-              })),
-            },
-          },
-        ],
-      })}\n\n`,
-    );
+    for (const [index, call] of (script.tool_calls ?? []).entries()) {
+      writeToolCallFragments(res, index, call);
+    }
     writeChunk(res, {}, "tool_calls");
   }
   if (script.usage !== undefined) {
