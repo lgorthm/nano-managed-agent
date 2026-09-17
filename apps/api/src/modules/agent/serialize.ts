@@ -1,5 +1,5 @@
-import { agentVersionRowToConfig, type AgentRow, type AgentVersionRow } from "@nano/db";
-import type { AgentResponse, NormalizedAgentConfig } from "@nano/shared";
+import { type AgentRow, type AgentVersionRow, agentVersionRowToConfig } from '@nano/db';
+import type { AgentResponse, NormalizedAgentConfig } from '@nano/shared';
 
 /** 行 → 配置的映射上提到 @nano/db(与会话模块的引用解析共用),此处保留原导入名 */
 export const versionRowToConfig = agentVersionRowToConfig;
@@ -19,7 +19,7 @@ export function serializeAgent(meta: {
 }): AgentResponse {
   return {
     id: meta.id,
-    type: "agent",
+    type: 'agent',
     name: meta.config.name,
     description: meta.config.description,
     model: meta.config.model,

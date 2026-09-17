@@ -3,11 +3,11 @@
  * 与 references/api/{create,list,get,update,delete,archive}-credential.md、verify-mcp-oauth.md。
  * Vault 是给 Agent 运行时注入凭据的金库;所有 secret 字段只写不回显。
  */
-import type { ListQuery, Metadata } from "./common";
-import type { MetadataPatch } from "./memory";
+import type { ListQuery, Metadata } from './common';
+import type { MetadataPatch } from './memory';
 
 export interface Vault {
-  type: "vault";
+  type: 'vault';
   id: string;
   display_name: string;
   metadata: Metadata;
@@ -34,13 +34,13 @@ export interface VaultUpdateInput {
 
 export interface VaultDeleted {
   id: string;
-  type: "vault_deleted";
+  type: 'vault_deleted';
 }
 
 /** 凭据注入的出网范围(unlimited = 不限制;limited 只放行指定 host,最多 16 个) */
 export type VaultNetworking =
-  | { type: "unrestricted" }
-  | { type: "limited"; allowed_hosts: string[] };
+  | { type: 'unrestricted' }
+  | { type: 'limited'; allowed_hosts: string[] };
 
 /** 注入位置;body 当前固定为 false(不支持请求体注入) */
 export interface InjectionLocationInput {
@@ -58,8 +58,11 @@ export interface OAuthRefreshCreate {
   resource?: string | null;
   refresh_token: string;
   token_endpoint_auth:
-    | { type: "none" }
-    | { type: "client_secret_basic" | "client_secret_post"; client_secret: string };
+    | { type: 'none' }
+    | {
+        type: 'client_secret_basic' | 'client_secret_post';
+        client_secret: string;
+      };
 }
 
 /** OAuth 刷新配置(update 侧:结构字段不可改,只允许轮换 secret / 调整 scope) */
@@ -67,7 +70,7 @@ export interface OAuthRefreshUpdate {
   scope?: string | null;
   refresh_token?: string | null;
   token_endpoint_auth?: {
-    type: "client_secret_basic" | "client_secret_post";
+    type: 'client_secret_basic' | 'client_secret_post';
     client_secret?: string | null;
   };
 }
@@ -75,25 +78,25 @@ export interface OAuthRefreshUpdate {
 /** 创建凭据的 5 种认证形态,secret 字段只写不回显 */
 export type CredentialAuthCreate =
   | {
-      type: "mcp_oauth";
+      type: 'mcp_oauth';
       /** HTTPS Streamable HTTP URL */
       mcp_server_url: string;
       access_token: string;
       expires_at?: string | null;
       refresh?: OAuthRefreshCreate | null;
     }
-  | { type: "static_bearer"; mcp_server_url: string; token: string }
+  | { type: 'static_bearer'; mcp_server_url: string; token: string }
   | {
-      type: "oauth";
+      type: 'oauth';
       /** HTTPS origin,不含路径/query */
       host: string;
       access_token: string;
       expires_at?: string | null;
       refresh?: OAuthRefreshCreate | null;
     }
-  | { type: "bearer"; host: string; token: string }
+  | { type: 'bearer'; host: string; token: string }
   | {
-      type: "environment_variable";
+      type: 'environment_variable';
       secret_name: string;
       secret_value: string;
       networking: VaultNetworking;
@@ -103,21 +106,21 @@ export type CredentialAuthCreate =
 /** 更新凭据:auth type / host / url / secret_name 等结构字段不可改,只允许轮换 secret */
 export type CredentialAuthUpdate =
   | {
-      type: "mcp_oauth";
+      type: 'mcp_oauth';
       access_token?: string | null;
       expires_at?: string | null;
       refresh?: OAuthRefreshUpdate | null;
     }
-  | { type: "static_bearer"; token?: string | null }
+  | { type: 'static_bearer'; token?: string | null }
   | {
-      type: "oauth";
+      type: 'oauth';
       access_token?: string | null;
       expires_at?: string | null;
       refresh?: OAuthRefreshUpdate | null;
     }
-  | { type: "bearer"; token?: string | null }
+  | { type: 'bearer'; token?: string | null }
   | {
-      type: "environment_variable";
+      type: 'environment_variable';
       secret_value?: string | null;
       networking?: VaultNetworking | null;
       injection_location?: InjectionLocationInput;
@@ -138,7 +141,9 @@ export interface CredentialUpdateInput {
 export interface OAuthRefreshResponse {
   token_endpoint: string;
   client_id: string;
-  token_endpoint_auth: { type: "none" | "client_secret_basic" | "client_secret_post" };
+  token_endpoint_auth: {
+    type: 'none' | 'client_secret_basic' | 'client_secret_post';
+  };
   scope: string | null;
   resource: string | null;
 }
@@ -146,28 +151,28 @@ export interface OAuthRefreshResponse {
 /** 响应侧认证形态:不含任何 secret */
 export type CredentialAuthResponse =
   | {
-      type: "mcp_oauth";
+      type: 'mcp_oauth';
       mcp_server_url: string | null;
       expires_at: string | null;
       refresh: OAuthRefreshResponse | null;
     }
-  | { type: "static_bearer"; mcp_server_url: string | null }
+  | { type: 'static_bearer'; mcp_server_url: string | null }
   | {
-      type: "oauth";
+      type: 'oauth';
       host: string | null;
       expires_at: string | null;
       refresh: OAuthRefreshResponse | null;
     }
-  | { type: "bearer"; host: string | null }
+  | { type: 'bearer'; host: string | null }
   | {
-      type: "environment_variable";
+      type: 'environment_variable';
       secret_name: string | null;
       networking: VaultNetworking | null;
       injection_location: { header: boolean; body: false };
     };
 
 export interface Credential {
-  type: "vault_credential";
+  type: 'vault_credential';
   id: string;
   display_name: string;
   vault_id: string;
@@ -184,7 +189,7 @@ export interface CredentialListQuery extends ListQuery {
 
 export interface CredentialDeleted {
   id: string;
-  type: "vault_credential_deleted";
+  type: 'vault_credential_deleted';
 }
 
 export interface CapturedHttpResponse {
@@ -196,15 +201,18 @@ export interface CapturedHttpResponse {
 
 /** MCP OAuth 凭据的在线校验结果(探测 initialize + 可选 refresh) */
 export interface CredentialValidation {
-  type: "vault_credential_validation";
+  type: 'vault_credential_validation';
   credential_id: string;
   vault_id: string;
   validated_at: string;
   has_refresh_token: boolean;
-  status: "valid" | "invalid" | "unknown";
-  mcp_probe: { method: "initialize"; http_response: CapturedHttpResponse | null };
+  status: 'valid' | 'invalid' | 'unknown';
+  mcp_probe: {
+    method: 'initialize';
+    http_response: CapturedHttpResponse | null;
+  };
   refresh: {
-    status: "succeeded" | "failed" | "connect_error" | "no_refresh_token";
+    status: 'succeeded' | 'failed' | 'connect_error' | 'no_refresh_token';
     http_response: CapturedHttpResponse | null;
   };
 }

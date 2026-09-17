@@ -2,7 +2,7 @@
  * Agent 资源的协议层定义(创建侧),以 docs/agent/api/create-agent.md 的 OpenAPI 为准。
  * 所有 schema 均 strict(拒绝未知键,对应 additionalProperties: false)。
  */
-import { z } from "zod";
+import { z } from 'zod';
 
 // ---------- 枚举与常量 ----------
 
@@ -14,20 +14,20 @@ import { z } from "zod";
 export type ModelId = string;
 
 /** 静态目录内的模型 id(zod 不再收口为枚举,仅用于展示与测试) */
-export const MODEL_IDS = ["glm-5.3", "glm-5.3-flash"] as const;
+export const MODEL_IDS = ['glm-5.3', 'glm-5.3-flash'] as const;
 
-export const MODEL_EFFORTS = ["low", "high", "max"] as const;
+export const MODEL_EFFORTS = ['low', 'high', 'max'] as const;
 export type ModelEffort = (typeof MODEL_EFFORTS)[number];
 
-export const BUILTIN_TOOLSET_TYPE = "agent_toolset_20260601" as const;
+export const BUILTIN_TOOLSET_TYPE = 'agent_toolset_20260601' as const;
 
-export const BUILTIN_TOOL_NAMES = ["read", "write", "edit", "bash", "grep", "find", "ls"] as const;
+export const BUILTIN_TOOL_NAMES = ['read', 'write', 'edit', 'bash', 'grep', 'find', 'ls'] as const;
 export type BuiltinToolName = (typeof BUILTIN_TOOL_NAMES)[number];
 
 // ---------- 工具与权限 ----------
 
 export const PermissionPolicySchema = z.strictObject({
-  type: z.enum(["always_allow", "always_ask"]),
+  type: z.enum(['always_allow', 'always_ask']),
 });
 export type PermissionPolicy = z.infer<typeof PermissionPolicySchema>;
 
@@ -53,7 +53,7 @@ export const McpToolConfigInputSchema = z.strictObject({
 
 /** 自定义工具的 input_schema;固定 type=object,其余字段透传(additionalProperties: true) */
 export const CustomToolInputSchema = z.looseObject({
-  type: z.literal("object"),
+  type: z.literal('object'),
   properties: z.record(z.string(), z.unknown()).optional(),
   required: z.array(z.string()).optional(),
 });
@@ -62,7 +62,7 @@ export type CustomToolInput = z.infer<typeof CustomToolInputSchema>;
 // ---------- Skill 引用与 MCP Server ----------
 
 export const SkillReferenceSchema = z.strictObject({
-  type: z.enum(["custom", "zai"]),
+  type: z.enum(['custom', 'zai']),
   skill_id: z.string().min(1),
   version: z.string().min(1),
 });
@@ -70,30 +70,34 @@ export type SkillReference = z.infer<typeof SkillReferenceSchema>;
 
 /** 校验 MCP Server URL:公开 HTTPS、无凭据、无 fragment、无空 query、非旧式 SSE 路径 */
 function checkMcpUrl(url: string): string | null {
-  if (!url.startsWith("https://")) return "must start with https://";
-  if (url.length > 2048) return "must be at most 2048 characters";
-  const rest = url.slice("https://".length);
+  if (!url.startsWith('https://')) return 'must start with https://';
+  if (url.length > 2048) return 'must be at most 2048 characters';
+  const rest = url.slice('https://'.length);
   const authorityEnd = rest.search(/[/?#]/);
   const authority = authorityEnd === -1 ? rest : rest.slice(0, authorityEnd);
-  if (authority.includes("@")) return "must not contain credentials";
-  if (url.includes("#")) return "must not contain a fragment";
-  const queryStart = url.indexOf("?");
+  if (authority.includes('@')) return 'must not contain credentials';
+  if (url.includes('#')) return 'must not contain a fragment';
+  const queryStart = url.indexOf('?');
   if (queryStart !== -1) {
     const query = url.slice(queryStart + 1);
-    if (query === "" || query.startsWith("&")) return "must not contain an empty query";
+    if (query === '' || query.startsWith('&')) return 'must not contain an empty query';
   }
   const pathEnd = queryStart === -1 ? url.length : queryStart;
-  const path = rest.slice(authority.length, pathEnd - "https://".length);
-  if (/\/sse\/?$/.test(path)) return "must not use the legacy SSE path";
+  const path = rest.slice(authority.length, pathEnd - 'https://'.length);
+  if (/\/sse\/?$/.test(path)) return 'must not use the legacy SSE path';
   return null;
 }
 
 export const McpServerSchema = z.strictObject({
-  type: z.literal("url"),
+  type: z.literal('url'),
   name: z.string().min(1).max(255),
   url: z.string().superRefine((url, ctx) => {
     const problem = checkMcpUrl(url);
-    if (problem) ctx.addIssue({ code: "custom", message: `Invalid MCP server URL: ${problem}.` });
+    if (problem)
+      ctx.addIssue({
+        code: 'custom',
+        message: `Invalid MCP server URL: ${problem}.`,
+      });
   }),
 });
 export type McpServer = z.infer<typeof McpServerSchema>;
@@ -108,7 +112,7 @@ export const ModelInputSchema = z.union([
   z.strictObject({
     id: ModelIdSchema,
     effort: z.enum(MODEL_EFFORTS).nullish(),
-    speed: z.literal("standard").nullish(),
+    speed: z.literal('standard').nullish(),
   }),
 ]);
 export type ModelInput = z.infer<typeof ModelInputSchema>;
@@ -120,15 +124,19 @@ export const BuiltinToolsetInputSchema = z.strictObject({
 });
 
 export const McpToolsetInputSchema = z.strictObject({
-  type: z.literal("mcp_toolset"),
+  type: z.literal('mcp_toolset'),
   mcp_server_name: z.string().min(1),
   default_config: ToolDefaultConfigInputSchema.nullish(),
   configs: z.array(McpToolConfigInputSchema).max(128).default([]),
 });
 
 export const CustomToolsetInputSchema = z.strictObject({
-  type: z.literal("custom"),
-  name: z.string().min(1).max(128).regex(/^[A-Za-z0-9_-]+$/, "must match ^[A-Za-z0-9_-]+$"),
+  type: z.literal('custom'),
+  name: z
+    .string()
+    .min(1)
+    .max(128)
+    .regex(/^[A-Za-z0-9_-]+$/, 'must match ^[A-Za-z0-9_-]+$'),
   description: z.string().min(1).max(4096),
   input_schema: CustomToolInputSchema,
 });
@@ -146,7 +154,7 @@ export type AgentToolsetInput = z.infer<typeof AgentToolsetInputSchema>;
 export const MetadataSchema = z
   .record(z.string().max(64), z.string().max(512))
   .refine((metadata) => Object.keys(metadata).length <= 16, {
-    message: "metadata must have at most 16 keys",
+    message: 'metadata must have at most 16 keys',
   });
 
 // ---------- 跨字段校验 ----------
@@ -187,66 +195,72 @@ export function agentConfigIssues(config: AgentConfigLike): AgentConfigIssue[] {
 
   const serverNames = config.mcp_servers.map((server) => server.name);
   if (new Set(serverNames).size !== serverNames.length) {
-    addIssue(["mcp_servers"], "mcp_servers names must be unique within the configuration");
+    addIssue(['mcp_servers'], 'mcp_servers names must be unique within the configuration');
   }
 
-  const mcpToolsets = config.tools.filter((toolset) => toolset.type === "mcp_toolset");
+  const mcpToolsets = config.tools.filter((toolset) => toolset.type === 'mcp_toolset');
   for (const name of new Set(serverNames)) {
     const count = mcpToolsets.filter((toolset) => toolset.mcp_server_name === name).length;
     if (count !== 1) {
       addIssue(
-        ["mcp_servers"],
+        ['mcp_servers'],
         `server "${name}" must be referenced by exactly one mcp_toolset (found ${count})`,
       );
     }
   }
   for (const toolset of mcpToolsets) {
-    if (!serverNames.includes(toolset.mcp_server_name ?? "")) {
+    if (!serverNames.includes(toolset.mcp_server_name ?? '')) {
       addIssue(
-        ["tools"],
+        ['tools'],
         `mcp_toolset references unknown mcp_server_name "${toolset.mcp_server_name}"`,
       );
     }
   }
 
-  if (config.skills.length > 0 && !config.tools.some((toolset) => toolset.type === BUILTIN_TOOLSET_TYPE)) {
-    addIssue(["skills"], "configuring skills requires agent_toolset_20260601 in tools");
+  if (
+    config.skills.length > 0 &&
+    !config.tools.some((toolset) => toolset.type === BUILTIN_TOOLSET_TYPE)
+  ) {
+    addIssue(['skills'], 'configuring skills requires agent_toolset_20260601 in tools');
   }
 
   const seenSkills = new Set<string>();
   for (const skill of config.skills) {
     const key = `${skill.type}/${skill.skill_id}/${skill.version}`;
     if (seenSkills.has(key)) {
-      addIssue(["skills"], `duplicate skill reference "${skill.skill_id}" at version "${skill.version}"`);
+      addIssue(
+        ['skills'],
+        `duplicate skill reference "${skill.skill_id}" at version "${skill.version}"`,
+      );
     }
     seenSkills.add(key);
   }
 
   const customNames = new Set<string>();
   for (const toolset of config.tools) {
-    if (toolset.type !== "custom" || toolset.name === undefined) continue;
-    if (toolset.name.startsWith("mcp__")) {
-      addIssue(["tools"], `custom tool name "${toolset.name}" must not start with "mcp__"`);
+    if (toolset.type !== 'custom' || toolset.name === undefined) continue;
+    if (toolset.name.startsWith('mcp__')) {
+      addIssue(['tools'], `custom tool name "${toolset.name}" must not start with "mcp__"`);
     }
     if (customNames.has(toolset.name)) {
-      addIssue(["tools"], `duplicate custom tool name "${toolset.name}"`);
+      addIssue(['tools'], `duplicate custom tool name "${toolset.name}"`);
     }
     customNames.add(toolset.name);
   }
 
   for (const toolset of config.tools) {
-    if (toolset.type === "custom") continue;
+    if (toolset.type === 'custom') continue;
     const names = (toolset.configs ?? []).map((config) => config.name);
     if (new Set(names).size !== names.length) {
       addIssue(
-        ["tools"],
-        `duplicate config name within a ${toolset.type === "mcp_toolset" ? `mcp_toolset "${toolset.mcp_server_name}"` : toolset.type}`,
+        ['tools'],
+        `duplicate config name within a ${toolset.type === 'mcp_toolset' ? `mcp_toolset "${toolset.mcp_server_name}"` : toolset.type}`,
       );
     }
   }
 
   if (config.metadata && Object.keys(config.metadata).length > 16) {
-    addIssue(["metadata"], "metadata must have at most 16 keys");
+    addIssue(['metadata'], 'metadata must have at most 16 keys');
   }
 
   return issues;
@@ -268,7 +282,11 @@ export const AgentCreateRequestSchema = z
   })
   .superRefine((config, ctx) => {
     for (const issue of agentConfigIssues(config)) {
-      ctx.addIssue({ code: "custom", path: issue.path, message: issue.message });
+      ctx.addIssue({
+        code: 'custom',
+        path: issue.path,
+        message: issue.message,
+      });
     }
   });
 
@@ -280,7 +298,7 @@ export type AgentCreateRequestInput = z.output<typeof AgentCreateRequestSchema>;
 export const MetadataPatchSchema = z
   .record(z.string().max(64), z.string().max(512).nullable())
   .refine((patch) => Object.keys(patch).length <= 16, {
-    message: "metadata patch must have at most 16 keys",
+    message: 'metadata patch must have at most 16 keys',
   });
 
 /**
@@ -304,15 +322,12 @@ export const AgentUpdateRequestSchema = z
     metadata: MetadataPatchSchema.nullish(),
   })
   .superRefine((patch, ctx) => {
-    const hasMcpToolset =
-      patch.tools !== null &&
-      patch.tools !== undefined &&
-      patch.tools.some((toolset) => toolset.type === "mcp_toolset");
+    const hasMcpToolset = patch.tools?.some((toolset) => toolset.type === 'mcp_toolset');
     if (hasMcpToolset && patch.mcp_servers === undefined) {
       ctx.addIssue({
-        code: "custom",
-        path: ["tools"],
-        message: "submitting mcp_toolset requires replacing mcp_servers in the same request",
+        code: 'custom',
+        path: ['tools'],
+        message: 'submitting mcp_toolset requires replacing mcp_servers in the same request',
       });
     }
   });

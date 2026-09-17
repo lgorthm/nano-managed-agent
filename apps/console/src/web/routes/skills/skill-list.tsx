@@ -1,30 +1,41 @@
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import type { Skill } from "@nano/shared/glm";
-import { Puzzle, Plus } from "lucide-react";
-import { useState } from "react";
-import { Link } from "react-router";
-import { listSkills } from "@/api/skills";
-import { DataPager } from "@/components/data-pager";
-import { useCursorPage } from "@/hooks/use-cursor-page";
-import { TableCard } from "@/components/table-card";
-import { EmptyState } from "@/components/empty-state";
-import { PageHeader } from "@/components/page-header";
-import { QueryError } from "@/components/query-error";
-import { RefreshButton } from "@/components/refresh-button";
-import { CreateSkillDialog } from "@/components/skill-upload-dialog";
-import { TableSkeleton } from "@/components/table-skeleton";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { formatTime, formatTimeShort } from "@/lib/format";
+import type { Skill } from '@nano/shared/glm';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { Plus, Puzzle } from 'lucide-react';
+import { useState } from 'react';
+import { Link } from 'react-router';
+import { listSkills } from '@/api/skills';
+import { DataPager } from '@/components/data-pager';
+import { EmptyState } from '@/components/empty-state';
+import { PageHeader } from '@/components/page-header';
+import { QueryError } from '@/components/query-error';
+import { RefreshButton } from '@/components/refresh-button';
+import { CreateSkillDialog } from '@/components/skill-upload-dialog';
+import { TableCard } from '@/components/table-card';
+import { TableSkeleton } from '@/components/table-skeleton';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { useCursorPage } from '@/hooks/use-cursor-page';
+import { formatTime, formatTimeShort } from '@/lib/format';
 
 const PAGE_SIZE = 20;
 
 export function SkillListPage() {
   const pager = useCursorPage();
   const query = useQuery({
-    queryKey: ["skills", pager.cursor],
-    queryFn: () => listSkills({ limit: PAGE_SIZE, ...(pager.cursor ? { page: pager.cursor } : {}) }),
+    queryKey: ['skills', pager.cursor],
+    queryFn: () =>
+      listSkills({
+        limit: PAGE_SIZE,
+        ...(pager.cursor ? { page: pager.cursor } : {}),
+      }),
     placeholderData: keepPreviousData,
   });
   const [createOpen, setCreateOpen] = useState(false);
@@ -83,9 +94,13 @@ export function SkillListPage() {
                       to={`/skills/${skill.id}`}
                       className="inline-block max-w-28 truncate font-medium hover:underline md:max-w-none"
                     >
-                      {skill.display_title ?? <span className="text-muted-foreground">(未命名)</span>}
+                      {skill.display_title ?? (
+                        <span className="text-muted-foreground">(未命名)</span>
+                      )}
                     </Link>
-                    <div className="text-muted-foreground hidden font-mono text-xs md:block">{skill.id}</div>
+                    <div className="text-muted-foreground hidden font-mono text-xs md:block">
+                      {skill.id}
+                    </div>
                   </TableCell>
                   <TableCell className="hidden md:table-cell">
                     <Badge variant="outline" className="font-mono text-xs font-normal">
@@ -93,14 +108,22 @@ export function SkillListPage() {
                     </Badge>
                   </TableCell>
                   <TableCell className="font-mono text-xs tabular-nums">
-                    {skill.latest_version ? `v${skill.latest_version}` : <span className="text-muted-foreground">空壳</span>}
+                    {skill.latest_version ? (
+                      `v${skill.latest_version}`
+                    ) : (
+                      <span className="text-muted-foreground">空壳</span>
+                    )}
                   </TableCell>
                   <TableCell className="text-muted-foreground hidden text-sm tabular-nums md:table-cell">
                     {formatTime(skill.created_at)}
                   </TableCell>
                   <TableCell className="text-right text-muted-foreground">
-                    <span className="text-xs tabular-nums sm:hidden">{formatTimeShort(skill.updated_at)}</span>
-                    <span className="hidden text-sm tabular-nums sm:inline">{formatTime(skill.updated_at)}</span>
+                    <span className="text-xs tabular-nums sm:hidden">
+                      {formatTimeShort(skill.updated_at)}
+                    </span>
+                    <span className="hidden text-sm tabular-nums sm:inline">
+                      {formatTime(skill.updated_at)}
+                    </span>
                   </TableCell>
                 </TableRow>
               ))}

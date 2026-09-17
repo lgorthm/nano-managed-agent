@@ -1,38 +1,45 @@
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import type { Environment, EnvironmentPackages } from "@nano/shared/glm";
-import { Container, Plus } from "lucide-react";
-import { useState } from "react";
-import { Link } from "react-router";
-import { listEnvironments } from "@/api/environments";
-import { DataPager } from "@/components/data-pager";
-import { useCursorPage } from "@/hooks/use-cursor-page";
-import { TableCard } from "@/components/table-card";
-import { EmptyState } from "@/components/empty-state";
-import { CreateEnvironmentDialog } from "@/components/environment-form-dialog";
-import { PageHeader } from "@/components/page-header";
-import { QueryError } from "@/components/query-error";
-import { RefreshButton } from "@/components/refresh-button";
-import { EnvironmentStateBadge, StatusBadge } from "@/components/status-badges";
-import { TableSkeleton } from "@/components/table-skeleton";
-import { Button } from "@/components/ui/button";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { formatTime, formatTimeShort } from "@/lib/format";
+import type { Environment, EnvironmentPackages } from '@nano/shared/glm';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { Container, Plus } from 'lucide-react';
+import { useState } from 'react';
+import { Link } from 'react-router';
+import { listEnvironments } from '@/api/environments';
+import { DataPager } from '@/components/data-pager';
+import { EmptyState } from '@/components/empty-state';
+import { CreateEnvironmentDialog } from '@/components/environment-form-dialog';
+import { PageHeader } from '@/components/page-header';
+import { QueryError } from '@/components/query-error';
+import { RefreshButton } from '@/components/refresh-button';
+import { EnvironmentStateBadge, StatusBadge } from '@/components/status-badges';
+import { TableCard } from '@/components/table-card';
+import { TableSkeleton } from '@/components/table-skeleton';
+import { Button } from '@/components/ui/button';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { useCursorPage } from '@/hooks/use-cursor-page';
+import { formatTime, formatTimeShort } from '@/lib/format';
 
 const PAGE_SIZE = 20;
 
 /** 非空包管理器摘要,如 "pip 3 · npm 1";全空返回 null */
 function summarizePackages(packages: EnvironmentPackages): string | null {
-  const parts = (["apt", "cargo", "gem", "go", "npm", "pip"] as const)
+  const parts = (['apt', 'cargo', 'gem', 'go', 'npm', 'pip'] as const)
     .map((manager) => ({ manager, count: packages[manager].length }))
     .filter(({ count }) => count > 0)
     .map(({ manager, count }) => `${manager} ${count}`);
-  return parts.length > 0 ? parts.join(" · ") : null;
+  return parts.length > 0 ? parts.join(' · ') : null;
 }
 
 function NetworkingBadge({ environment }: { environment: Environment }) {
-  const limited = environment.config.networking.type === "limited";
+  const limited = environment.config.networking.type === 'limited';
   return (
-    <StatusBadge tint={limited ? "tint-warning" : "tint-neutral"}>
+    <StatusBadge tint={limited ? 'tint-warning' : 'tint-neutral'}>
       {environment.config.networking.type}
     </StatusBadge>
   );
@@ -41,9 +48,12 @@ function NetworkingBadge({ environment }: { environment: Environment }) {
 export function EnvironmentListPage() {
   const pager = useCursorPage();
   const query = useQuery({
-    queryKey: ["environments", pager.cursor],
+    queryKey: ['environments', pager.cursor],
     queryFn: () =>
-      listEnvironments({ limit: PAGE_SIZE, ...(pager.cursor ? { page: pager.cursor } : {}) }),
+      listEnvironments({
+        limit: PAGE_SIZE,
+        ...(pager.cursor ? { page: pager.cursor } : {}),
+      }),
     placeholderData: keepPreviousData,
   });
   const [createOpen, setCreateOpen] = useState(false);
@@ -105,13 +115,15 @@ export function EnvironmentListPage() {
                     >
                       {environment.name}
                     </Link>
-                    <div className="text-muted-foreground hidden font-mono text-xs md:block">{environment.id}</div>
+                    <div className="text-muted-foreground hidden font-mono text-xs md:block">
+                      {environment.id}
+                    </div>
                   </TableCell>
                   <TableCell>
                     <NetworkingBadge environment={environment} />
                   </TableCell>
                   <TableCell className="text-muted-foreground hidden font-mono text-xs tabular-nums md:table-cell">
-                    {summarizePackages(environment.config.packages) ?? "—"}
+                    {summarizePackages(environment.config.packages) ?? '—'}
                   </TableCell>
                   <TableCell>
                     <EnvironmentStateBadge state={environment.state} />
@@ -120,8 +132,12 @@ export function EnvironmentListPage() {
                     {formatTime(environment.created_at)}
                   </TableCell>
                   <TableCell className="text-right text-muted-foreground">
-                    <span className="text-xs tabular-nums sm:hidden">{formatTimeShort(environment.updated_at)}</span>
-                    <span className="hidden text-sm tabular-nums sm:inline">{formatTime(environment.updated_at)}</span>
+                    <span className="text-xs tabular-nums sm:hidden">
+                      {formatTimeShort(environment.updated_at)}
+                    </span>
+                    <span className="hidden text-sm tabular-nums sm:inline">
+                      {formatTime(environment.updated_at)}
+                    </span>
                   </TableCell>
                 </TableRow>
               ))}

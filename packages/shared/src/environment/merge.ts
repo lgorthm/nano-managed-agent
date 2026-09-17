@@ -8,9 +8,10 @@
  * 替换进来的 config 是输入形态,先经 normalize 归一化再合并,
  * 保证合并结果与当前落库形态同为归一化形态,可直接做无变化比较。
  */
-import type { EnvironmentUpdateRequestInput } from "./schemas";
-import type { NormalizedEnvironmentRecord } from "./normalize";
-import { normalizeEnvironmentConfig } from "./normalize";
+
+import type { NormalizedEnvironmentRecord } from './normalize';
+import { normalizeEnvironmentConfig } from './normalize';
+import type { EnvironmentUpdateRequestInput } from './schemas';
 
 /** 把补丁合并进当前记录,返回新的归一化记录 */
 export function mergeEnvironmentRecord(
@@ -19,7 +20,8 @@ export function mergeEnvironmentRecord(
 ): NormalizedEnvironmentRecord {
   return {
     name: patch.name ?? current.name,
-    description: patch.description === undefined ? current.description : patch.description ?? null,
+    description:
+      patch.description === undefined ? current.description : (patch.description ?? null),
     config:
       patch.config === undefined
         ? current.config
@@ -50,7 +52,7 @@ function mergeMetadata(
 /** 语义化深度相等:键序无关,数组按序比较 */
 function deepEqual(a: unknown, b: unknown): boolean {
   if (a === b) return true;
-  if (typeof a !== "object" || typeof b !== "object" || a === null || b === null) return false;
+  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false;
   if (Array.isArray(a) || Array.isArray(b)) {
     if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
     return a.every((item, i) => deepEqual(item, b[i]));
@@ -60,7 +62,8 @@ function deepEqual(a: unknown, b: unknown): boolean {
   if (keysA.length !== keysB.length) return false;
   return keysA.every(
     (key) =>
-      key in b && deepEqual((a as Record<string, unknown>)[key], (b as Record<string, unknown>)[key]),
+      key in b &&
+      deepEqual((a as Record<string, unknown>)[key], (b as Record<string, unknown>)[key]),
   );
 }
 
@@ -68,6 +71,9 @@ function deepEqual(a: unknown, b: unknown): boolean {
  * 无变化检测:合并结果与当前落库形态逐字段一致则为真。
  * 上层据此跳过写库,直接返回现状(updated_at 保持不变)。
  */
-export function environmentRecordEquals(a: NormalizedEnvironmentRecord, b: NormalizedEnvironmentRecord): boolean {
+export function environmentRecordEquals(
+  a: NormalizedEnvironmentRecord,
+  b: NormalizedEnvironmentRecord,
+): boolean {
   return deepEqual(a, b);
 }

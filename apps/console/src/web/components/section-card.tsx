@@ -1,5 +1,5 @@
-import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { cn } from "@/lib/utils";
+import { Card, CardAction, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { cn } from '@/lib/utils';
 
 /**
  * 详情页分区卡片:小号弱化标题(信息层级让位于数据),右上角可挂动作。
@@ -19,9 +19,11 @@ export function SectionCard({
   contentClassName?: string;
 }) {
   return (
-    <Card className={cn("gap-5", className)}>
+    <Card className={cn('gap-5', className)}>
       <CardHeader>
-        <CardTitle className="text-[13px] font-medium tracking-wide text-muted-foreground">{title}</CardTitle>
+        <CardTitle className="text-[13px] font-medium tracking-wide text-muted-foreground">
+          {title}
+        </CardTitle>
         {action ? <CardAction>{action}</CardAction> : null}
       </CardHeader>
       <CardContent className={contentClassName}>{children}</CardContent>

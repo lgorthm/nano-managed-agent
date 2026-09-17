@@ -1,4 +1,4 @@
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton } from '@/components/ui/skeleton';
 
 /** 表格加载骨架:与真实表格同构(表头 + 行),避免加载完成时布局跳动 */
 export function TableSkeleton({ rows = 6 }: { rows?: number }) {

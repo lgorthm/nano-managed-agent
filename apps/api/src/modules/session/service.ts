@@ -2,8 +2,9 @@ import {
   agentVersionRowToConfig,
   archiveSession as archiveSessionRow,
   createSession as createSessionRow,
-  deleteSession as deleteSessionRow,
+  type Db,
   deleteSessionResource as deleteSessionResourceRow,
+  deleteSession as deleteSessionRow,
   findAgentRow,
   findAgentVersion,
   findEnvironment,
@@ -20,8 +21,7 @@ import {
   newSessionId,
   newSessionResourceId,
   updateSessionRow,
-  type Db,
-} from "@nano/db";
+} from '@nano/db';
 import type {
   DeltaEventType,
   EventInput,
@@ -34,37 +34,42 @@ import type {
   SessionCreateRequestInput,
   SessionDeletedResponse,
   SessionListFilters,
-  SessionResponse,
   SessionResourceDeletedResponse,
+  SessionResponse,
   SessionUpdateRequestInput,
-} from "@nano/shared";
+} from '@nano/shared';
 import {
-  MAX_SESSION_FILE_RESOURCES,
   agentConfigIssues,
   deepEqual,
   fileObjectKey,
+  MAX_SESSION_FILE_RESOURCES,
   mergeMetadata,
   normalizeMountPath,
   overlapsAnyMountPath,
   resolveSessionAgent,
   toSessionAgentConfig,
-} from "@nano/shared";
-import type { Env } from "../../env";
-import { conflictError, invalidRequestError, notFoundError } from "../../lib/errors";
-import { cursorNumberField, cursorStringField, encodeCursor, type ListParams } from "../../lib/pagination";
-import { sessionDoStub, unwrapDoResult } from "../../runtime/session-do-stub";
-import { assertSkillReferencesResolvable } from "../../lib/skill-refs";
-import { serializeSession, serializeSessionResource } from "./serialize";
+} from '@nano/shared';
+import type { Env } from '../../env';
+import { conflictError, invalidRequestError, notFoundError } from '../../lib/errors';
+import {
+  cursorNumberField,
+  cursorStringField,
+  encodeCursor,
+  type ListParams,
+} from '../../lib/pagination';
+import { assertSkillReferencesResolvable } from '../../lib/skill-refs';
+import { sessionDoStub, unwrapDoResult } from '../../runtime/session-do-stub';
+import { serializeSession, serializeSessionResource } from './serialize';
 
 /** sessions / session-resources / session-events 列表游标的 kind 前缀,防止互串 */
-const SESSIONS_CURSOR_KIND = "sessions";
-const SESSION_RESOURCES_CURSOR_KIND = "session-resources";
-export const SESSION_EVENTS_CURSOR_KIND = "session-events";
+const SESSIONS_CURSOR_KIND = 'sessions';
+const SESSION_RESOURCES_CURSOR_KIND = 'session-resources';
+export const SESSION_EVENTS_CURSOR_KIND = 'session-events';
 
 /** 已归档会话的门禁(更新 / 挂载 / 卸载共用) */
 function assertSessionNotArchived(archivedAt: Date | null): void {
   if (archivedAt !== null) {
-    throw conflictError("Session is archived (session_archived) and cannot be modified.");
+    throw conflictError('Session is archived (session_archived) and cannot be modified.');
   }
 }
 
@@ -80,12 +85,12 @@ function toAgentReference(input: SessionCreateRequestInput): ResolvedAgentRefere
   const raw = input.agent ?? input.agent_id;
   if (raw === undefined) {
     // schema 已保证 agent 与 agent_id 至少其一,此分支仅为类型收窄
-    throw invalidRequestError("either agent or the compatible field agent_id must be provided");
+    throw invalidRequestError('either agent or the compatible field agent_id must be provided');
   }
-  if (typeof raw === "string") {
+  if (typeof raw === 'string') {
     return { agentId: raw };
   }
-  if (raw.type === "agent") {
+  if (raw.type === 'agent') {
     return { agentId: raw.id, version: raw.version };
   }
   const { id, version, model, system, tools, skills, mcp_servers } = raw;
@@ -111,14 +116,16 @@ async function validateFileResources(
   const found = await findFilesByIds(db, fileIds);
   const missing = fileIds.filter((fileId) => !found.has(fileId));
   if (missing.length > 0) {
-    throw invalidRequestError("File resources reference files that do not exist.", { missing });
+    throw invalidRequestError('File resources reference files that do not exist.', { missing });
   }
 
   const normalized: Array<{ fileId: string; mountPath: string }> = [];
   for (const [index, resource] of resources.entries()) {
     const result = normalizeMountPath(resource.mount_path, resource.file_id);
     if (!result.ok) {
-      throw invalidRequestError(result.message, { param: `resources[${index}].mount_path` });
+      throw invalidRequestError(result.message, {
+        param: `resources[${index}].mount_path`,
+      });
     }
     normalized.push({ fileId: resource.file_id, mountPath: result.path });
   }
@@ -127,10 +134,13 @@ async function validateFileResources(
     for (let j = 0; j < i; j++) {
       const earlier = normalized[j]!;
       if (overlapsAnyMountPath(candidate.mountPath, [earlier.mountPath])) {
-        throw invalidRequestError(`resources[${i}].mount_path overlaps the mount path of resources[${j}]`, {
-          param: `resources[${i}].mount_path`,
-          conflicting: earlier.mountPath,
-        });
+        throw invalidRequestError(
+          `resources[${i}].mount_path overlaps the mount path of resources[${j}]`,
+          {
+            param: `resources[${i}].mount_path`,
+            conflicting: earlier.mountPath,
+          },
+        );
       }
     }
   }
@@ -176,7 +186,7 @@ export const sessionService = {
     if (!versionRow) {
       throw invalidRequestError(
         `Agent version ${pinnedVersion} does not exist; the latest version is ${agentRow.currentVersion}.`,
-        { param: "agent.version", latest_version: agentRow.currentVersion },
+        { param: 'agent.version', latest_version: agentRow.currentVersion },
       );
     }
 
@@ -186,9 +196,9 @@ export const sessionService = {
     );
     const issues = agentConfigIssues(resolved);
     if (issues.length > 0) {
-      throw invalidRequestError("Resolved session agent configuration is invalid.", {
+      throw invalidRequestError('Resolved session agent configuration is invalid.', {
         issues: issues.map((issue) => ({
-          path: ["agent", ...issue.path.map(String)].join("."),
+          path: ['agent', ...issue.path.map(String)].join('.'),
           message: issue.message,
         })),
       });
@@ -199,9 +209,9 @@ export const sessionService = {
     if (!environment) {
       throw notFoundError(`Environment "${input.environment_id}" not found.`);
     }
-    if (environment.state !== "active") {
-      throw invalidRequestError("Environment is archived and cannot be used by new sessions.", {
-        param: "environment_id",
+    if (environment.state !== 'active') {
+      throw invalidRequestError('Environment is archived and cannot be used by new sessions.', {
+        param: 'environment_id',
       });
     }
 
@@ -259,8 +269,8 @@ export const sessionService = {
       params.cursor === null
         ? null
         : {
-            createdAt: cursorNumberField(params.cursor, "createdAt"),
-            id: cursorStringField(params.cursor, "id"),
+            createdAt: cursorNumberField(params.cursor, 'createdAt'),
+            id: cursorStringField(params.cursor, 'id'),
           };
     const { rows, nextCursor } = await listSessionsPage(db, {
       filters,
@@ -275,7 +285,11 @@ export const sessionService = {
     return {
       data: rows.map((row) => serializeSession(row, resourcesBySession.get(row.id) ?? [])),
       next_page: nextCursor
-        ? encodeCursor({ kind: SESSIONS_CURSOR_KIND, createdAt: nextCursor.createdAt, id: nextCursor.id })
+        ? encodeCursor({
+            kind: SESSIONS_CURSOR_KIND,
+            createdAt: nextCursor.createdAt,
+            id: nextCursor.id,
+          })
         : null,
     };
   },
@@ -297,13 +311,13 @@ export const sessionService = {
       throw notFoundError(`Session "${sessionId}" not found.`);
     }
     assertSessionNotArchived(row.archivedAt);
-    if (patch.agent !== undefined && row.status !== "idle") {
+    if (patch.agent !== undefined && row.status !== 'idle') {
       throw conflictError(
-        "Session is not idle (session_not_idle); interrupt the session before updating agent tools.",
+        'Session is not idle (session_not_idle); interrupt the session before updating agent tools.',
       );
     }
 
-    const title = patch.title === undefined ? row.title : patch.title ?? null;
+    const title = patch.title === undefined ? row.title : (patch.title ?? null);
     const metadata = mergeMetadata(row.metadata, patch.metadata);
     const agentConfig =
       patch.agent === undefined
@@ -315,9 +329,9 @@ export const sessionService = {
     if (patch.agent !== undefined) {
       const issues = agentConfigIssues(agentConfig);
       if (issues.length > 0) {
-        throw invalidRequestError("Resolved session agent configuration is invalid.", {
+        throw invalidRequestError('Resolved session agent configuration is invalid.', {
           issues: issues.map((issue) => ({
-            path: ["agent", ...issue.path.map(String)].join("."),
+            path: ['agent', ...issue.path.map(String)].join('.'),
             message: issue.message,
           })),
         });
@@ -345,10 +359,10 @@ export const sessionService = {
         // 配置实际变更时外发 session.updated(runtime.md §2.3);
         // 事件 append 失败不回滚更新——投影可比事实滞后,事实源在 D1
         await sessionDoStub(env, sessionId)
-          .appendControlEvent("session.updated")
+          .appendControlEvent('session.updated')
           .then(unwrapDoResult)
           .catch((err) => {
-            console.error("session.updated append failed:", err);
+            console.error('session.updated append failed:', err);
           });
       }
     }
@@ -369,10 +383,10 @@ export const sessionService = {
       throw notFoundError(`Session "${sessionId}" not found.`);
     }
     if (row.archivedAt !== null) {
-      throw conflictError("Session is already archived (session_archived).");
+      throw conflictError('Session is already archived (session_archived).');
     }
-    if (row.status === "running") {
-      throw conflictError("Session is running; interrupt the session before archiving.");
+    if (row.status === 'running') {
+      throw conflictError('Session is running; interrupt the session before archiving.');
     }
 
     const archived = await archiveSessionRow(db, sessionId, new Date());
@@ -382,9 +396,9 @@ export const sessionService = {
         throw notFoundError(`Session "${sessionId}" not found.`);
       }
       if (current.archivedAt !== null) {
-        throw conflictError("Session is already archived (session_archived).");
+        throw conflictError('Session is already archived (session_archived).');
       }
-      throw conflictError("Session is running; interrupt the session before archiving.");
+      throw conflictError('Session is running; interrupt the session before archiving.');
     }
 
     // 归档即终态(不再有新 turn):顺手销毁沙箱,不让容器等 sleepAfter 自然消亡
@@ -392,7 +406,7 @@ export const sessionService = {
     await sessionDoStub(env, sessionId)
       .destroySandbox()
       .catch((err) => {
-        console.error("sandbox destroy on archive failed:", err);
+        console.error('sandbox destroy on archive failed:', err);
       });
 
     const archivedRow = await loadSessionWithResources(db, sessionId);
@@ -411,8 +425,8 @@ export const sessionService = {
     if (!row) {
       throw notFoundError(`Session "${sessionId}" not found.`);
     }
-    if (row.status === "running") {
-      throw conflictError("Session is running; interrupt the session before deleting.");
+    if (row.status === 'running') {
+      throw conflictError('Session is running; interrupt the session before deleting.');
     }
     const outputs = await findSessionOutputsBySession(db, sessionId);
     const outputFileIds = outputs.map((output) => output.fileId);
@@ -422,14 +436,14 @@ export const sessionService = {
       if (!current) {
         throw notFoundError(`Session "${sessionId}" not found.`);
       }
-      throw conflictError("Session is running; interrupt the session before deleting.");
+      throw conflictError('Session is running; interrupt the session before deleting.');
     }
     for (const fileId of outputFileIds) {
       await env.FILES.delete(fileObjectKey(fileId)).catch((err) => {
         console.error(`orphan R2 object after session delete: ${fileObjectKey(fileId)}`, err);
       });
     }
-    return { id: sessionId, type: "session_deleted" };
+    return { id: sessionId, type: 'session_deleted' };
   },
 
   /** 挂载一个 File:未归档门禁 → file 存在 → mount_path 归一化与重叠 → 上限 → 插入 */
@@ -447,7 +461,9 @@ export const sessionService = {
 
     const file = await findFile(db, input.file_id);
     if (!file) {
-      throw invalidRequestError(`File "${input.file_id}" does not exist.`, { param: "file_id" });
+      throw invalidRequestError(`File "${input.file_id}" does not exist.`, {
+        param: 'file_id',
+      });
     }
 
     const existing = await findSessionResourcesBySessionIds(db, [sessionId]);
@@ -460,11 +476,16 @@ export const sessionService = {
 
     const normalized = normalizeMountPath(input.mount_path, input.file_id);
     if (!normalized.ok) {
-      throw invalidRequestError(normalized.message, { param: "mount_path" });
+      throw invalidRequestError(normalized.message, { param: 'mount_path' });
     }
-    if (overlapsAnyMountPath(normalized.path, mounted.map((row) => row.mountPath))) {
-      throw invalidRequestError("mount_path overlaps an existing mount.", {
-        param: "mount_path",
+    if (
+      overlapsAnyMountPath(
+        normalized.path,
+        mounted.map((row) => row.mountPath),
+      )
+    ) {
+      throw invalidRequestError('mount_path overlaps an existing mount.', {
+        param: 'mount_path',
         mount_path: normalized.path,
       });
     }
@@ -482,8 +503,8 @@ export const sessionService = {
     } catch (err) {
       // 服务层重叠检查存在并发窗口;完全相同路径由 UNIQUE 约束兜底,转 400 而非 500
       if (err instanceof Error && /UNIQUE constraint failed/.test(err.message)) {
-        throw invalidRequestError("mount_path overlaps an existing mount.", {
-          param: "mount_path",
+        throw invalidRequestError('mount_path overlaps an existing mount.', {
+          param: 'mount_path',
           mount_path: normalized.path,
         });
       }
@@ -513,8 +534,8 @@ export const sessionService = {
       params.cursor === null
         ? null
         : {
-            createdAt: cursorNumberField(params.cursor, "createdAt"),
-            id: cursorStringField(params.cursor, "id"),
+            createdAt: cursorNumberField(params.cursor, 'createdAt'),
+            id: cursorStringField(params.cursor, 'id'),
           };
     const { rows, nextCursor } = await listSessionResourcesPage(db, {
       sessionId,
@@ -564,11 +585,14 @@ export const sessionService = {
       throw notFoundError(`Session "${sessionId}" not found.`);
     }
     assertSessionNotArchived(session.archivedAt);
-    const deleted = await deleteSessionResourceRow(db, { sessionId, resourceId });
+    const deleted = await deleteSessionResourceRow(db, {
+      sessionId,
+      resourceId,
+    });
     if (!deleted) {
       sessionResourceNotFound(resourceId);
     }
-    return { id: resourceId, type: "session_resource_deleted" };
+    return { id: resourceId, type: 'session_resource_deleted' };
   },
 
   // ---------- 事件运行时(docs/session/runtime.md;M0 起执行器为 null-turn) ----------
@@ -585,7 +609,9 @@ export const sessionService = {
     }
     assertSessionNotArchived(row.archivedAt);
     const raw = unwrapDoResult(await sessionDoStub(env, sessionId).sendEvents(events));
-    return { data: raw.map((event) => JSON.parse(event) as PersistedEventJson) };
+    return {
+      data: raw.map((event) => JSON.parse(event) as PersistedEventJson),
+    };
   },
 
   /** 分页读取事件历史(默认 100 条正序);过滤与游标解析在 handler */
@@ -599,8 +625,7 @@ export const sessionService = {
     if (!row) {
       throw notFoundError(`Session "${sessionId}" not found.`);
     }
-    const cursorSeq =
-      params.cursor === null ? undefined : cursorNumberField(params.cursor, "seq");
+    const cursorSeq = params.cursor === null ? undefined : cursorNumberField(params.cursor, 'seq');
     // listEvents 无失败分支(过滤参数已在传输层校验),结果无需解包
     const result = await sessionDoStub(env, sessionId).listEvents({
       filters,
@@ -613,12 +638,19 @@ export const sessionService = {
       next_page:
         result.nextPageSeq === null
           ? null
-          : encodeCursor({ kind: SESSION_EVENTS_CURSOR_KIND, seq: result.nextPageSeq }),
+          : encodeCursor({
+              kind: SESSION_EVENTS_CURSOR_KIND,
+              seq: result.nextPageSeq,
+            }),
     };
   },
 
   /** SSE 订阅:只推连接后的新事件;重连协议 = 列表补历史 + 按 id 去重(runtime.md §7) */
-  async streamEvents(env: Env, sessionId: string, deltas: DeltaEventType[]): Promise<ReadableStream> {
+  async streamEvents(
+    env: Env,
+    sessionId: string,
+    deltas: DeltaEventType[],
+  ): Promise<ReadableStream> {
     const row = await findSession(getDb(env), sessionId);
     if (!row) {
       throw notFoundError(`Session "${sessionId}" not found.`);

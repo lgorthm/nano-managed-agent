@@ -18,12 +18,12 @@
  *
  * 仅用 node 内置模块,经根 package.json 的 lint:lang 运行。
  */
-import { readdirSync, readFileSync } from "node:fs";
-import { join, relative } from "node:path";
-import { fileURLToPath } from "node:url";
+import { readdirSync, readFileSync } from 'node:fs';
+import { join, relative } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const ROOT = fileURLToPath(new URL("..", import.meta.url));
-const SCOPES = ["apps/api/src", "packages/shared/src", "apps/console/src/worker"];
+const ROOT = fileURLToPath(new URL('..', import.meta.url));
+const SCOPES = ['apps/api/src', 'packages/shared/src', 'apps/console/src/worker'];
 const CJK = /[\u4e00-\u9fa5]/;
 
 function listTsFiles(dir) {
@@ -37,24 +37,24 @@ function listTsFiles(dir) {
 }
 
 function stripComments(src) {
-  const noBlock = src.replace(/\/\*[\s\S]*?\*\//g, "");
+  const noBlock = src.replace(/\/\*[\s\S]*?\*\//g, '');
   return noBlock
-    .split("\n")
-    .map((line) => line.replace(/(^|\s)\/\/.*$/, "$1"))
-    .join("\n");
+    .split('\n')
+    .map((line) => line.replace(/(^|\s)\/\/.*$/, '$1'))
+    .join('\n');
 }
 
 const files = SCOPES.flatMap((scope) => listTsFiles(join(ROOT, scope)));
 const hits = [];
 for (const file of files) {
-  const stripped = stripComments(readFileSync(file, "utf8"));
-  stripped.split("\n").forEach((line, i) => {
+  const stripped = stripComments(readFileSync(file, 'utf8'));
+  stripped.split('\n').forEach((line, i) => {
     if (CJK.test(line)) hits.push(`${relative(ROOT, file)}:${i + 1}: ${line.trim()}`);
   });
 }
 
 if (hits.length > 0) {
-  console.error("✗ 服务端代码的字符串字面量中发现中文(注释除外):");
+  console.error('✗ 服务端代码的字符串字面量中发现中文(注释除外):');
   for (const hit of hits) console.error(`  ${hit}`);
   console.error(`✗ 共 ${hits.length} 处,见上(服务端输出须为英文,注释不受限)`);
   process.exit(1);

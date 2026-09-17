@@ -1,8 +1,8 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Credential, CredentialValidation } from "@nano/shared/glm";
-import { Archive, KeyRound, ShieldCheck, Trash2 } from "lucide-react";
-import { useState } from "react";
-import { useNavigate, useParams } from "react-router";
+import type { Credential, CredentialValidation } from '@nano/shared/glm';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Archive, KeyRound, ShieldCheck, Trash2 } from 'lucide-react';
+import { useState } from 'react';
+import { useNavigate, useParams } from 'react-router';
 import {
   archiveCredential,
   archiveVault,
@@ -11,22 +11,23 @@ import {
   getVault,
   listCredentials,
   verifyMcpOAuth,
-} from "@/api/vaults";
-import { BackLink } from "@/components/back-link";
-import { DataPager } from "@/components/data-pager";
-import { useCursorPage } from "@/hooks/use-cursor-page";
-import { EmptyState } from "@/components/empty-state";
-import { CreateCredentialDialog, UpdateCredentialDialog } from "@/components/credential-form-dialog";
-import { UpdateVaultDialog } from "@/components/vault-form-dialog";
-import { PageHeader } from "@/components/page-header";
-import { QueryError } from "@/components/query-error";
-import { RefreshButton } from "@/components/refresh-button";
-import { KeyValueRow, SectionCard } from "@/components/section-card";
-import { StatusBadge } from "@/components/status-badges";
-import { TableSkeleton } from "@/components/table-skeleton";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+} from '@/api/vaults';
+import { BackLink } from '@/components/back-link';
+import {
+  CreateCredentialDialog,
+  UpdateCredentialDialog,
+} from '@/components/credential-form-dialog';
+import { DataPager } from '@/components/data-pager';
+import { EmptyState } from '@/components/empty-state';
+import { PageHeader } from '@/components/page-header';
+import { QueryError } from '@/components/query-error';
+import { RefreshButton } from '@/components/refresh-button';
+import { KeyValueRow, SectionCard } from '@/components/section-card';
+import { StatusBadge } from '@/components/status-badges';
+import { TableSkeleton } from '@/components/table-skeleton';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import {
   Dialog,
   DialogContent,
@@ -34,17 +35,26 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { formatTime } from "@/lib/format";
+} from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { UpdateVaultDialog } from '@/components/vault-form-dialog';
+import { useCursorPage } from '@/hooks/use-cursor-page';
+import { formatTime } from '@/lib/format';
 
 const CREDENTIAL_PAGE_SIZE = 20;
 
 function useVaultInvalidate() {
   const queryClient = useQueryClient();
-  return () => void queryClient.invalidateQueries({ queryKey: ["vaults"] });
+  return () => void queryClient.invalidateQueries({ queryKey: ['vaults'] });
 }
 
 function ArchiveVaultDialog({ vaultId }: { vaultId: string }) {
@@ -69,13 +79,25 @@ function ArchiveVaultDialog({ vaultId }: { vaultId: string }) {
             归档后引用它的会话与部署在下一次消费凭据的交互时会失败,且无法恢复。
           </DialogDescription>
         </DialogHeader>
-        {mutation.isError ? <p className="text-destructive text-sm">{(mutation.error as Error).message}</p> : null}
+        {mutation.isError ? (
+          <p className="text-destructive text-sm">{(mutation.error as Error).message}</p>
+        ) : null}
         <DialogFooter>
-          <Button variant="outline" size="sm" disabled={mutation.isPending} onClick={() => setOpen(false)}>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={mutation.isPending}
+            onClick={() => setOpen(false)}
+          >
             取消
           </Button>
-          <Button variant="destructive" size="sm" disabled={mutation.isPending} onClick={() => mutation.mutate()}>
-            {mutation.isPending ? "归档中…" : "确认归档"}
+          <Button
+            variant="destructive"
+            size="sm"
+            disabled={mutation.isPending}
+            onClick={() => mutation.mutate()}
+          >
+            {mutation.isPending ? '归档中…' : '确认归档'}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -91,28 +113,46 @@ function DeleteVaultDialog({ vaultId }: { vaultId: string }) {
     mutationFn: () => deleteVault(vaultId),
     onSuccess: () => {
       invalidate();
-      void navigate("/vaults");
+      void navigate('/vaults');
     },
   });
   return (
     <Dialog open={open} onOpenChange={mutation.isPending ? undefined : setOpen}>
-      <Button size="sm" variant="outline" className="text-destructive" onClick={() => setOpen(true)}>
+      <Button
+        size="sm"
+        variant="outline"
+        className="text-destructive"
+        onClick={() => setOpen(true)}
+      >
         <Trash2 /> 删除
       </Button>
       <DialogContent showCloseButton={false} className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>删除 Vault?</DialogTitle>
           <DialogDescription>
-            永久删除该 Vault 及其中全部凭据,不可恢复;引用它的会话在下一次使用时才会得到 not found。删除前请确认没有活跃引用。
+            永久删除该 Vault 及其中全部凭据,不可恢复;引用它的会话在下一次使用时才会得到 not
+            found。删除前请确认没有活跃引用。
           </DialogDescription>
         </DialogHeader>
-        {mutation.isError ? <p className="text-destructive text-sm">{(mutation.error as Error).message}</p> : null}
+        {mutation.isError ? (
+          <p className="text-destructive text-sm">{(mutation.error as Error).message}</p>
+        ) : null}
         <DialogFooter>
-          <Button variant="outline" size="sm" disabled={mutation.isPending} onClick={() => setOpen(false)}>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={mutation.isPending}
+            onClick={() => setOpen(false)}
+          >
             取消
           </Button>
-          <Button variant="destructive" size="sm" disabled={mutation.isPending} onClick={() => mutation.mutate()}>
-            {mutation.isPending ? "删除中…" : "确认删除"}
+          <Button
+            variant="destructive"
+            size="sm"
+            disabled={mutation.isPending}
+            onClick={() => mutation.mutate()}
+          >
+            {mutation.isPending ? '删除中…' : '确认删除'}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -124,19 +164,25 @@ function DeleteVaultDialog({ vaultId }: { vaultId: string }) {
 function credentialTarget(credential: Credential): string {
   const { auth } = credential;
   switch (auth.type) {
-    case "mcp_oauth":
-    case "static_bearer":
-      return auth.mcp_server_url ?? "—";
-    case "oauth":
-    case "bearer":
-      return auth.host ?? "—";
-    case "environment_variable":
-      return auth.secret_name ?? "—";
+    case 'mcp_oauth':
+    case 'static_bearer':
+      return auth.mcp_server_url ?? '—';
+    case 'oauth':
+    case 'bearer':
+      return auth.host ?? '—';
+    case 'environment_variable':
+      return auth.secret_name ?? '—';
   }
 }
 
 /** MCP OAuth 凭据在线验证:探测 initialize 与 refresh,结果在弹窗中展示 */
-function VerifyCredentialDialog({ vaultId, credential }: { vaultId: string; credential: Credential }) {
+function VerifyCredentialDialog({
+  vaultId,
+  credential,
+}: {
+  vaultId: string;
+  credential: Credential;
+}) {
   const [open, setOpen] = useState(false);
   const [result, setResult] = useState<CredentialValidation | null>(null);
   const mutation = useMutation({
@@ -172,11 +218,11 @@ function VerifyCredentialDialog({ vaultId, credential }: { vaultId: string; cred
               <span className="text-muted-foreground shrink-0">总体状态</span>
               <StatusBadge
                 tint={
-                  result.status === "valid"
-                    ? "tint-positive"
-                    : result.status === "invalid"
-                      ? "tint-destructive"
-                      : "tint-neutral"
+                  result.status === 'valid'
+                    ? 'tint-positive'
+                    : result.status === 'invalid'
+                      ? 'tint-destructive'
+                      : 'tint-neutral'
                 }
               >
                 {result.status}
@@ -187,14 +233,16 @@ function VerifyCredentialDialog({ vaultId, credential }: { vaultId: string; cred
               <span className="font-mono text-xs">
                 {result.mcp_probe.http_response
                   ? `HTTP ${result.mcp_probe.http_response.status_code}`
-                  : "无响应"}
+                  : '无响应'}
               </span>
             </div>
             <div className="flex items-center justify-between gap-4">
               <span className="text-muted-foreground shrink-0">刷新令牌</span>
               <span className="font-mono text-xs">
                 {result.refresh.status}
-                {result.refresh.http_response ? ` (HTTP ${result.refresh.http_response.status_code})` : ""}
+                {result.refresh.http_response
+                  ? ` (HTTP ${result.refresh.http_response.status_code})`
+                  : ''}
               </span>
             </div>
             <div className="flex items-center justify-between gap-4">
@@ -216,7 +264,13 @@ function VerifyCredentialDialog({ vaultId, credential }: { vaultId: string; cred
   );
 }
 
-function DeleteCredentialButton({ vaultId, credential }: { vaultId: string; credential: Credential }) {
+function DeleteCredentialButton({
+  vaultId,
+  credential,
+}: {
+  vaultId: string;
+  credential: Credential;
+}) {
   const [open, setOpen] = useState(false);
   const invalidate = useVaultInvalidate();
   const mutation = useMutation({
@@ -236,13 +290,25 @@ function DeleteCredentialButton({ vaultId, credential }: { vaultId: string; cred
           <DialogTitle>删除凭据 {credential.display_name || credential.id}?</DialogTitle>
           <DialogDescription>永久删除该凭据;引用它的会话在下一次注入时失败。</DialogDescription>
         </DialogHeader>
-        {mutation.isError ? <p className="text-destructive text-sm">{(mutation.error as Error).message}</p> : null}
+        {mutation.isError ? (
+          <p className="text-destructive text-sm">{(mutation.error as Error).message}</p>
+        ) : null}
         <DialogFooter>
-          <Button variant="outline" size="sm" disabled={mutation.isPending} onClick={() => setOpen(false)}>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={mutation.isPending}
+            onClick={() => setOpen(false)}
+          >
             取消
           </Button>
-          <Button variant="destructive" size="sm" disabled={mutation.isPending} onClick={() => mutation.mutate()}>
-            {mutation.isPending ? "删除中…" : "确认删除"}
+          <Button
+            variant="destructive"
+            size="sm"
+            disabled={mutation.isPending}
+            onClick={() => mutation.mutate()}
+          >
+            {mutation.isPending ? '删除中…' : '确认删除'}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -250,7 +316,13 @@ function DeleteCredentialButton({ vaultId, credential }: { vaultId: string; cred
   );
 }
 
-function ArchiveCredentialButton({ vaultId, credential }: { vaultId: string; credential: Credential }) {
+function ArchiveCredentialButton({
+  vaultId,
+  credential,
+}: {
+  vaultId: string;
+  credential: Credential;
+}) {
   const [open, setOpen] = useState(false);
   const invalidate = useVaultInvalidate();
   const mutation = useMutation({
@@ -270,13 +342,25 @@ function ArchiveCredentialButton({ vaultId, credential }: { vaultId: string; cre
           <DialogTitle>归档凭据 {credential.display_name || credential.id}?</DialogTitle>
           <DialogDescription>归档后不再注入;保留记录但无法恢复。</DialogDescription>
         </DialogHeader>
-        {mutation.isError ? <p className="text-destructive text-sm">{(mutation.error as Error).message}</p> : null}
+        {mutation.isError ? (
+          <p className="text-destructive text-sm">{(mutation.error as Error).message}</p>
+        ) : null}
         <DialogFooter>
-          <Button variant="outline" size="sm" disabled={mutation.isPending} onClick={() => setOpen(false)}>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={mutation.isPending}
+            onClick={() => setOpen(false)}
+          >
             取消
           </Button>
-          <Button variant="destructive" size="sm" disabled={mutation.isPending} onClick={() => mutation.mutate()}>
-            {mutation.isPending ? "归档中…" : "确认归档"}
+          <Button
+            variant="destructive"
+            size="sm"
+            disabled={mutation.isPending}
+            onClick={() => mutation.mutate()}
+          >
+            {mutation.isPending ? '归档中…' : '确认归档'}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -291,12 +375,12 @@ export function VaultDetailPage() {
   const pager = useCursorPage();
 
   const vaultQuery = useQuery({
-    queryKey: ["vaults", vaultId],
+    queryKey: ['vaults', vaultId],
     queryFn: () => getVault(vaultId!),
     enabled: vaultId !== undefined,
   });
   const credentialsQuery = useQuery({
-    queryKey: ["vaults", vaultId, "credentials", pager.cursor, includeArchived],
+    queryKey: ['vaults', vaultId, 'credentials', pager.cursor, includeArchived],
     queryFn: () =>
       listCredentials(vaultId!, {
         limit: CREDENTIAL_PAGE_SIZE,
@@ -342,7 +426,9 @@ export function VaultDetailPage() {
         <Alert>
           <KeyRound />
           <AlertTitle>已归档</AlertTitle>
-          <AlertDescription>引用它的会话与部署在下一次消费凭据的交互时会失败,且无法恢复。</AlertDescription>
+          <AlertDescription>
+            引用它的会话与部署在下一次消费凭据的交互时会失败,且无法恢复。
+          </AlertDescription>
         </Alert>
       ) : null}
 
@@ -353,8 +439,8 @@ export function VaultDetailPage() {
               <span className="font-mono text-xs">{vault.id}</span>
             </KeyValueRow>
             <KeyValueRow label="状态">
-              <StatusBadge tint={vault.archived_at ? "tint-neutral" : "tint-positive"}>
-                {vault.archived_at ? "archived" : "active"}
+              <StatusBadge tint={vault.archived_at ? 'tint-neutral' : 'tint-positive'}>
+                {vault.archived_at ? 'archived' : 'active'}
               </StatusBadge>
             </KeyValueRow>
             <KeyValueRow label="创建 / 更新">
@@ -364,7 +450,9 @@ export function VaultDetailPage() {
             </KeyValueRow>
             {Object.keys(vault.metadata).length > 0 ? (
               <KeyValueRow label="metadata">
-                <span className="font-mono text-xs break-all">{JSON.stringify(vault.metadata)}</span>
+                <span className="font-mono text-xs break-all">
+                  {JSON.stringify(vault.metadata)}
+                </span>
               </KeyValueRow>
             ) : null}
           </div>
@@ -375,13 +463,23 @@ export function VaultDetailPage() {
           className="md:col-span-2"
           action={
             vault.archived_at ? null : (
-              <CreateCredentialDialog vaultId={vault.id} open={createOpen} onOpenChange={setCreateOpen} />
+              <CreateCredentialDialog
+                vaultId={vault.id}
+                open={createOpen}
+                onOpenChange={setCreateOpen}
+              />
             )
           }
         >
           <div className="mb-3 flex items-center">
             <Label className="text-muted-foreground flex items-center gap-2 text-sm font-normal">
-              <Switch checked={includeArchived} onCheckedChange={(v) => { setIncludeArchived(v); pager.reset(); }} />
+              <Switch
+                checked={includeArchived}
+                onCheckedChange={(v) => {
+                  setIncludeArchived(v);
+                  pager.reset();
+                }}
+              />
               含已归档
             </Label>
           </div>
@@ -412,7 +510,11 @@ export function VaultDetailPage() {
                     <TableRow key={credential.id}>
                       <TableCell className="max-w-32 md:max-w-none">
                         <span className="block truncate font-medium">
-                          {credential.display_name || <span className="text-muted-foreground font-mono text-xs">{credential.id}</span>}
+                          {credential.display_name || (
+                            <span className="text-muted-foreground font-mono text-xs">
+                              {credential.id}
+                            </span>
+                          )}
                         </span>
                       </TableCell>
                       <TableCell>
@@ -424,13 +526,15 @@ export function VaultDetailPage() {
                         {credentialTarget(credential)}
                       </TableCell>
                       <TableCell>
-                        <StatusBadge tint={credential.archived_at ? "tint-neutral" : "tint-positive"}>
-                          {credential.archived_at ? "archived" : "active"}
+                        <StatusBadge
+                          tint={credential.archived_at ? 'tint-neutral' : 'tint-positive'}
+                        >
+                          {credential.archived_at ? 'archived' : 'active'}
                         </StatusBadge>
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
-                          {credential.auth.type === "mcp_oauth" ? (
+                          {credential.auth.type === 'mcp_oauth' ? (
                             <VerifyCredentialDialog vaultId={vault.id} credential={credential} />
                           ) : null}
                           {!credential.archived_at ? (

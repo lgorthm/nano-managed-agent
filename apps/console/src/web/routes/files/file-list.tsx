@@ -1,19 +1,18 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { ManagedFile } from "@nano/shared/glm";
-import { Download, FileUp, Files, Trash2 } from "lucide-react";
-import { useState } from "react";
-import { Link } from "react-router";
-import { deleteFile, downloadFile, listFiles } from "@/api/files";
-import { DataPager } from "@/components/data-pager";
-import { useCursorPage } from "@/hooks/use-cursor-page";
-import { FileUploadDialog } from "@/components/file-upload-dialog";
-import { TableCard } from "@/components/table-card";
-import { EmptyState } from "@/components/empty-state";
-import { PageHeader } from "@/components/page-header";
-import { QueryError } from "@/components/query-error";
-import { RefreshButton } from "@/components/refresh-button";
-import { TableSkeleton } from "@/components/table-skeleton";
-import { Button } from "@/components/ui/button";
+import type { ManagedFile } from '@nano/shared/glm';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Download, Files, FileUp, Trash2 } from 'lucide-react';
+import { useState } from 'react';
+import { Link } from 'react-router';
+import { deleteFile, downloadFile, listFiles } from '@/api/files';
+import { DataPager } from '@/components/data-pager';
+import { EmptyState } from '@/components/empty-state';
+import { FileUploadDialog } from '@/components/file-upload-dialog';
+import { PageHeader } from '@/components/page-header';
+import { QueryError } from '@/components/query-error';
+import { RefreshButton } from '@/components/refresh-button';
+import { TableCard } from '@/components/table-card';
+import { TableSkeleton } from '@/components/table-skeleton';
+import { Button } from '@/components/ui/button';
 import {
   Dialog,
   DialogContent,
@@ -21,12 +20,20 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { saveBlob } from "@/lib/save-blob";
-import { cn } from "@/lib/utils";
-import { formatBytes, formatTime, formatTimeShort, shortId } from "@/lib/format";
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { useCursorPage } from '@/hooks/use-cursor-page';
+import { formatBytes, formatTime, formatTimeShort, shortId } from '@/lib/format';
+import { saveBlob } from '@/lib/save-blob';
+import { cn } from '@/lib/utils';
 
 const PAGE_SIZE = 20;
 
@@ -45,7 +52,7 @@ function DownloadFileButton({ file }: { file: ManagedFile }) {
       disabled={!file.downloadable || mutation.isPending}
       onClick={() => mutation.mutate()}
     >
-      <Download className={cn("size-3.5", mutation.isPending && "animate-pulse")} />
+      <Download className={cn('size-3.5', mutation.isPending && 'animate-pulse')} />
     </Button>
   );
 }
@@ -56,7 +63,7 @@ function DeleteFileButton({ file }: { file: ManagedFile }) {
   const queryClient = useQueryClient();
   const mutation = useMutation({
     mutationFn: () => deleteFile(file.id),
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["files"] }),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['files'] }),
   });
   return (
     <Dialog open={open} onOpenChange={mutation.isPending ? undefined : setOpen}>
@@ -72,11 +79,20 @@ function DeleteFileButton({ file }: { file: ManagedFile }) {
       <DialogContent showCloseButton={false} className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>删除 {file.filename}?</DialogTitle>
-          <DialogDescription>文件会被永久移除,不可恢复;已挂载它的会话在下一次读取时报错。</DialogDescription>
+          <DialogDescription>
+            文件会被永久移除,不可恢复;已挂载它的会话在下一次读取时报错。
+          </DialogDescription>
         </DialogHeader>
-        {mutation.isError ? <p className="text-destructive text-sm">{(mutation.error as Error).message}</p> : null}
+        {mutation.isError ? (
+          <p className="text-destructive text-sm">{(mutation.error as Error).message}</p>
+        ) : null}
         <DialogFooter>
-          <Button variant="outline" size="sm" disabled={mutation.isPending} onClick={() => setOpen(false)}>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={mutation.isPending}
+            onClick={() => setOpen(false)}
+          >
             取消
           </Button>
           <Button
@@ -89,7 +105,7 @@ function DeleteFileButton({ file }: { file: ManagedFile }) {
               })
             }
           >
-            {mutation.isPending ? "删除中…" : "确认删除"}
+            {mutation.isPending ? '删除中…' : '确认删除'}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -99,12 +115,12 @@ function DeleteFileButton({ file }: { file: ManagedFile }) {
 
 export function FileListPage() {
   const pager = useCursorPage();
-  const [scopeDraft, setScopeDraft] = useState("");
+  const [scopeDraft, setScopeDraft] = useState('');
   const [scopeId, setScopeId] = useState<string | null>(null);
   const [uploadOpen, setUploadOpen] = useState(false);
 
   const query = useQuery({
-    queryKey: ["files", pager.cursor, scopeId],
+    queryKey: ['files', pager.cursor, scopeId],
     queryFn: () =>
       listFiles({
         limit: PAGE_SIZE,
@@ -123,7 +139,7 @@ export function FileListPage() {
   }
 
   function clearScope() {
-    setScopeDraft("");
+    setScopeDraft('');
     setScopeId(null);
     pager.reset();
   }
@@ -148,12 +164,17 @@ export function FileListPage() {
           value={scopeDraft}
           onChange={(e) => setScopeDraft(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter") applyScope();
+            if (e.key === 'Enter') applyScope();
           }}
           placeholder="按归属 Session 过滤(如 sess_…)"
           className="h-8 max-w-72 bg-card"
         />
-        <Button size="sm" variant="outline" disabled={!scopeDraft.trim() || scopeDraft.trim() === scopeId} onClick={applyScope}>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={!scopeDraft.trim() || scopeDraft.trim() === scopeId}
+          onClick={applyScope}
+        >
           过滤
         </Button>
         {scopeId ? (
@@ -170,11 +191,11 @@ export function FileListPage() {
         <div className="rounded-lg border bg-card">
           <EmptyState
             icon={scopeId ? Files : FileUp}
-            title={scopeId ? "该会话下没有文件" : "还没有文件"}
+            title={scopeId ? '该会话下没有文件' : '还没有文件'}
             description={
               scopeId
-                ? "这个 Session scope 下暂无文件;换一个 Session ID 或清除过滤查看全部。"
-                : "上传文件后,可在创建会话时把它挂载为资源,供 Agent 在沙箱内读取。"
+                ? '这个 Session scope 下暂无文件;换一个 Session ID 或清除过滤查看全部。'
+                : '上传文件后,可在创建会话时把它挂载为资源,供 Agent 在沙箱内读取。'
             }
             action={
               scopeId ? undefined : (
@@ -202,10 +223,15 @@ export function FileListPage() {
               {files.map((file) => (
                 <TableRow key={file.id}>
                   <TableCell>
-                    <div className="inline-block max-w-40 truncate font-medium md:max-w-none" title={file.filename}>
+                    <div
+                      className="inline-block max-w-40 truncate font-medium md:max-w-none"
+                      title={file.filename}
+                    >
                       {file.filename}
                     </div>
-                    <div className="text-muted-foreground hidden font-mono text-xs md:block">{file.id}</div>
+                    <div className="text-muted-foreground hidden font-mono text-xs md:block">
+                      {file.id}
+                    </div>
                   </TableCell>
                   <TableCell className="text-muted-foreground hidden text-sm tabular-nums md:table-cell">
                     {formatBytes(file.size_bytes)}
@@ -228,8 +254,12 @@ export function FileListPage() {
                     )}
                   </TableCell>
                   <TableCell className="text-right text-muted-foreground">
-                    <span className="text-xs tabular-nums sm:hidden">{formatTimeShort(file.created_at)}</span>
-                    <span className="hidden text-sm tabular-nums sm:inline">{formatTime(file.created_at)}</span>
+                    <span className="text-xs tabular-nums sm:hidden">
+                      {formatTimeShort(file.created_at)}
+                    </span>
+                    <span className="hidden text-sm tabular-nums sm:inline">
+                      {formatTime(file.created_at)}
+                    </span>
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center justify-end gap-1">

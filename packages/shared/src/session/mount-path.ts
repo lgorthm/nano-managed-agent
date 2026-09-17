@@ -6,7 +6,7 @@
  * - 结果为 UTF-8 字节数 ≤ 1024 的 POSIX 绝对路径
  * 重叠 = 按路径段互为前缀(含相等);兄弟路径不算重叠。
  */
-export const SESSION_UPLOAD_ROOT = "/mnt/session/uploads";
+export const SESSION_UPLOAD_ROOT = '/mnt/session/uploads';
 export const MAX_MOUNT_PATH_BYTES = 1024;
 
 export type MountPathResult = { ok: true; path: string } | { ok: false; message: string };
@@ -20,24 +20,27 @@ function fail(message: string): MountPathResult {
 }
 
 /** 归一化挂载路径;fileId 用于省略 mount_path 时的默认路径 */
-export function normalizeMountPath(input: string | null | undefined, fileId: string): MountPathResult {
+export function normalizeMountPath(
+  input: string | null | undefined,
+  fileId: string,
+): MountPathResult {
   if (input === null || input === undefined) {
     return ok(`${SESSION_UPLOAD_ROOT}/${fileId}`);
   }
-  if (input === "") {
-    return fail("mount_path must not be empty; omit it or pass null for the default path");
+  if (input === '') {
+    return fail('mount_path must not be empty; omit it or pass null for the default path');
   }
-  if (input.includes("\\")) {
-    return fail("mount_path must use / as the path separator");
+  if (input.includes('\\')) {
+    return fail('mount_path must use / as the path separator');
   }
 
-  const stripped = input.startsWith("/") ? input.slice(1) : input;
+  const stripped = input.startsWith('/') ? input.slice(1) : input;
   const segments: string[] = [];
-  for (const segment of stripped.split("/")) {
-    if (segment === "" || segment === ".") continue;
-    if (segment === "..") {
+  for (const segment of stripped.split('/')) {
+    if (segment === '' || segment === '.') continue;
+    if (segment === '..') {
       if (segments.length === 0) {
-        return fail("mount_path must not escape /mnt/session/uploads");
+        return fail('mount_path must not escape /mnt/session/uploads');
       }
       segments.pop();
     } else {
@@ -45,10 +48,10 @@ export function normalizeMountPath(input: string | null | undefined, fileId: str
     }
   }
   if (segments.length === 0) {
-    return fail("mount_path must not resolve to /mnt/session/uploads itself");
+    return fail('mount_path must not resolve to /mnt/session/uploads itself');
   }
 
-  const path = `${SESSION_UPLOAD_ROOT}/${segments.join("/")}`;
+  const path = `${SESSION_UPLOAD_ROOT}/${segments.join('/')}`;
   if (new TextEncoder().encode(path).length > MAX_MOUNT_PATH_BYTES) {
     return fail(`mount_path must be at most ${MAX_MOUNT_PATH_BYTES} UTF-8 bytes`);
   }
@@ -58,8 +61,8 @@ export function normalizeMountPath(input: string | null | undefined, fileId: str
 /** 两条归一化后的路径是否按路径段互为前缀(含相等) */
 export function mountPathsOverlap(a: string, b: string): boolean {
   if (a === b) return true;
-  const segmentsA = a.split("/");
-  const segmentsB = b.split("/");
+  const segmentsA = a.split('/');
+  const segmentsB = b.split('/');
   const shorter = Math.min(segmentsA.length, segmentsB.length);
   for (let i = 0; i < shorter; i++) {
     if (segmentsA[i] !== segmentsB[i]) return false;

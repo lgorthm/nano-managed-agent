@@ -1,5 +1,5 @@
-import type { SessionResourceRow, SessionRow } from "@nano/db";
-import type { FileResourceResponse, SessionAgentResponse, SessionResponse } from "@nano/shared";
+import type { SessionResourceRow, SessionRow } from '@nano/db';
+import type { FileResourceResponse, SessionAgentResponse, SessionResponse } from '@nano/shared';
 
 /**
  * Session 行到 API JSON 的唯一序列化出口:
@@ -7,17 +7,20 @@ import type { FileResourceResponse, SessionAgentResponse, SessionResponse } from
  * stats/budget 与 agent.type/agent.multiagent),resources 由调用方以子查询拼装。
  * 十个端点共用,保证回显形状一致。
  */
-export function serializeSession(session: SessionRow, resources: SessionResourceRow[]): SessionResponse {
+export function serializeSession(
+  session: SessionRow,
+  resources: SessionResourceRow[],
+): SessionResponse {
   const agent: SessionAgentResponse = {
     id: session.agentId,
-    type: "agent",
+    type: 'agent',
     ...session.agentConfig,
     multiagent: null,
     version: session.agentVersion,
   };
   return {
     id: session.id,
-    type: "session",
+    type: 'session',
     agent,
     environment_id: session.environmentId,
     status: session.status,
@@ -26,7 +29,10 @@ export function serializeSession(session: SessionRow, resources: SessionResource
     resources: resources.map(serializeSessionResource),
     vault_ids: [],
     outcome_evaluations: [],
-    stats: { active_seconds: session.activeSeconds, duration_seconds: session.durationSeconds },
+    stats: {
+      active_seconds: session.activeSeconds,
+      duration_seconds: session.durationSeconds,
+    },
     usage: {
       input_tokens: session.inputTokens,
       output_tokens: session.outputTokens,
@@ -49,7 +55,7 @@ export function serializeSessionResource(row: {
 }): FileResourceResponse {
   return {
     id: row.id,
-    type: "file",
+    type: 'file',
     file_id: row.fileId,
     mount_path: row.mountPath,
     created_at: row.createdAt.toISOString(),

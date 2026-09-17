@@ -21,7 +21,8 @@ check() {
 }
 
 check "modules 之间无横向引用" '\.\./\.\./modules/' "$root/apps/api/src/modules"
-check "shared 零内部依赖(@nano/*)" 'from "@nano/' "$root/packages/shared/src"
-check "db 不引用 @nano/api" 'from "@nano/api' "$root/packages/db/src"
+# 引号模式同时匹配单引号与双引号:biome 统一格式化为单引号,历史代码可能仍是双引号
+check "shared 零内部依赖(@nano/*)" "from [\"']@nano/" "$root/packages/shared/src"
+check "db 不引用 @nano/api" "from [\"']@nano/api" "$root/packages/db/src"
 
 exit $status

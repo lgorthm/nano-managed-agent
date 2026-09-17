@@ -7,27 +7,32 @@ import {
   listEnvironmentsPage,
   newEnvironmentId,
   updateEnvironment as updateEnvironmentRow,
-} from "@nano/db";
+} from '@nano/db';
 import type {
   EnvironmentCreateRequestInput,
   EnvironmentDeletedResponse,
   EnvironmentResponse,
   EnvironmentUpdateRequestInput,
   Page,
-} from "@nano/shared";
+} from '@nano/shared';
 import {
   environmentConfigIssues,
   environmentRecordEquals,
   mergeEnvironmentRecord,
   normalizeEnvironmentCreate,
-} from "@nano/shared";
-import type { Env } from "../../env";
-import { invalidRequestError, notFoundError } from "../../lib/errors";
-import { cursorNumberField, cursorStringField, encodeCursor, type ListParams } from "../../lib/pagination";
-import { environmentRowToRecord, serializeEnvironment, serializeEnvironmentRow } from "./serialize";
+} from '@nano/shared';
+import type { Env } from '../../env';
+import { invalidRequestError, notFoundError } from '../../lib/errors';
+import {
+  cursorNumberField,
+  cursorStringField,
+  encodeCursor,
+  type ListParams,
+} from '../../lib/pagination';
+import { environmentRowToRecord, serializeEnvironment, serializeEnvironmentRow } from './serialize';
 
 /** environments 列表游标的 kind 前缀,防止与其他列表端点的游标混用 */
-const ENVIRONMENTS_CURSOR_KIND = "environments";
+const ENVIRONMENTS_CURSOR_KIND = 'environments';
 
 /**
  * Environment 资源的业务编排层。
@@ -35,7 +40,10 @@ const ENVIRONMENTS_CURSOR_KIND = "environments";
  */
 export const environmentService = {
   /** 创建:校验(handler 已完成)→ 归一化 → 生成 ID → 落库 → 以落库形态回显 */
-  async createEnvironment(env: Env, input: EnvironmentCreateRequestInput): Promise<EnvironmentResponse> {
+  async createEnvironment(
+    env: Env,
+    input: EnvironmentCreateRequestInput,
+  ): Promise<EnvironmentResponse> {
     const record = normalizeEnvironmentCreate(input);
     const id = newEnvironmentId();
     const now = new Date();
@@ -49,7 +57,7 @@ export const environmentService = {
     });
     return serializeEnvironment({
       id,
-      state: "active",
+      state: 'active',
       createdAt: now,
       updatedAt: now,
       archivedAt: null,
@@ -72,8 +80,8 @@ export const environmentService = {
       params.cursor === null
         ? null
         : {
-            createdAt: cursorNumberField(params.cursor, "createdAt"),
-            id: cursorStringField(params.cursor, "id"),
+            createdAt: cursorNumberField(params.cursor, 'createdAt'),
+            id: cursorStringField(params.cursor, 'id'),
           };
     const { rows, nextCursor } = await listEnvironmentsPage(getDb(env), {
       limit: params.limit,
@@ -107,8 +115,8 @@ export const environmentService = {
     if (!current) {
       throw notFoundError(`Environment "${environmentId}" not found.`);
     }
-    if (current.state !== "active") {
-      throw invalidRequestError("Environment is archived and cannot be updated.");
+    if (current.state !== 'active') {
+      throw invalidRequestError('Environment is archived and cannot be updated.');
     }
 
     const currentRecord = environmentRowToRecord(current);
@@ -116,9 +124,9 @@ export const environmentService = {
 
     const issues = environmentConfigIssues(merged.config);
     if (issues.length > 0) {
-      throw invalidRequestError("Merged configuration is invalid.", {
+      throw invalidRequestError('Merged configuration is invalid.', {
         issues: issues.map((issue) => ({
-          path: ["config", ...issue.path.map(String)].join("."),
+          path: ['config', ...issue.path.map(String)].join('.'),
           message: issue.message,
         })),
       });
@@ -146,11 +154,11 @@ export const environmentService = {
       if (!row) {
         throw notFoundError(`Environment "${environmentId}" not found.`);
       }
-      throw invalidRequestError("Environment is archived and cannot be updated.");
+      throw invalidRequestError('Environment is archived and cannot be updated.');
     }
     return serializeEnvironment({
       id: environmentId,
-      state: "active",
+      state: 'active',
       createdAt: current.createdAt,
       updatedAt: now,
       archivedAt: null,
@@ -168,7 +176,7 @@ export const environmentService = {
     if (!row) {
       throw notFoundError(`Environment "${environmentId}" not found.`);
     }
-    if (row.state === "active") {
+    if (row.state === 'active') {
       await archiveEnvironmentRow(db, environmentId, new Date());
       // 重新读取,回显库里真实状态(并发下他人先写入的归档时间也不会被覆盖)
       row = (await findEnvironment(db, environmentId)) ?? row;
@@ -182,6 +190,6 @@ export const environmentService = {
     if (!deleted) {
       throw notFoundError(`Environment "${environmentId}" not found.`);
     }
-    return { id: environmentId, type: "environment_deleted" };
+    return { id: environmentId, type: 'environment_deleted' };
   },
 };

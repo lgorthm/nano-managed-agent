@@ -5,9 +5,9 @@
  * 会话产出文件的编目映射在 session_outputs(归 session 模块的 repo),
  * 本层只消费它做 scope 过滤与回显。
  */
-import { and, asc, desc, eq, gt, inArray, lt, or } from "drizzle-orm";
-import type { Db } from "../client";
-import { files, sessionOutputs, sessionResources } from "../schema";
+import { and, asc, desc, eq, gt, inArray, lt, or } from 'drizzle-orm';
+import type { Db } from '../client';
+import { files, sessionOutputs, sessionResources } from '../schema';
 
 export type FileRow = typeof files.$inferSelect;
 
@@ -68,13 +68,13 @@ export interface FileListEntry {
 
 function filesKeysetCondition(
   cursor: FilesPageCursor | null,
-  order: "asc" | "desc",
+  order: 'asc' | 'desc',
   columnCreatedAt: typeof files.createdAt,
   columnId: typeof files.id,
 ) {
   if (cursor === null) return undefined;
   const at = new Date(cursor.createdAt);
-  return order === "desc"
+  return order === 'desc'
     ? or(lt(columnCreatedAt, at), and(eq(columnCreatedAt, at), lt(columnId, cursor.id)))
     : or(gt(columnCreatedAt, at), and(eq(columnCreatedAt, at), gt(columnId, cursor.id)));
 }
@@ -86,7 +86,11 @@ function filesKeysetCondition(
  */
 export async function listFilesPage(
   db: Db,
-  params: { limit: number; order: "asc" | "desc"; cursor: FilesPageCursor | null },
+  params: {
+    limit: number;
+    order: 'asc' | 'desc';
+    cursor: FilesPageCursor | null;
+  },
 ): Promise<{ rows: FileListEntry[]; nextCursor: FilesPageCursor | null }> {
   const conditions = [
     filesKeysetCondition(params.cursor, params.order, files.createdAt, files.id),
@@ -98,8 +102,8 @@ export async function listFilesPage(
     .leftJoin(sessionOutputs, eq(sessionOutputs.fileId, files.id))
     .where(conditions.length > 0 ? and(...conditions) : undefined)
     .orderBy(
-      params.order === "desc" ? desc(files.createdAt) : asc(files.createdAt),
-      params.order === "desc" ? desc(files.id) : asc(files.id),
+      params.order === 'desc' ? desc(files.createdAt) : asc(files.createdAt),
+      params.order === 'desc' ? desc(files.id) : asc(files.id),
     )
     .limit(params.limit + 1);
 
@@ -132,7 +136,12 @@ export async function deleteFile(db: Db, fileId: string): Promise<boolean> {
  */
 export async function listFilesBySessionScopePage(
   db: Db,
-  params: { sessionId: string; limit: number; order: "asc" | "desc"; cursor: FilesPageCursor | null },
+  params: {
+    sessionId: string;
+    limit: number;
+    order: 'asc' | 'desc';
+    cursor: FilesPageCursor | null;
+  },
 ): Promise<{ rows: FileListEntry[]; nextCursor: FilesPageCursor | null }> {
   const conditions = [
     or(
@@ -160,8 +169,8 @@ export async function listFilesBySessionScopePage(
     .leftJoin(sessionOutputs, eq(sessionOutputs.fileId, files.id))
     .where(and(...conditions))
     .orderBy(
-      params.order === "desc" ? desc(files.createdAt) : asc(files.createdAt),
-      params.order === "desc" ? desc(files.id) : asc(files.id),
+      params.order === 'desc' ? desc(files.createdAt) : asc(files.createdAt),
+      params.order === 'desc' ? desc(files.id) : asc(files.id),
     )
     .limit(params.limit + 1);
 

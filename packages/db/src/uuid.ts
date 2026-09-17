@@ -14,7 +14,7 @@ export function uuidv7(): string {
   // 版本号 7 与 RFC 4122 变体位
   view.setUint8(6, (view.getUint8(6) & 0x0f) | 0x70);
   view.setUint8(8, (view.getUint8(8) & 0x3f) | 0x80);
-  let hex = "";
-  for (let i = 0; i < 16; i++) hex += view.getUint8(i).toString(16).padStart(2, "0");
+  let hex = '';
+  for (let i = 0; i < 16; i++) hex += view.getUint8(i).toString(16).padStart(2, '0');
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
 }

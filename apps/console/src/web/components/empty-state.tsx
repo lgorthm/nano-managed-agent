@@ -1,4 +1,4 @@
-import type { LucideIcon } from "lucide-react";
+import type { LucideIcon } from 'lucide-react';
 
 /** 空状态:图标 + 标题 + 说明 + 可选动作,代替表格里的一行灰字 */
 export function EmptyState({
@@ -18,7 +18,9 @@ export function EmptyState({
         <Icon className="size-5" />
       </div>
       <p className="text-sm font-medium">{title}</p>
-      {description ? <p className="max-w-72 text-pretty text-sm text-muted-foreground">{description}</p> : null}
+      {description ? (
+        <p className="max-w-72 text-pretty text-sm text-muted-foreground">{description}</p>
+      ) : null}
       {action ? <div className="mt-3">{action}</div> : null}
     </div>
   );

@@ -11,12 +11,12 @@ import type {
   EnvironmentNetworkingInput,
   EnvironmentPackagesInput,
   PackageManager,
-} from "./schemas";
-import { PACKAGE_MANAGERS } from "./schemas";
+} from './schemas';
+import { PACKAGE_MANAGERS } from './schemas';
 
 /** 归一化后的包声明:六类键全部出现 */
 export interface NormalizedEnvironmentPackages {
-  type: "packages";
+  type: 'packages';
   apt: string[];
   cargo: string[];
   gem: string[];
@@ -27,16 +27,16 @@ export interface NormalizedEnvironmentPackages {
 
 /** 归一化后的网络策略:具体生效的形态,无 null / 省略 */
 export type NormalizedEnvironmentNetworking =
-  | { type: "unrestricted" }
+  | { type: 'unrestricted' }
   | {
-      type: "limited";
+      type: 'limited';
       allowed_hosts: string[];
       allow_package_managers: boolean;
       allow_mcp_servers: boolean;
     };
 
 export interface NormalizedEnvironmentConfig {
-  type: "cloud";
+  type: 'cloud';
   packages: NormalizedEnvironmentPackages;
   networking: NormalizedEnvironmentNetworking;
 }
@@ -52,13 +52,13 @@ export interface NormalizedEnvironmentRecord {
 /** Environment 的 API 响应形状(docs/environment/api/create-environment.md 的 Environment) */
 export interface EnvironmentResponse {
   id: string;
-  type: "environment";
+  type: 'environment';
   name: string;
   description: string | null;
   metadata: Record<string, string>;
   config: NormalizedEnvironmentConfig;
-  scope: "organization";
-  state: "active" | "archived";
+  scope: 'organization';
+  state: 'active' | 'archived';
   archived_at: string | null;
   created_at: string;
   updated_at: string;
@@ -67,12 +67,16 @@ export interface EnvironmentResponse {
 /** 删除回执(docs/environment/api/delete-environment.md) */
 export interface EnvironmentDeletedResponse {
   id: string;
-  type: "environment_deleted";
+  type: 'environment_deleted';
 }
 
 /** 默认 cloud 配置:空 packages + unrestricted 网络 */
 export function defaultEnvironmentConfig(): NormalizedEnvironmentConfig {
-  return { type: "cloud", packages: normalizePackages(null), networking: { type: "unrestricted" } };
+  return {
+    type: 'cloud',
+    packages: normalizePackages(null),
+    networking: { type: 'unrestricted' },
+  };
 }
 
 /** 去重并保留首次出现顺序(GLM 仅声明去重,未声明排序) */
@@ -80,8 +84,10 @@ function dedupeKeepOrder(items: readonly string[]): string[] {
   return [...new Set(items)];
 }
 
-function normalizePackages(input: EnvironmentPackagesInput | null | undefined): NormalizedEnvironmentPackages {
-  const packages = { type: "packages" } as NormalizedEnvironmentPackages;
+function normalizePackages(
+  input: EnvironmentPackagesInput | null | undefined,
+): NormalizedEnvironmentPackages {
+  const packages = { type: 'packages' } as NormalizedEnvironmentPackages;
   for (const manager of PACKAGE_MANAGERS) {
     packages[manager] = input ? dedupeKeepOrder(input[manager] ?? []) : [];
   }
@@ -91,12 +97,14 @@ function normalizePackages(input: EnvironmentPackagesInput | null | undefined): 
 function normalizeNetworking(
   input: EnvironmentNetworkingInput | null | undefined,
 ): NormalizedEnvironmentNetworking {
-  if (!input || input.type === "unrestricted") {
-    return { type: "unrestricted" };
+  if (!input || input.type === 'unrestricted') {
+    return { type: 'unrestricted' };
   }
   return {
-    type: "limited",
-    allowed_hosts: [...new Set((input.allowed_hosts ?? []).map((host) => host.toLowerCase()))].sort(),
+    type: 'limited',
+    allowed_hosts: [
+      ...new Set((input.allowed_hosts ?? []).map((host) => host.toLowerCase())),
+    ].sort(),
     allow_package_managers: input.allow_package_managers ?? false,
     allow_mcp_servers: input.allow_mcp_servers ?? false,
   };
@@ -108,14 +116,16 @@ export function normalizeEnvironmentConfig(
 ): NormalizedEnvironmentConfig {
   if (!input) return defaultEnvironmentConfig();
   return {
-    type: "cloud",
+    type: 'cloud',
     packages: normalizePackages(input.packages),
     networking: normalizeNetworking(input.networking),
   };
 }
 
 /** 把校验通过的创建请求归一化为落库形态 */
-export function normalizeEnvironmentCreate(input: EnvironmentCreateRequestInput): NormalizedEnvironmentRecord {
+export function normalizeEnvironmentCreate(
+  input: EnvironmentCreateRequestInput,
+): NormalizedEnvironmentRecord {
   return {
     name: input.name,
     description: input.description ?? null,
@@ -125,7 +135,9 @@ export function normalizeEnvironmentCreate(input: EnvironmentCreateRequestInput)
 }
 
 /** 逐包管理器遍历的辅助:归一化形态专用(schemas 的 PACKAGE_MANAGERS 同源) */
-export function packageLists(config: NormalizedEnvironmentConfig): Array<[PackageManager, string[]]> {
+export function packageLists(
+  config: NormalizedEnvironmentConfig,
+): Array<[PackageManager, string[]]> {
   return PACKAGE_MANAGERS.map((manager) => [manager, config.packages[manager]] as const) as Array<
     [PackageManager, string[]]
   >;

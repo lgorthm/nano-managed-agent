@@ -1,6 +1,6 @@
-import { Archive } from "lucide-react";
-import { useState } from "react";
-import { Button } from "@/components/ui/button";
+import { Archive } from 'lucide-react';
+import { useState } from 'react';
+import { Button } from '@/components/ui/button';
 import {
   Dialog,
   DialogContent,
@@ -8,7 +8,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
+} from '@/components/ui/dialog';
 
 /** 危险操作确认:代替原生 confirm(),回车直接确认,Esc 取消 */
 export function ArchiveAgentDialog({
@@ -31,7 +31,9 @@ export function ArchiveAgentDialog({
       <DialogContent showCloseButton={false} className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>归档 {agentName}?</DialogTitle>
-          <DialogDescription>归档后配置只读,新会话不能再引用这个 Agent。已有会话不受影响。</DialogDescription>
+          <DialogDescription>
+            归档后配置只读,新会话不能再引用这个 Agent。已有会话不受影响。
+          </DialogDescription>
         </DialogHeader>
         {error ? <p className="text-destructive text-sm">{error}</p> : null}
         <DialogFooter>
@@ -46,7 +48,7 @@ export function ArchiveAgentDialog({
               onConfirm();
             }}
           >
-            {pending ? "归档中…" : "确认归档"}
+            {pending ? '归档中…' : '确认归档'}
           </Button>
         </DialogFooter>
       </DialogContent>

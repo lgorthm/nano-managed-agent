@@ -21,7 +21,16 @@
  *
  * JSON 列存归一化后的形态(与 API 响应一致),类型由 @nano/shared 提供。
  */
-import { sql } from "drizzle-orm";
+
+import type {
+  McpServer,
+  NormalizedAgentToolset,
+  NormalizedEnvironmentConfig,
+  SessionAgentConfig,
+  SessionStatus,
+  SkillReference,
+} from '@nano/shared';
+import { sql } from 'drizzle-orm';
 import {
   customType,
   index,
@@ -31,119 +40,108 @@ import {
   sqliteTable,
   text,
   uniqueIndex,
-} from "drizzle-orm/sqlite-core";
-import type {
-  McpServer,
-  NormalizedAgentToolset,
-  NormalizedEnvironmentConfig,
-  SessionAgentConfig,
-  SessionStatus,
-  SkillReference,
-} from "@nano/shared";
+} from 'drizzle-orm/sqlite-core';
 
 /** BLOB ↔ Uint8Array:D1 的绑定参数与返回值原生使用二进制形态 */
 const uint8Blob = customType<{ data: Uint8Array; driverData: ArrayBuffer }>({
-  dataType: () => "blob",
+  dataType: () => 'blob',
   fromDriver: (value) => new Uint8Array(value),
 });
 
 export const agents = sqliteTable(
-  "agents",
+  'agents',
   {
-    id: text("id").primaryKey(), // agent_ + UUIDv7
-    currentVersion: integer("current_version").notNull(),
-    archivedAt: integer("archived_at", { mode: "timestamp_ms" }),
-    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
-    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+    id: text('id').primaryKey(), // agent_ + UUIDv7
+    currentVersion: integer('current_version').notNull(),
+    archivedAt: integer('archived_at', { mode: 'timestamp_ms' }),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
   },
-  (t) => [index("idx_agents_created_at_id").on(t.createdAt, t.id)],
+  (t) => [index('idx_agents_created_at_id').on(t.createdAt, t.id)],
 );
 
 export const agentVersions = sqliteTable(
-  "agent_versions",
+  'agent_versions',
   {
-    agentId: text("agent_id")
+    agentId: text('agent_id')
       .notNull()
       .references(() => agents.id),
-    version: integer("version").notNull(),
-    name: text("name").notNull(),
-    description: text("description"),
-    system: text("system"),
-    modelId: text("model_id").notNull(),
-    modelEffort: text("model_effort").notNull(),
-    modelSpeed: text("model_speed").notNull(),
-    tools: text("tools", { mode: "json" })
+    version: integer('version').notNull(),
+    name: text('name').notNull(),
+    description: text('description'),
+    system: text('system'),
+    modelId: text('model_id').notNull(),
+    modelEffort: text('model_effort').notNull(),
+    modelSpeed: text('model_speed').notNull(),
+    tools: text('tools', { mode: 'json' })
       .$type<NormalizedAgentToolset[]>()
       .notNull()
       .default(sql`'[]'`),
-    skills: text("skills", { mode: "json" })
-      .$type<SkillReference[]>()
-      .notNull()
-      .default(sql`'[]'`),
-    mcpServers: text("mcp_servers", { mode: "json" })
+    skills: text('skills', { mode: 'json' }).$type<SkillReference[]>().notNull().default(sql`'[]'`),
+    mcpServers: text('mcp_servers', { mode: 'json' })
       .$type<McpServer[]>()
       .notNull()
       .default(sql`'[]'`),
-    metadata: text("metadata", { mode: "json" })
+    metadata: text('metadata', { mode: 'json' })
       .$type<Record<string, string>>()
       .notNull()
       .default(sql`'{}'`),
-    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
-    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
   },
   (t) => [primaryKey({ columns: [t.agentId, t.version] })],
 );
 
 /** Skill 级状态:身份、展示名、最新版本指针、版本号分配器 */
 export const skills = sqliteTable(
-  "skills",
+  'skills',
   {
-    id: text("id").primaryKey(), // skill_ + UUIDv7
-    displayTitle: text("display_title"),
-    source: text("source").notNull().default("custom"), // nano 单租户恒为 custom,保留列对齐 wire-format
-    latestVersionSeq: integer("latest_version_seq"), // NULL = 空壳(所有版本已删)
-    nextVersion: integer("next_version").notNull(), // 版本号分配器,只增不减、删除不复用
-    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
-    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+    id: text('id').primaryKey(), // skill_ + UUIDv7
+    displayTitle: text('display_title'),
+    source: text('source').notNull().default('custom'), // nano 单租户恒为 custom,保留列对齐 wire-format
+    latestVersionSeq: integer('latest_version_seq'), // NULL = 空壳(所有版本已删)
+    nextVersion: integer('next_version').notNull(), // 版本号分配器,只增不减、删除不复用
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
   },
-  (t) => [index("idx_skills_created_at_id").on(t.createdAt, t.id)],
+  (t) => [index('idx_skills_created_at_id').on(t.createdAt, t.id)],
 );
 
 /** 版本级目录快照(元数据):frontmatter 解析结果与统计;写入后不可变 */
 export const skillVersions = sqliteTable(
-  "skill_versions",
+  'skill_versions',
   {
-    skillId: text("skill_id")
+    skillId: text('skill_id')
       .notNull()
       .references(() => skills.id),
-    version: integer("version").notNull(),
-    id: text("id").notNull(), // skv_ + UUIDv7,响应回显用;寻址一律用 (skill_id, version)
-    name: text("name").notNull(),
-    description: text("description").notNull(),
-    directory: text("directory").notNull(),
-    fileCount: integer("file_count").notNull(),
-    totalBytes: integer("total_bytes").notNull(),
-    contentSha256: text("content_sha256").notNull(),
-    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    version: integer('version').notNull(),
+    id: text('id').notNull(), // skv_ + UUIDv7,响应回显用;寻址一律用 (skill_id, version)
+    name: text('name').notNull(),
+    description: text('description').notNull(),
+    directory: text('directory').notNull(),
+    fileCount: integer('file_count').notNull(),
+    totalBytes: integer('total_bytes').notNull(),
+    contentSha256: text('content_sha256').notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
   },
   (t) => [
     primaryKey({ columns: [t.skillId, t.version] }),
-    uniqueIndex("idx_skill_versions_id").on(t.id),
+    uniqueIndex('idx_skill_versions_id').on(t.id),
   ],
 );
 
 /** 版本级目录快照(内容):规范树,与版本行同 batch 写入、同 batch 删除 */
 export const skillFiles = sqliteTable(
-  "skill_files",
+  'skill_files',
   {
-    skillId: text("skill_id")
+    skillId: text('skill_id')
       .notNull()
       .references(() => skills.id),
-    version: integer("version").notNull(),
-    path: text("path").notNull(),
-    content: uint8Blob("content").notNull(),
-    size: integer("size").notNull(),
-    sha256: text("sha256").notNull(),
+    version: integer('version').notNull(),
+    path: text('path').notNull(),
+    content: uint8Blob('content').notNull(),
+    size: integer('size').notNull(),
+    sha256: text('sha256').notNull(),
   },
   (t) => [primaryKey({ columns: [t.skillId, t.version, t.path] })],
 );
@@ -154,16 +152,16 @@ export const skillFiles = sqliteTable(
  * 写入后不可变,删除是唯一生命周期变更。
  */
 export const files = sqliteTable(
-  "files",
+  'files',
   {
-    id: text("id").primaryKey(), // file_ + UUIDv7
-    filename: text("filename").notNull(),
-    mimeType: text("mime_type").notNull(),
-    sizeBytes: integer("size_bytes").notNull(),
-    etag: text("etag").notNull(), // R2 put 返回的对象 ETag,下载时回显
-    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    id: text('id').primaryKey(), // file_ + UUIDv7
+    filename: text('filename').notNull(),
+    mimeType: text('mime_type').notNull(),
+    sizeBytes: integer('size_bytes').notNull(),
+    etag: text('etag').notNull(), // R2 put 返回的对象 ETag,下载时回显
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
   },
-  (t) => [index("idx_files_created_at_id").on(t.createdAt, t.id)],
+  (t) => [index('idx_files_created_at_id').on(t.createdAt, t.id)],
 );
 
 /**
@@ -173,25 +171,22 @@ export const files = sqliteTable(
  * type/scope 是响应固定字段,不落库,序列化时注入。
  */
 export const environments = sqliteTable(
-  "environments",
+  'environments',
   {
-    id: text("id").primaryKey(), // env_ + UUIDv7
-    name: text("name").notNull(),
-    description: text("description"),
-    config: text("config", { mode: "json" }).$type<NormalizedEnvironmentConfig>().notNull(),
-    metadata: text("metadata", { mode: "json" })
+    id: text('id').primaryKey(), // env_ + UUIDv7
+    name: text('name').notNull(),
+    description: text('description'),
+    config: text('config', { mode: 'json' }).$type<NormalizedEnvironmentConfig>().notNull(),
+    metadata: text('metadata', { mode: 'json' })
       .$type<Record<string, string>>()
       .notNull()
       .default(sql`'{}'`),
-    state: text("state")
-      .$type<"active" | "archived">()
-      .notNull()
-      .default("active"),
-    archivedAt: integer("archived_at", { mode: "timestamp_ms" }),
-    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
-    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+    state: text('state').$type<'active' | 'archived'>().notNull().default('active'),
+    archivedAt: integer('archived_at', { mode: 'timestamp_ms' }),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
   },
-  (t) => [index("idx_environments_created_at_id").on(t.createdAt, t.id)],
+  (t) => [index('idx_environments_created_at_id').on(t.createdAt, t.id)],
 );
 
 /**
@@ -201,38 +196,35 @@ export const environments = sqliteTable(
  * stats/budget 是一期固定回显,不落库,序列化时注入。
  */
 export const sessions = sqliteTable(
-  "sessions",
+  'sessions',
   {
-    id: text("id").primaryKey(), // sess_ + UUIDv7
-    agentId: text("agent_id").notNull(),
-    agentVersion: integer("agent_version").notNull(),
-    agentConfig: text("agent_config", { mode: "json" }).$type<SessionAgentConfig>().notNull(),
-    environmentId: text("environment_id").notNull(), // 仅回显;配置以 environment_snapshot 为准
-    environmentSnapshot: text("environment_snapshot", { mode: "json" })
+    id: text('id').primaryKey(), // sess_ + UUIDv7
+    agentId: text('agent_id').notNull(),
+    agentVersion: integer('agent_version').notNull(),
+    agentConfig: text('agent_config', { mode: 'json' }).$type<SessionAgentConfig>().notNull(),
+    environmentId: text('environment_id').notNull(), // 仅回显;配置以 environment_snapshot 为准
+    environmentSnapshot: text('environment_snapshot', { mode: 'json' })
       .$type<NormalizedEnvironmentConfig>()
       .notNull(),
-    status: text("status")
-      .$type<SessionStatus>()
-      .notNull()
-      .default("idle"),
-    title: text("title"),
-    metadata: text("metadata", { mode: "json" })
+    status: text('status').$type<SessionStatus>().notNull().default('idle'),
+    title: text('title'),
+    metadata: text('metadata', { mode: 'json' })
       .$type<Record<string, string>>()
       .notNull()
       .default(sql`'{}'`),
-    inputTokens: integer("input_tokens").notNull().default(0),
-    outputTokens: integer("output_tokens").notNull().default(0),
-    cacheReadInputTokens: integer("cache_read_input_tokens").notNull().default(0),
+    inputTokens: integer('input_tokens').notNull().default(0),
+    outputTokens: integer('output_tokens').notNull().default(0),
+    cacheReadInputTokens: integer('cache_read_input_tokens').notNull().default(0),
     // stats 投影(runtime.md §8):active = running 时长累计,duration = 创建至今
-    activeSeconds: real("active_seconds").notNull().default(0),
-    durationSeconds: real("duration_seconds").notNull().default(0),
-    archivedAt: integer("archived_at", { mode: "timestamp_ms" }),
-    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
-    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+    activeSeconds: real('active_seconds').notNull().default(0),
+    durationSeconds: real('duration_seconds').notNull().default(0),
+    archivedAt: integer('archived_at', { mode: 'timestamp_ms' }),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
   },
   (t) => [
-    index("idx_sessions_created_at_id").on(t.createdAt, t.id),
-    index("idx_sessions_agent_version").on(t.agentId, t.agentVersion, t.createdAt, t.id),
+    index('idx_sessions_created_at_id').on(t.createdAt, t.id),
+    index('idx_sessions_agent_version').on(t.agentId, t.agentVersion, t.createdAt, t.id),
   ],
 );
 
@@ -243,25 +235,22 @@ export const sessions = sqliteTable(
  * "前缀包含"类重叠仍由服务层在写入前检查。
  */
 export const sessionResources = sqliteTable(
-  "session_resources",
+  'session_resources',
   {
-    id: text("id").primaryKey(), // sres_ + UUIDv7
-    sessionId: text("session_id")
+    id: text('id').primaryKey(), // sres_ + UUIDv7
+    sessionId: text('session_id')
       .notNull()
       .references(() => sessions.id),
-    type: text("type")
-      .$type<"file">()
-      .notNull()
-      .default("file"),
-    fileId: text("file_id").notNull(),
-    mountPath: text("mount_path").notNull(),
-    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
-    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+    type: text('type').$type<'file'>().notNull().default('file'),
+    fileId: text('file_id').notNull(),
+    mountPath: text('mount_path').notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
   },
   (t) => [
-    index("idx_session_resources_session").on(t.sessionId, t.createdAt, t.id),
-    index("idx_session_resources_file_id").on(t.fileId),
-    uniqueIndex("uq_session_resources_mount_path").on(t.sessionId, t.mountPath),
+    index('idx_session_resources_session').on(t.sessionId, t.createdAt, t.id),
+    index('idx_session_resources_file_id').on(t.fileId),
+    uniqueIndex('uq_session_resources_mount_path').on(t.sessionId, t.mountPath),
   ],
 );
 
@@ -275,21 +264,21 @@ export const sessionResources = sqliteTable(
  * 产出 File 的生命周期从属于产出它的会话)。
  */
 export const sessionOutputs = sqliteTable(
-  "session_outputs",
+  'session_outputs',
   {
-    fileId: text("file_id")
+    fileId: text('file_id')
       .primaryKey()
       .references(() => files.id),
-    sessionId: text("session_id")
+    sessionId: text('session_id')
       .notNull()
       .references(() => sessions.id),
-    path: text("path").notNull(),
-    contentSha256: text("content_sha256").notNull(),
-    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
-    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+    path: text('path').notNull(),
+    contentSha256: text('content_sha256').notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
   },
   (t) => [
-    uniqueIndex("uq_session_outputs_session_path").on(t.sessionId, t.path),
-    index("idx_session_outputs_session").on(t.sessionId, t.updatedAt, t.fileId),
+    uniqueIndex('uq_session_outputs_session_path').on(t.sessionId, t.path),
+    index('idx_session_outputs_session').on(t.sessionId, t.updatedAt, t.fileId),
   ],
 );

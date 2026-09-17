@@ -1,8 +1,8 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { FileUp, Plus } from "lucide-react";
-import { useRef, useState } from "react";
-import { uploadFile } from "@/api/files";
-import { Button } from "@/components/ui/button";
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { FileUp, Plus } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { uploadFile } from '@/api/files';
+import { Button } from '@/components/ui/button';
 import {
   Dialog,
   DialogContent,
@@ -10,9 +10,9 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
-import { formatBytes } from "@/lib/format";
+} from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { formatBytes } from '@/lib/format';
 
 /**
  * 单文件选择字段:重新挂 input 才能清空已选文件;
@@ -48,12 +48,16 @@ function FilePickField({
         {file ? (
           <>
             <span className="text-foreground max-w-full truncate font-medium">{file.name}</span>
-            <span className="text-muted-foreground text-xs">{formatBytes(file.size)} · 点击重新选择</span>
+            <span className="text-muted-foreground text-xs">
+              {formatBytes(file.size)} · 点击重新选择
+            </span>
           </>
         ) : (
           <>
             <span>点击选择要上传的文件</span>
-            <span className="text-muted-foreground text-xs">大小受平台限制;上传后可作为资源挂载到会话</span>
+            <span className="text-muted-foreground text-xs">
+              大小受平台限制;上传后可作为资源挂载到会话
+            </span>
           </>
         )}
       </label>
@@ -80,7 +84,7 @@ export function FileUploadDialog({
   const mutation = useMutation({
     mutationFn: () => uploadFile(file!),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["files"] });
+      void queryClient.invalidateQueries({ queryKey: ['files'] });
       close();
     },
   });
@@ -98,7 +102,9 @@ export function FileUploadDialog({
           </DialogDescription>
         </DialogHeader>
         <FilePickField file={file} onPick={setFile} />
-        {mutation.isError ? <p className="text-destructive text-sm">{(mutation.error as Error).message}</p> : null}
+        {mutation.isError ? (
+          <p className="text-destructive text-sm">{(mutation.error as Error).message}</p>
+        ) : null}
         <DialogFooter>
           <Button variant="outline" size="sm" disabled={mutation.isPending} onClick={close}>
             取消
@@ -108,7 +114,7 @@ export function FileUploadDialog({
             disabled={!file || mutation.isPending}
             onClick={() => file && mutation.mutate()}
           >
-            {mutation.isPending ? "上传中…" : "上传"}
+            {mutation.isPending ? '上传中…' : '上传'}
           </Button>
         </DialogFooter>
       </DialogContent>

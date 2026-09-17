@@ -11,10 +11,10 @@
  * 注:@cf/zai-org/* 不接受同服务 /ai/v1/responses 端点的 Responses 输入形状
  * (实测上游 400),模型输入统一走 chat completions。
  */
-import type { ModelEffort } from "./schemas";
+import type { ModelEffort } from './schemas';
 
 /** 模型来源:UI 分组展示用;workers-ai = Cloudflare 托管的 @cf 模型 */
-export type ModelSource = "workers-ai" | "third-party";
+export type ModelSource = 'workers-ai' | 'third-party';
 
 export interface ModelCatalogEntry {
   /** 存储/API/UI 的稳定 id */
@@ -33,18 +33,18 @@ export interface ModelCatalogEntry {
  */
 export const MODEL_CATALOG: readonly ModelCatalogEntry[] = [
   {
-    id: "glm-5.3",
-    label: "glm-5.3",
-    wireModel: "@cf/zai-org/glm-5.3",
-    source: "workers-ai",
-    defaultEffort: "max",
+    id: 'glm-5.3',
+    label: 'glm-5.3',
+    wireModel: '@cf/zai-org/glm-5.3',
+    source: 'workers-ai',
+    defaultEffort: 'max',
   },
   {
-    id: "glm-5.3-flash",
-    label: "glm-5.3-flash",
-    wireModel: "@cf/zai-org/glm-5.3-flash",
-    source: "workers-ai",
-    defaultEffort: "high",
+    id: 'glm-5.3-flash',
+    label: 'glm-5.3-flash',
+    wireModel: '@cf/zai-org/glm-5.3-flash',
+    source: 'workers-ai',
+    defaultEffort: 'high',
   },
 ];
 
@@ -59,7 +59,7 @@ export function resolveWireModel(id: string): string {
 
 /** id → 默认推理档位:目录内按条目,目录外取通用档位 high */
 export function defaultModelEffort(id: string): ModelEffort {
-  return findModelEntry(id)?.defaultEffort ?? "high";
+  return findModelEntry(id)?.defaultEffort ?? 'high';
 }
 
 // ---------- /v1/models 的响应形状(console 创建 Agent 的可选模型来源) ----------
@@ -93,7 +93,7 @@ export function dynamicModelToListEntry(name: string): ModelListEntry {
     id: name,
     label: name,
     wire_model: name,
-    source: name.startsWith("@cf/") ? "workers-ai" : "third-party",
+    source: name.startsWith('@cf/') ? 'workers-ai' : 'third-party',
     default_effort: defaultModelEffort(name),
   };
 }

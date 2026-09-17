@@ -2,10 +2,11 @@
  * Agent 资源的仓储函数:全部 SQL 的唯一出处。
  * 事务边界收敛在这里——多条语句放进同一个 D1 batch(隐式事务)。
  */
-import { and, asc, desc, eq, gt, isNull, lt, or, sql } from "drizzle-orm";
-import type { ModelEffort, ModelId, NormalizedAgentConfig } from "@nano/shared";
-import type { Db } from "../client";
-import { agentVersions, agents } from "../schema";
+
+import type { ModelEffort, ModelId, NormalizedAgentConfig } from '@nano/shared';
+import { and, asc, desc, eq, gt, isNull, lt, or, sql } from 'drizzle-orm';
+import type { Db } from '../client';
+import { agents, agentVersions } from '../schema';
 
 export type AgentRow = typeof agents.$inferSelect;
 export type AgentVersionRow = typeof agentVersions.$inferSelect;
@@ -29,7 +30,7 @@ export function agentVersionRowToConfig(row: AgentVersionRow): NormalizedAgentCo
     model: {
       id: row.modelId as ModelId,
       effort: row.modelEffort as ModelEffort,
-      speed: row.modelSpeed as "standard",
+      speed: row.modelSpeed as 'standard',
     },
     tools: row.tools,
     skills: row.skills,
@@ -101,12 +102,16 @@ export interface AgentsPageCursor {
  */
 export async function listAgentsPage(
   db: Db,
-  params: { limit: number; order: "asc" | "desc"; cursor: AgentsPageCursor | null },
+  params: {
+    limit: number;
+    order: 'asc' | 'desc';
+    cursor: AgentsPageCursor | null;
+  },
 ): Promise<{ rows: CurrentAgent[]; nextCursor: AgentsPageCursor | null }> {
   const cursorCondition = params.cursor
     ? (() => {
         const at = new Date(params.cursor!.createdAt);
-        return params.order === "desc"
+        return params.order === 'desc'
           ? or(
               lt(agents.createdAt, at),
               and(eq(agents.createdAt, at), lt(agents.id, params.cursor!.id)),
@@ -127,8 +132,8 @@ export async function listAgentsPage(
     )
     .where(cursorCondition)
     .orderBy(
-      params.order === "desc" ? desc(agents.createdAt) : asc(agents.createdAt),
-      params.order === "desc" ? desc(agents.id) : asc(agents.id),
+      params.order === 'desc' ? desc(agents.createdAt) : asc(agents.createdAt),
+      params.order === 'desc' ? desc(agents.id) : asc(agents.id),
     )
     .limit(params.limit + 1);
 
@@ -166,13 +171,13 @@ export async function findAgentVersion(
 export async function listAgentVersionsPage(
   db: Db,
   agentId: string,
-  params: { limit: number; order: "asc" | "desc"; cursor: number | null },
+  params: { limit: number; order: 'asc' | 'desc'; cursor: number | null },
 ): Promise<{ rows: AgentVersionRow[]; nextCursor: number | null }> {
   const agentCondition = eq(agentVersions.agentId, agentId);
   const cursorCondition =
     params.cursor === null
       ? undefined
-      : params.order === "desc"
+      : params.order === 'desc'
         ? lt(agentVersions.version, params.cursor)
         : gt(agentVersions.version, params.cursor);
 
@@ -180,9 +185,7 @@ export async function listAgentVersionsPage(
     .select()
     .from(agentVersions)
     .where(cursorCondition === undefined ? agentCondition : and(agentCondition, cursorCondition))
-    .orderBy(
-      params.order === "desc" ? desc(agentVersions.version) : asc(agentVersions.version),
-    )
+    .orderBy(params.order === 'desc' ? desc(agentVersions.version) : asc(agentVersions.version))
     .limit(params.limit + 1);
 
   const hasMore = rows.length > params.limit;
@@ -204,7 +207,12 @@ export async function listAgentVersionsPage(
  */
 export async function insertNextVersionAndAdvance(
   db: Db,
-  input: { agentId: string; expectedVersion: number; config: NormalizedAgentConfig; now: Date },
+  input: {
+    agentId: string;
+    expectedVersion: number;
+    config: NormalizedAgentConfig;
+    now: Date;
+  },
 ): Promise<boolean> {
   const { agentId, expectedVersion, config, now } = input;
   const nextVersion = expectedVersion + 1;

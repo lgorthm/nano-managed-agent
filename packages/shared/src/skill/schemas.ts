@@ -12,9 +12,9 @@ export const MAX_DISPLAY_TITLE_LENGTH = 256;
 
 export interface SkillResponse {
   id: string;
-  type: "skill";
+  type: 'skill';
   display_title: string | null;
-  source: "custom" | "zai";
+  source: 'custom' | 'zai';
   latest_version: string | null;
   created_at: string;
   updated_at: string;
@@ -22,7 +22,7 @@ export interface SkillResponse {
 
 export interface SkillVersionResponse {
   id: string;
-  type: "skill_version";
+  type: 'skill_version';
   skill_id: string;
   version: string;
   name: string;
@@ -33,10 +33,10 @@ export interface SkillVersionResponse {
 
 export interface SkillDeletedResponse {
   id: string;
-  type: "skill_deleted";
+  type: 'skill_deleted';
 }
 
 export interface SkillVersionDeletedResponse {
   id: string;
-  type: "skill_version_deleted";
+  type: 'skill_version_deleted';
 }

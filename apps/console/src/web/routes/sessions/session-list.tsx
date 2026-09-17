@@ -1,28 +1,39 @@
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import type { Session } from "@nano/shared/glm";
-import { MessagesSquare } from "lucide-react";
-import { Link } from "react-router";
-import { listSessions } from "@/api/sessions";
-import { DataPager } from "@/components/data-pager";
-import { useCursorPage } from "@/hooks/use-cursor-page";
-import { TableCard } from "@/components/table-card";
-import { EmptyState } from "@/components/empty-state";
-import { PageHeader } from "@/components/page-header";
-import { QueryError } from "@/components/query-error";
-import { RefreshButton } from "@/components/refresh-button";
-import { SessionCreateDialog } from "@/components/session-create-dialog";
-import { SessionStatusBadge } from "@/components/status-badges";
-import { TableSkeleton } from "@/components/table-skeleton";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { formatNumber, formatTime, formatTimeShort, shortId } from "@/lib/format";
+import type { Session } from '@nano/shared/glm';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { MessagesSquare } from 'lucide-react';
+import { Link } from 'react-router';
+import { listSessions } from '@/api/sessions';
+import { DataPager } from '@/components/data-pager';
+import { EmptyState } from '@/components/empty-state';
+import { PageHeader } from '@/components/page-header';
+import { QueryError } from '@/components/query-error';
+import { RefreshButton } from '@/components/refresh-button';
+import { SessionCreateDialog } from '@/components/session-create-dialog';
+import { SessionStatusBadge } from '@/components/status-badges';
+import { TableCard } from '@/components/table-card';
+import { TableSkeleton } from '@/components/table-skeleton';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { useCursorPage } from '@/hooks/use-cursor-page';
+import { formatNumber, formatTime, formatTimeShort, shortId } from '@/lib/format';
 
 const PAGE_SIZE = 20;
 
 export function SessionListPage() {
   const pager = useCursorPage();
   const query = useQuery({
-    queryKey: ["sessions", pager.cursor],
-    queryFn: () => listSessions({ limit: PAGE_SIZE, ...(pager.cursor ? { page: pager.cursor } : {}) }),
+    queryKey: ['sessions', pager.cursor],
+    queryFn: () =>
+      listSessions({
+        limit: PAGE_SIZE,
+        ...(pager.cursor ? { page: pager.cursor } : {}),
+      }),
     placeholderData: keepPreviousData,
   });
   const sessions = query.data?.data ?? [];
@@ -78,19 +89,28 @@ export function SessionListPage() {
                       {shortId(session.id)}
                     </Link>
                     {session.title ? (
-                      <div className="text-muted-foreground max-w-32 truncate text-xs md:max-w-64">{session.title}</div>
+                      <div className="text-muted-foreground max-w-32 truncate text-xs md:max-w-64">
+                        {session.title}
+                      </div>
                     ) : null}
                   </TableCell>
-                  <TableCell className="hidden text-sm md:table-cell">{session.agent.name}</TableCell>
+                  <TableCell className="hidden text-sm md:table-cell">
+                    {session.agent.name}
+                  </TableCell>
                   <TableCell>
                     <SessionStatusBadge status={session.status} />
                   </TableCell>
                   <TableCell className="hidden text-right font-mono text-xs tabular-nums md:table-cell">
-                    {formatNumber(session.usage.input_tokens)} / {formatNumber(session.usage.output_tokens)}
+                    {formatNumber(session.usage.input_tokens)} /{' '}
+                    {formatNumber(session.usage.output_tokens)}
                   </TableCell>
                   <TableCell className="text-right text-muted-foreground">
-                    <span className="text-xs tabular-nums sm:hidden">{formatTimeShort(session.updated_at)}</span>
-                    <span className="hidden text-sm tabular-nums sm:inline">{formatTime(session.updated_at)}</span>
+                    <span className="text-xs tabular-nums sm:hidden">
+                      {formatTimeShort(session.updated_at)}
+                    </span>
+                    <span className="hidden text-sm tabular-nums sm:inline">
+                      {formatTime(session.updated_at)}
+                    </span>
                   </TableCell>
                 </TableRow>
               ))}

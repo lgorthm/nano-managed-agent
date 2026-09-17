@@ -3,13 +3,13 @@
  * 负责:mock 模型上游(node:http)、wrangler dev 的受控启停(persistTo 隔离、
  * --var 注入测试配置)、API 轮询断言辅助。仅用 node 内置模块。
  */
-import { spawn } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import http from "node:http";
+import { spawn } from 'node:child_process';
+import { mkdtempSync, rmSync } from 'node:fs';
+import http from 'node:http';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
-export const API_KEY = "dev-key-change-me";
+export const API_KEY = 'dev-key-change-me';
 
 // ---------- mock 模型上游 ----------
 
@@ -22,25 +22,30 @@ export function startMockModel(port) {
   const captured = [];
   const server = http.createServer((req, res) => {
     const chunks = [];
-    req.on("data", (c) => chunks.push(c));
-    req.on("end", async () => {
-      const raw = Buffer.concat(chunks).toString("utf8");
+    req.on('data', (c) => chunks.push(c));
+    req.on('end', async () => {
+      const raw = Buffer.concat(chunks).toString('utf8');
       captured.push(raw);
-      const index = queue.findIndex((script) => script.match === undefined || raw.includes(script.match));
+      const index = queue.findIndex(
+        (script) => script.match === undefined || raw.includes(script.match),
+      );
       const script = index === -1 ? defaultScript() : queue.splice(index, 1)[0];
-      console.log(`[mock] ${new Date().toISOString()} matched=${script.match ?? "default"} delay=${script.chunks?.[0]?.delayMs ?? 0}ms`);
+      console.log(
+        `[mock] ${new Date().toISOString()} matched=${script.match ?? 'default'} delay=${script.chunks?.[0]?.delayMs ?? 0}ms`,
+      );
       if ((script.status ?? 200) >= 400) {
-        res.writeHead(script.status, { "content-type": "application/json" });
-        res.end(JSON.stringify({ error: { message: "mock upstream error" } }));
+        res.writeHead(script.status, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ error: { message: 'mock upstream error' } }));
         return;
       }
-      res.writeHead(200, { "content-type": "text/event-stream" });
+      res.writeHead(200, { 'content-type': 'text/event-stream' });
       if (script.hang) return;
       for (const chunk of script.chunks ?? []) {
         if (chunk.delayMs) await sleep(chunk.delayMs); // 异步等待:同步阻塞会拖住整个响应管线
         const delta = {};
         if (chunk.content !== undefined) delta.content = chunk.content;
-        if (chunk.reasoning_content !== undefined) delta.reasoning_content = chunk.reasoning_content;
+        if (chunk.reasoning_content !== undefined)
+          delta.reasoning_content = chunk.reasoning_content;
         res.write(`data: ${JSON.stringify({ choices: [{ delta }] })}\n\n`);
       }
       if (script.tool_calls?.length) {
@@ -52,7 +57,7 @@ export function startMockModel(port) {
                   tool_calls: script.tool_calls.map((call, i) => ({
                     index: i,
                     id: `call_e2e_${i}`,
-                    type: "function",
+                    type: 'function',
                     function: { name: call.name, arguments: call.arguments },
                   })),
                 },
@@ -65,15 +70,19 @@ export function startMockModel(port) {
       res.write(
         `data: ${JSON.stringify({
           choices: [],
-          usage: { prompt_tokens: usage.prompt_tokens, completion_tokens: usage.completion_tokens, prompt_tokens_details: { cached_tokens: 0 } },
+          usage: {
+            prompt_tokens: usage.prompt_tokens,
+            completion_tokens: usage.completion_tokens,
+            prompt_tokens_details: { cached_tokens: 0 },
+          },
         })}\n\n`,
       );
-      res.write("data: [DONE]\n\n");
+      res.write('data: [DONE]\n\n');
       res.end();
     });
   });
   return new Promise((resolve) => {
-    server.listen(port, "127.0.0.1", () =>
+    server.listen(port, '127.0.0.1', () =>
       resolve({
         enqueue: (script) => queue.push(script),
         requests: captured,
@@ -89,13 +98,15 @@ export function startMockModel(port) {
 }
 
 function defaultScript() {
-  return { chunks: [{ reasoning_content: "thinking…" }, { content: "e2e reply" }] };
+  return {
+    chunks: [{ reasoning_content: 'thinking…' }, { content: 'e2e reply' }],
+  };
 }
 
 // ---------- wrangler dev 受控启停 ----------
 
 export function makeTempDir() {
-  return mkdtempSync(join(tmpdir(), "nano-e2e-"));
+  return mkdtempSync(join(tmpdir(), 'nano-e2e-'));
 }
 
 /**
@@ -104,57 +115,61 @@ export function makeTempDir() {
  */
 export function bootApi({ port, modelPort, persistTo }) {
   const child = spawn(
-    "npx",
+    'npx',
     [
-      "wrangler",
-      "dev",
-      "--port",
+      'wrangler',
+      'dev',
+      '--port',
       String(port),
       // inspector 端口随机化:与并行的 pnpm dev(默认 9229)互不抢占
-      "--inspector-port",
-      "0",
-      "--persist-to",
+      '--inspector-port',
+      '0',
+      '--persist-to',
       persistTo,
-      "--var",
+      '--var',
       `GLM_API_BASE:http://127.0.0.1:${modelPort}`,
-      "--var",
-      "GLM_API_KEY:e2e-key",
-      "--var",
-      "TOOL_SANDBOX_MOCK:1",
-      "--var",
-      "TURN_KEEPALIVE_INTERVAL_MS:2000",
+      '--var',
+      'GLM_API_KEY:e2e-key',
+      '--var',
+      'TOOL_SANDBOX_MOCK:1',
+      '--var',
+      'TURN_KEEPALIVE_INTERVAL_MS:2000',
     ],
     {
-      cwd: new URL("../apps/api/", import.meta.url),
+      cwd: new URL('../apps/api/', import.meta.url),
       detached: true,
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio: ['ignore', 'pipe', 'pipe'],
     },
   );
-  let logs = "";
-  child.stdout.on("data", (d) => (logs += d));
-  child.stderr.on("data", (d) => (logs += d));
+  let logs = '';
+  child.stdout.on('data', (d) => (logs += d));
+  child.stderr.on('data', (d) => (logs += d));
   return {
     child,
     logs: () => logs,
     stop: () =>
       new Promise((resolve) => {
         try {
-          process.kill(-child.pid, "SIGKILL");
+          process.kill(-child.pid, 'SIGKILL');
         } catch {
-          child.kill("SIGKILL");
+          child.kill('SIGKILL');
         }
-        child.on("exit", () => resolve());
+        child.on('exit', () => resolve());
       }),
   };
 }
 
 /** 迁移到指定 persistTo(每次全新目录都要跑) */
 export async function applyMigrations(persistTo) {
-  const { execFileSync } = await import("node:child_process");
+  const { execFileSync } = await import('node:child_process');
   execFileSync(
-    "npx",
-    ["wrangler", "d1", "migrations", "apply", "DB", "--local", "--persist-to", persistTo],
-    { cwd: new URL("../apps/api/", import.meta.url), stdio: "pipe", input: "y\n" },
+    'npx',
+    ['wrangler', 'd1', 'migrations', 'apply', 'DB', '--local', '--persist-to', persistTo],
+    {
+      cwd: new URL('../apps/api/', import.meta.url),
+      stdio: 'pipe',
+      input: 'y\n',
+    },
   );
 }
 
@@ -183,7 +198,7 @@ export function api(port) {
       ...init,
       headers: {
         Authorization: `Bearer ${API_KEY}`,
-        ...(init.body ? { "content-type": "application/json" } : {}),
+        ...(init.body ? { 'content-type': 'application/json' } : {}),
         ...(init.headers ?? {}),
       },
     });
@@ -191,15 +206,19 @@ export function api(port) {
   };
   return {
     call,
-    createAgent: (input) => call("/v1/agents", { method: "POST", body: JSON.stringify(input) }),
-    createEnvironment: (input) => call("/v1/environments", { method: "POST", body: JSON.stringify(input) }),
-    createSession: (input) => call("/v1/sessions", { method: "POST", body: JSON.stringify(input) }),
+    createAgent: (input) => call('/v1/agents', { method: 'POST', body: JSON.stringify(input) }),
+    createEnvironment: (input) =>
+      call('/v1/environments', { method: 'POST', body: JSON.stringify(input) }),
+    createSession: (input) => call('/v1/sessions', { method: 'POST', body: JSON.stringify(input) }),
     getSession: (id) => call(`/v1/sessions/${id}`),
-    archiveSession: (id) => call(`/v1/sessions/${id}/archive`, { method: "POST" }),
-    deleteSession: (id) => call(`/v1/sessions/${id}`, { method: "DELETE" }),
+    archiveSession: (id) => call(`/v1/sessions/${id}/archive`, { method: 'POST' }),
+    deleteSession: (id) => call(`/v1/sessions/${id}`, { method: 'DELETE' }),
     sendEvents: (id, events) =>
-      call(`/v1/sessions/${id}/events`, { method: "POST", body: JSON.stringify({ events }) }),
-    listEvents: (id, query = "") => call(`/v1/sessions/${id}/events${query}`),
+      call(`/v1/sessions/${id}/events`, {
+        method: 'POST',
+        body: JSON.stringify({ events }),
+      }),
+    listEvents: (id, query = '') => call(`/v1/sessions/${id}/events${query}`),
   };
 }
 
@@ -209,7 +228,8 @@ export async function pollEvents(client, sessionId, predicate, timeoutMs = 20000
   for (;;) {
     const { body } = await client.listEvents(sessionId);
     if (body && predicate(body.data)) return body.data;
-    if (Date.now() > deadline) throw new Error(`pollEvents timed out; events: ${JSON.stringify(body)}`);
+    if (Date.now() > deadline)
+      throw new Error(`pollEvents timed out; events: ${JSON.stringify(body)}`);
     await sleep(250);
   }
 }

@@ -1,7 +1,7 @@
-import type { ComponentProps } from "react";
-import { cn } from "@/lib/utils";
+import type { ComponentProps } from 'react';
+import { cn } from '@/lib/utils';
 
-type TableCardProps = ComponentProps<"div">;
+type TableCardProps = ComponentProps<'div'>;
 
 /**
  * 列表页表格卡片:限高为视窗内剩余空间,表格在卡片内部滚动,
@@ -15,10 +15,10 @@ export function TableCard({ className, children, ...props }: TableCardProps) {
   return (
     <div
       className={cn(
-        "rounded-lg border bg-card",
+        'rounded-lg border bg-card',
         // 移动端额外扣除顶部固定应用头(h-14)与更矮的页头;md 起无应用头
         // rounded-[inherit] 让滚动容器按卡片圆角裁剪,否则表头的 bg-card 会在上角溢出圆角弧线
-        "[&>[data-slot=table-container]]:rounded-[inherit] [&>[data-slot=table-container]]:max-h-[calc(100svh-18rem)] md:[&>[data-slot=table-container]]:max-h-[calc(100svh-14rem)] [&>[data-slot=table-container]]:overflow-y-auto",
+        '[&>[data-slot=table-container]]:rounded-[inherit] [&>[data-slot=table-container]]:max-h-[calc(100svh-18rem)] md:[&>[data-slot=table-container]]:max-h-[calc(100svh-14rem)] [&>[data-slot=table-container]]:overflow-y-auto',
         className,
       )}
       {...props}

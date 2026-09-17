@@ -1,9 +1,9 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type { Skill, SkillFileInput } from "@nano/shared/glm";
-import { FolderInput, Plus } from "lucide-react";
-import { useRef, useState } from "react";
-import { createSkill, createSkillVersion } from "@/api/skills";
-import { Button } from "@/components/ui/button";
+import type { Skill, SkillFileInput } from '@nano/shared/glm';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { FolderInput, Plus } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { createSkill, createSkillVersion } from '@/api/skills';
+import { Button } from '@/components/ui/button';
 import {
   Dialog,
   DialogContent,
@@ -11,11 +11,11 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { formatBytes } from "@/lib/format";
-import { collectSkillFiles, type CollectedSkillFiles } from "@/lib/skill-files";
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { formatBytes } from '@/lib/format';
+import { type CollectedSkillFiles, collectSkillFiles } from '@/lib/skill-files';
 
 /**
  * 目录选择字段:webkitdirectory 让浏览器整目录选取(路径在 webkitRelativePath 上),
@@ -49,7 +49,7 @@ function SkillFilesField({
           type="file"
           multiple
           className="sr-only"
-          {...({ webkitdirectory: "", directory: "" } as Record<string, string>)}
+          {...({ webkitdirectory: '', directory: '' } as Record<string, string>)}
           onChange={(e) => {
             if (e.target.files?.length) void handlePick(e.target.files);
           }}
@@ -77,7 +77,9 @@ function SkillFilesField({
             <span className="text-muted-foreground">name: </span>
             <span className="font-mono">{collected.frontmatter.name}</span>
           </div>
-          <div className="text-muted-foreground mt-0.5 line-clamp-2">{collected.frontmatter.description}</div>
+          <div className="text-muted-foreground mt-0.5 line-clamp-2">
+            {collected.frontmatter.description}
+          </div>
         </div>
       ) : null}
       {error ? <p className="text-destructive text-sm">{error}</p> : null}
@@ -95,7 +97,7 @@ function useSkillUploadMutation(
     mutationFn: upload,
     onSuccess: () => {
       // 前缀匹配同时覆盖列表(latest_version)与详情/版本查询
-      void queryClient.invalidateQueries({ queryKey: ["skills"] });
+      void queryClient.invalidateQueries({ queryKey: ['skills'] });
       onDone();
     },
   });
@@ -109,13 +111,13 @@ export function CreateSkillDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const [displayTitle, setDisplayTitle] = useState("");
+  const [displayTitle, setDisplayTitle] = useState('');
   const [collected, setCollected] = useState<CollectedSkillFiles | null>(null);
   const [pickError, setPickError] = useState<string | null>(null);
 
   function close() {
     onOpenChange(false);
-    setDisplayTitle("");
+    setDisplayTitle('');
     setCollected(null);
     setPickError(null);
   }
@@ -157,13 +159,15 @@ export function CreateSkillDialog({
             }}
           />
         </div>
-        {mutation.isError ? <p className="text-destructive text-sm">{(mutation.error as Error).message}</p> : null}
+        {mutation.isError ? (
+          <p className="text-destructive text-sm">{(mutation.error as Error).message}</p>
+        ) : null}
         <DialogFooter>
           <Button
             disabled={!collected || mutation.isPending}
             onClick={() => collected && mutation.mutate(collected.files)}
           >
-            {mutation.isPending ? "创建中…" : "创建"}
+            {mutation.isPending ? '创建中…' : '创建'}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -201,7 +205,8 @@ export function UploadSkillVersionDialog({
         <DialogHeader>
           <DialogTitle>上传新版本</DialogTitle>
           <DialogDescription>
-            重新上传完整目录,当前 v{skill.latest_version ?? "—"} → 新版本号自动递增;已发布的版本不受影响。
+            重新上传完整目录,当前 v{skill.latest_version ?? '—'} →
+            新版本号自动递增;已发布的版本不受影响。
           </DialogDescription>
         </DialogHeader>
         <SkillFilesField
@@ -212,13 +217,15 @@ export function UploadSkillVersionDialog({
             setPickError(e);
           }}
         />
-        {mutation.isError ? <p className="text-destructive text-sm">{(mutation.error as Error).message}</p> : null}
+        {mutation.isError ? (
+          <p className="text-destructive text-sm">{(mutation.error as Error).message}</p>
+        ) : null}
         <DialogFooter>
           <Button
             disabled={!collected || mutation.isPending}
             onClick={() => collected && mutation.mutate(collected.files)}
           >
-            {mutation.isPending ? "上传中…" : "上传"}
+            {mutation.isPending ? '上传中…' : '上传'}
           </Button>
         </DialogFooter>
       </DialogContent>

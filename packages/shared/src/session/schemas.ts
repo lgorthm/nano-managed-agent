@@ -4,27 +4,27 @@
  * 剩余一期裁剪(vault_ids 非空拒绝、resources 仅 file 类型)以 refine 分支实现;
  * initial_events 已随二期事件运行时放开,形状约束见 events.ts。
  */
-import { z } from "zod";
+import { z } from 'zod';
 import {
   AgentToolsetInputSchema,
   McpServerSchema,
-  MetadataSchema,
   MetadataPatchSchema,
+  MetadataSchema,
   ModelInputSchema,
   SkillReferenceSchema,
-} from "../agent/schemas";
-import { InitialUserMessageEventSchema } from "./events";
-import type { SessionAgentConfig } from "./resolve";
+} from '../agent/schemas';
+import { InitialUserMessageEventSchema } from './events';
+import type { SessionAgentConfig } from './resolve';
 
 // ---------- 状态与常量 ----------
 
-export const SESSION_STATUSES = ["idle", "running", "rescheduling", "terminated"] as const;
+export const SESSION_STATUSES = ['idle', 'running', 'rescheduling', 'terminated'] as const;
 export type SessionStatus = (typeof SESSION_STATUSES)[number];
 
 /** nano 一期没有运行时,会话创建后恒为 idle;running 门禁为二期就位预留 */
-export const DEFAULT_SESSION_STATUS: SessionStatus = "idle";
+export const DEFAULT_SESSION_STATUS: SessionStatus = 'idle';
 
-export const SESSION_STATUSES_PARAM = "statuses[]";
+export const SESSION_STATUSES_PARAM = 'statuses[]';
 
 /** 每会话 file 挂载上限(GLM 默认平台上限;resources 合计上限 508,一期只有 file) */
 export const MAX_SESSION_FILE_RESOURCES = 500;
@@ -33,7 +33,7 @@ export const MAX_SESSION_RESOURCES = 508;
 // ---------- 挂载资源 ----------
 
 export const FileResourceInputSchema = z.strictObject({
-  type: z.literal("file"),
+  type: z.literal('file'),
   file_id: z.string().min(1),
   mount_path: z.string().nullish(),
 });
@@ -43,14 +43,14 @@ export type FileResourceInput = z.infer<typeof FileResourceInputSchema>;
 
 /** 固定版本引用;省略 version 时钉创建请求时的当前版本 */
 export const AgentReferenceInputSchema = z.strictObject({
-  type: z.literal("agent"),
+  type: z.literal('agent'),
   id: z.string().min(1),
   version: z.number().int().min(1).optional(),
 });
 
 /** 会话级覆盖:每个字段整体替换,省略继承版本、null 与空数组清空 */
 export const AgentWithOverridesInputSchema = z.strictObject({
-  type: z.literal("agent_with_overrides"),
+  type: z.literal('agent_with_overrides'),
   id: z.string().min(1),
   version: z.number().int().min(1).optional(),
   model: ModelInputSchema.optional(),
@@ -83,7 +83,7 @@ export const SessionCreateRequestSchema = z
       .string()
       .regex(
         /^env_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
-        "environment_id must be an env_ prefixed UUID",
+        'environment_id must be an env_ prefixed UUID',
       ),
     title: z.string().max(256).nullish(),
     metadata: MetadataSchema.default({}),
@@ -94,9 +94,9 @@ export const SessionCreateRequestSchema = z
   .superRefine((request, ctx) => {
     if (request.agent === undefined && request.agent_id === undefined) {
       ctx.addIssue({
-        code: "custom",
-        path: ["agent"],
-        message: "either agent or the compatible field agent_id must be provided",
+        code: 'custom',
+        path: ['agent'],
+        message: 'either agent or the compatible field agent_id must be provided',
       });
     }
     // 一期裁剪已放开:initial_events 走 SESSION_DO 的事件链路(runtime.md §8);
@@ -104,16 +104,16 @@ export const SessionCreateRequestSchema = z
     // 一期裁剪:无 Vault 资源,非空拒绝
     if (request.vault_ids.length > 0) {
       ctx.addIssue({
-        code: "custom",
-        path: ["vault_ids"],
-        message: "vault_ids is not supported yet: nano has no vault resources",
+        code: 'custom',
+        path: ['vault_ids'],
+        message: 'vault_ids is not supported yet: nano has no vault resources',
       });
     }
     // resources 合计 ≤ 508 由数组上限保证;file 单独 ≤ 500(一期只有 file,防御性保留)
     if (request.resources.length > MAX_SESSION_FILE_RESOURCES) {
       ctx.addIssue({
-        code: "custom",
-        path: ["resources"],
+        code: 'custom',
+        path: ['resources'],
         message: `at most ${MAX_SESSION_FILE_RESOURCES} file resources per session`,
       });
     }
@@ -142,25 +142,24 @@ export const SessionUpdateRequestSchema = z
       .superRefine((agent, ctx) => {
         if (agent.tools === undefined && agent.mcp_servers === undefined) {
           ctx.addIssue({
-            code: "custom",
-            path: ["agent"],
-            message: "agent must provide tools or mcp_servers",
+            code: 'custom',
+            path: ['agent'],
+            message: 'agent must provide tools or mcp_servers',
           });
         }
-        const hasMcpToolset =
-          agent.tools !== null && agent.tools !== undefined && agent.tools.some((t) => t.type === "mcp_toolset");
+        const hasMcpToolset = agent.tools?.some((t) => t.type === 'mcp_toolset');
         if (hasMcpToolset && agent.mcp_servers === undefined) {
           ctx.addIssue({
-            code: "custom",
-            path: ["agent", "tools"],
-            message: "submitting mcp_toolset requires replacing mcp_servers in the same request",
+            code: 'custom',
+            path: ['agent', 'tools'],
+            message: 'submitting mcp_toolset requires replacing mcp_servers in the same request',
           });
         }
         if (agent.tools === undefined && agent.mcp_servers !== undefined) {
           ctx.addIssue({
-            code: "custom",
-            path: ["agent", "mcp_servers"],
-            message: "mcp_servers can only be submitted together with tools",
+            code: 'custom',
+            path: ['agent', 'mcp_servers'],
+            message: 'mcp_servers can only be submitted together with tools',
           });
         }
       })
@@ -169,9 +168,9 @@ export const SessionUpdateRequestSchema = z
   .superRefine((patch, ctx) => {
     if (patch.title === undefined && patch.metadata === undefined && patch.agent === undefined) {
       ctx.addIssue({
-        code: "custom",
+        code: 'custom',
         path: [],
-        message: "request must provide at least one of title, metadata, agent",
+        message: 'request must provide at least one of title, metadata, agent',
       });
     }
   });
@@ -197,7 +196,7 @@ export interface SessionListFilters {
 
 export interface FileResourceResponse {
   id: string;
-  type: "file";
+  type: 'file';
   file_id: string;
   mount_path: string;
   created_at: string;
@@ -207,7 +206,7 @@ export interface FileResourceResponse {
 /** wire 的 session.agent:固化的解析快照 + 注入的固定字段 */
 export interface SessionAgentResponse extends SessionAgentConfig {
   id: string;
-  type: "agent";
+  type: 'agent';
   multiagent: null;
   version: number;
 }
@@ -215,7 +214,7 @@ export interface SessionAgentResponse extends SessionAgentConfig {
 /** Session 的 API 响应形状;vault_ids/outcome_evaluations/stats/budget 是一期固定回显 */
 export interface SessionResponse {
   id: string;
-  type: "session";
+  type: 'session';
   agent: SessionAgentResponse;
   environment_id: string;
   status: SessionStatus;
@@ -225,7 +224,11 @@ export interface SessionResponse {
   vault_ids: string[];
   outcome_evaluations: Record<string, unknown>[];
   stats: { active_seconds: number; duration_seconds: number };
-  usage: { input_tokens: number; output_tokens: number; cache_read_input_tokens: number };
+  usage: {
+    input_tokens: number;
+    output_tokens: number;
+    cache_read_input_tokens: number;
+  };
   budget: null;
   created_at: string;
   updated_at: string;
@@ -234,10 +237,10 @@ export interface SessionResponse {
 
 export interface SessionDeletedResponse {
   id: string;
-  type: "session_deleted";
+  type: 'session_deleted';
 }
 
 export interface SessionResourceDeletedResponse {
   id: string;
-  type: "session_resource_deleted";
+  type: 'session_resource_deleted';
 }

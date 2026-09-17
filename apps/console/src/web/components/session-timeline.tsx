@@ -8,23 +8,22 @@
  * span 相对全域定位、放大 lanes 容器实现缩放:缩放平移只改容器 style,块位置不重算。
  */
 import {
-  memo,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
   type CSSProperties,
+  memo,
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
-} from "react";
-import { cn } from "@/lib/utils";
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 import {
   formatSpanDuration,
   type LedgerLane,
   type TimelineMode,
   type TimelineModel,
   type TimelineRange,
-} from "@/lib/session-ledger";
+} from '@/lib/session-ledger';
+import { cn } from '@/lib/utils';
 
 /** 拖选位移小于该像素数视为单击 */
 const MINIMUM_DRAG_PX = 3;
@@ -40,14 +39,14 @@ const MAXIMUM_EDGE_PAN_PX = 32;
 const TRACK_HEIGHT_PX = 50;
 const LANE_TOP: Record<LedgerLane, number> = { input: 3, model: 19, tool: 35 };
 const LANE_BLOCK: Record<LedgerLane, string> = {
-  input: "bg-chart-5/70",
-  model: "bg-chart-1/70",
-  tool: "bg-chart-4/70",
+  input: 'bg-chart-5/70',
+  model: 'bg-chart-1/70',
+  tool: 'bg-chart-4/70',
 };
 const LANE_LABELS: Array<{ id: LedgerLane; label: string }> = [
-  { id: "input", label: "输入" },
-  { id: "model", label: "模型" },
-  { id: "tool", label: "工具" },
+  { id: 'input', label: '输入' },
+  { id: 'model', label: '模型' },
+  { id: 'tool', label: '工具' },
 ];
 
 interface DragGesture {
@@ -79,7 +78,12 @@ function orderedRange(start: number, end: number): TimelineRange {
 }
 
 /** 以 center 为中心、宽度 width 的区间,夹在 [minimum, maximum] 内 */
-function centeredRange(center: number, width: number, minimum: number, maximum: number): TimelineRange {
+function centeredRange(
+  center: number,
+  width: number,
+  minimum: number,
+  maximum: number,
+): TimelineRange {
   const clampedWidth = Math.min(maximum - minimum, Math.max(0, width));
   const start = Math.min(Math.max(center - clampedWidth / 2, minimum), maximum - clampedWidth);
   return { start, end: start + clampedWidth };
@@ -87,7 +91,7 @@ function centeredRange(center: number, width: number, minimum: number, maximum: 
 
 function formatClock(ms: number): string {
   const d = new Date(ms);
-  const p = (n: number, width = 2) => String(n).padStart(width, "0");
+  const p = (n: number, width = 2) => String(n).padStart(width, '0');
   return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}.${p(d.getMilliseconds(), 3)}`;
 }
 
@@ -101,7 +105,7 @@ export interface SessionTimelineProps {
   /** 搜索命中的 key 集合;非空时命中外的块压暗 */
   searchMatchKeys?: ReadonlySet<string> | null;
   /** 泳道筛选:非该泳道的块压暗(时间线轴始终取全量,保证选区稳定) */
-  laneFilter?: LedgerLane | "all";
+  laneFilter?: LedgerLane | 'all';
   /** 左键单击块:选中事件 */
   onItemSelect?: (key: string) => void;
   /** 左键单击空白:聚焦最近的事件 */
@@ -116,7 +120,7 @@ export const SessionTimeline = memo(function SessionTimeline({
   onRangeChange,
   selectedKey = null,
   searchMatchKeys = null,
-  laneFilter = "all",
+  laneFilter = 'all',
   onItemSelect,
   onItemFocus,
   className,
@@ -127,7 +131,7 @@ export const SessionTimeline = memo(function SessionTimeline({
   const trackRef = useRef<HTMLDivElement | null>(null);
   const [draft, setDraft] = useState<TimelineRange | null>(null);
   const [hover, setHover] = useState<HoverPoint | null>(null);
-  const [hoveredSpan, setHoveredSpan] = useState<TimelineModel["spans"][number] | null>(null);
+  const [hoveredSpan, setHoveredSpan] = useState<TimelineModel['spans'][number] | null>(null);
   const [panning, setPanning] = useState(false);
   const [viewport, setViewport] = useState<TimelineRange | null>(null);
   const [animateViewport, setAnimateViewport] = useState(false);
@@ -166,18 +170,23 @@ export const SessionTimeline = memo(function SessionTimeline({
   }, [model, selectedKey]);
 
   const fullDuration = Math.max(1, (model?.end ?? 0) - (model?.start ?? 0));
-  const minDuration = model === null
-    ? 1
-    : Math.min(
-        fullDuration,
-        mode === "sequence"
-          ? Math.min(MINIMUM_SEQUENCE_ZOOM, fullDuration)
-          : Math.max(MINIMUM_DURATION_ZOOM_MS, fullDuration * 0.02),
-      );
-  const viewportDuration = Math.min(fullDuration, Math.max(1, (viewport?.end ?? 0) - (viewport?.start ?? 0)));
-  const domainStart = model === null || viewport === null
-    ? model?.start ?? 0
-    : Math.min(Math.max(viewport.start, model.start), model.end - viewportDuration);
+  const minDuration =
+    model === null
+      ? 1
+      : Math.min(
+          fullDuration,
+          mode === 'sequence'
+            ? Math.min(MINIMUM_SEQUENCE_ZOOM, fullDuration)
+            : Math.max(MINIMUM_DURATION_ZOOM_MS, fullDuration * 0.02),
+        );
+  const viewportDuration = Math.min(
+    fullDuration,
+    Math.max(1, (viewport?.end ?? 0) - (viewport?.start ?? 0)),
+  );
+  const domainStart =
+    model === null || viewport === null
+      ? (model?.start ?? 0)
+      : Math.min(Math.max(viewport.start, model.start), model.end - viewportDuration);
   const domainDuration = viewport === null ? fullDuration : viewportDuration;
   const activeRange = draft ?? range;
 
@@ -207,9 +216,9 @@ export const SessionTimeline = memo(function SessionTimeline({
       );
       setViewport({ start: nextStart, end: nextStart + nextDuration });
     };
-    root.addEventListener("wheel", onWheel, { passive: false });
+    root.addEventListener('wheel', onWheel, { passive: false });
     return () => {
-      root.removeEventListener("wheel", onWheel);
+      root.removeEventListener('wheel', onWheel);
     };
   }, [domainDuration, domainStart, fullDuration, minDuration, model]);
 
@@ -217,7 +226,9 @@ export const SessionTimeline = memo(function SessionTimeline({
 
   // 视口外的块不渲染(选中块除外),深缩放时控制 DOM 数量
   const visibleSpans = model.spans.filter(
-    (span) => span.key === selectedKey || (span.end >= domainStart && span.start <= domainStart + domainDuration),
+    (span) =>
+      span.key === selectedKey ||
+      (span.end >= domainStart && span.start <= domainStart + domainDuration),
   );
   // 单击空白时的最小选宽:不低于单块平均宽度,避免点击即选中全部
   const minimumSelectionDuration = Math.min(domainDuration, fullDuration / model.spans.length);
@@ -234,7 +245,7 @@ export const SessionTimeline = memo(function SessionTimeline({
 
   const spanKeyAt = (event: ReactPointerEvent<HTMLDivElement>): string | null => {
     const target = event.target instanceof HTMLElement ? event.target : null;
-    return target?.closest<HTMLElement>("[data-span-key]")?.dataset.spanKey ?? null;
+    return target?.closest<HTMLElement>('[data-span-key]')?.dataset.spanKey ?? null;
   };
 
   const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -256,7 +267,12 @@ export const SessionTimeline = memo(function SessionTimeline({
     const anchorTime = domainStart + anchor * domainDuration;
     const spanKey = spanKeyAt(event);
     setHover({ fraction: anchor, spanKey });
-    dragRef.current = { pointerId: event.pointerId, anchorTime, anchorClientX: event.clientX, spanKey };
+    dragRef.current = {
+      pointerId: event.pointerId,
+      anchorTime,
+      anchorClientX: event.clientX,
+      spanKey,
+    };
     event.currentTarget.setPointerCapture?.(event.pointerId);
     setDraft({ start: anchorTime, end: anchorTime });
   };
@@ -286,16 +302,24 @@ export const SessionTimeline = memo(function SessionTimeline({
       // 拖选接近轨道两侧时按步平移视口,强度随贴近程度加深
       const localX = event.clientX - event.currentTarget.getBoundingClientRect().left;
       const rectWidth = event.currentTarget.getBoundingClientRect().width;
-      const edgeWidth = Math.min(MAXIMUM_EDGE_PAN_PX, Math.max(1, rectWidth * EDGE_PAN_ZONE_FRACTION));
+      const edgeWidth = Math.min(
+        MAXIMUM_EDGE_PAN_PX,
+        Math.max(1, rectWidth * EDGE_PAN_ZONE_FRACTION),
+      );
       const direction = localX < edgeWidth ? -1 : localX > rectWidth - edgeWidth ? 1 : 0;
       if (direction !== 0) {
         const edgeDistance = direction < 0 ? edgeWidth - localX : localX - (rectWidth - edgeWidth);
         const strength = clamp01(edgeDistance / edgeWidth);
-        const desiredStart = domainStart + direction * domainDuration * EDGE_PAN_STEP_FRACTION * Math.max(0.2, strength);
+        const desiredStart =
+          domainStart +
+          direction * domainDuration * EDGE_PAN_STEP_FRACTION * Math.max(0.2, strength);
         nextDomainStart = Math.min(Math.max(desiredStart, model.start), model.end - domainDuration);
         if (nextDomainStart !== domainStart) {
           setAnimateViewport(false);
-          setViewport({ start: nextDomainStart, end: nextDomainStart + domainDuration });
+          setViewport({
+            start: nextDomainStart,
+            end: nextDomainStart + domainDuration,
+          });
         }
       }
     }
@@ -340,7 +364,11 @@ export const SessionTimeline = memo(function SessionTimeline({
       // 单击空白:聚焦距离点击位置最近的块
       const nearest = model.spans.reduce((candidate, span) => {
         const distanceOf = (item: { start: number; end: number }): number =>
-          pointTime < item.start ? item.start - pointTime : pointTime > item.end ? pointTime - item.end : 0;
+          pointTime < item.start
+            ? item.start - pointTime
+            : pointTime > item.end
+              ? pointTime - item.end
+              : 0;
         return distanceOf(span) < distanceOf(candidate) ? span : candidate;
       });
       onItemFocus?.(nearest.key);
@@ -356,7 +384,7 @@ export const SessionTimeline = memo(function SessionTimeline({
   };
 
   const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
-    if (event.key !== "Escape" || range === null) return;
+    if (event.key !== 'Escape' || range === null) return;
     event.preventDefault();
     onRangeChange(null);
   };
@@ -376,7 +404,7 @@ export const SessionTimeline = memo(function SessionTimeline({
     : null;
 
   return (
-    <section ref={rootRef} className={cn("relative", className)} aria-label="会话事件时间线总览">
+    <section ref={rootRef} className={cn('relative', className)} aria-label="会话事件时间线总览">
       <div className="flex items-start gap-2">
         <div className="w-9 shrink-0 pt-[3px]" aria-hidden>
           {LANE_LABELS.map((lane, index) => (
@@ -392,10 +420,9 @@ export const SessionTimeline = memo(function SessionTimeline({
         <div
           ref={trackRef}
           role="img"
-          tabIndex={0}
           className={cn(
-            "bg-muted/40 relative grow touch-pan-y cursor-crosshair overflow-hidden rounded-sm focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring",
-            panning && "cursor-grabbing",
+            'bg-muted/40 relative grow touch-pan-y cursor-crosshair overflow-hidden rounded-sm focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring',
+            panning && 'cursor-grabbing',
           )}
           style={{ height: TRACK_HEIGHT_PX }}
           aria-label="拖选区间聚焦事件;滚轮缩放;右键拖动平移;Escape 清除选区"
@@ -432,12 +459,12 @@ export const SessionTimeline = memo(function SessionTimeline({
           {rangeStyle ? (
             <span
               aria-hidden
-              data-dragging={draft === null ? undefined : "true"}
+              data-dragging={draft === null ? undefined : 'true'}
               className={cn(
-                "pointer-events-none absolute inset-y-0 border-x-2",
+                'pointer-events-none absolute inset-y-0 border-x-2',
                 draft === null
-                  ? "border-foreground/50 bg-foreground/[0.07]"
-                  : "border-foreground/70 bg-foreground/[0.12]",
+                  ? 'border-foreground/50 bg-foreground/[0.07]'
+                  : 'border-foreground/70 bg-foreground/[0.12]',
               )}
               style={rangeStyle}
             />
@@ -447,7 +474,10 @@ export const SessionTimeline = memo(function SessionTimeline({
           <div
             aria-hidden
             className="absolute inset-y-0 motion-reduce:transition-none"
-            style={{ ...projectedDomainStyle, transition: animateViewport ? "left 180ms ease" : undefined }}
+            style={{
+              ...projectedDomainStyle,
+              transition: animateViewport ? 'left 180ms ease' : undefined,
+            }}
           >
             {model.turnBoundaries
               .filter(
@@ -461,7 +491,9 @@ export const SessionTimeline = memo(function SessionTimeline({
                   key={boundary.turn}
                   title={`Turn ${boundary.turn}`}
                   className="absolute inset-y-0 w-px -translate-x-1/2 cursor-help bg-foreground/15 hover:bg-foreground/40"
-                  style={{ left: `${((boundary.time - model.start) / fullDuration) * 100}%` }}
+                  style={{
+                    left: `${((boundary.time - model.start) / fullDuration) * 100}%`,
+                  }}
                 />
               ))}
           </div>
@@ -471,26 +503,32 @@ export const SessionTimeline = memo(function SessionTimeline({
             data-timeline-domain
             aria-hidden
             className="absolute inset-y-0 motion-reduce:transition-none"
-            style={{ ...projectedDomainStyle, transition: animateViewport ? "left 180ms ease" : undefined }}
+            style={{
+              ...projectedDomainStyle,
+              transition: animateViewport ? 'left 180ms ease' : undefined,
+            }}
           >
             {visibleSpans.map((span) => {
               const left = (span.start - model.start) / fullDuration;
               const width = Math.max((span.end - span.start) / fullDuration, 0.002);
               const outsideFocus =
-                activeRange !== null && !(span.start <= activeRange.end && span.end >= activeRange.start);
+                activeRange !== null &&
+                !(span.start <= activeRange.end && span.end >= activeRange.start);
               const outsideSearch = searchMatchKeys !== null && !searchMatchKeys.has(span.key);
-              const outsideLane = laneFilter !== "all" && span.lane !== laneFilter;
+              const outsideLane = laneFilter !== 'all' && span.lane !== laneFilter;
               const selected = span.key === selectedKey;
               return (
                 <span
                   key={span.key}
                   data-span-key={span.key}
                   className={cn(
-                    "absolute h-2 min-w-[5px] rounded-sm",
-                    span.isError ? "bg-destructive/80" : LANE_BLOCK[span.lane],
-                    hoveredSpan?.key === span.key && "brightness-125",
-                    selected && "outline-foreground/70 z-10 outline-2 outline-offset-1",
-                    (outsideFocus || outsideSearch || outsideLane) && hoveredSpan?.key !== span.key && "opacity-25",
+                    'absolute h-2 min-w-[5px] rounded-sm',
+                    span.isError ? 'bg-destructive/80' : LANE_BLOCK[span.lane],
+                    hoveredSpan?.key === span.key && 'brightness-125',
+                    selected && 'outline-foreground/70 z-10 outline-2 outline-offset-1',
+                    (outsideFocus || outsideSearch || outsideLane) &&
+                      hoveredSpan?.key !== span.key &&
+                      'opacity-25',
                   )}
                   style={{
                     top: LANE_TOP[span.lane],
@@ -522,10 +560,7 @@ export const SessionTimeline = memo(function SessionTimeline({
           className="bg-foreground text-background pointer-events-none absolute top-0 z-20 w-max max-w-72 rounded-md px-3 py-2 text-xs shadow-lg"
           style={{
             left: `calc(2.75rem + ${Math.min(
-              Math.max(
-                ((hoveredSpan.start - domainStart) / domainDuration) * 100,
-                6,
-              ),
+              Math.max(((hoveredSpan.start - domainStart) / domainDuration) * 100, 6),
               80,
             )}%)`,
           }}
@@ -539,11 +574,13 @@ export const SessionTimeline = memo(function SessionTimeline({
           <div className="mt-0.5 tabular-nums opacity-80">Turn {hoveredSpan.turn}</div>
           <div className="tabular-nums opacity-80">
             {formatClock(hoveredSpan.startedAt ?? 0)}
-            {hoveredSpan.durationMs ? ` ~ ${formatClock((hoveredSpan.startedAt ?? 0) + hoveredSpan.durationMs)}` : ""}
+            {hoveredSpan.durationMs
+              ? ` ~ ${formatClock((hoveredSpan.startedAt ?? 0) + hoveredSpan.durationMs)}`
+              : ''}
           </div>
           <div className="tabular-nums opacity-80">
             总计 {formatSpanDuration(hoveredSpan.durationMs ?? 0)}
-            {hoveredSpan.isError ? " · 失败" : ""}
+            {hoveredSpan.isError ? ' · 失败' : ''}
           </div>
         </div>
       ) : null}
@@ -554,7 +591,7 @@ export const SessionTimeline = memo(function SessionTimeline({
           {viewport === null
             ? `${model.spans.length} 个事件`
             : `已缩放 · ${Math.round((domainDuration / fullDuration) * 100)}%`}
-          {model.turnBoundaries.length > 0 ? ` · ${model.turnBoundaries.length} 轮` : ""}
+          {model.turnBoundaries.length > 0 ? ` · ${model.turnBoundaries.length} 轮` : ''}
         </span>
         <span className="flex items-center gap-2">
           {viewport !== null ? (

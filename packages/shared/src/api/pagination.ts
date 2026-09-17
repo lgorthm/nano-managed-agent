@@ -1,6 +1,6 @@
 /** 列表端点统一的分页参数,约定见 docs/agent/api/README.md 的分页一节 */
 
-export type SortOrder = "asc" | "desc";
+export type SortOrder = 'asc' | 'desc';
 
 export interface ListQuery {
   limit?: number;

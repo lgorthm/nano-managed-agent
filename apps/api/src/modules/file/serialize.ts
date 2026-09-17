@@ -1,5 +1,5 @@
-import type { FileRow } from "@nano/db";
-import type { FileResponse, FileScope } from "@nano/shared";
+import type { FileRow } from '@nano/db';
+import type { FileResponse, FileScope } from '@nano/shared';
 
 /**
  * File 行到 API JSON 的唯一序列化出口:
@@ -9,7 +9,7 @@ import type { FileResponse, FileScope } from "@nano/shared";
 export function serializeFile(row: FileRow, scope?: FileScope): FileResponse {
   return {
     id: row.id,
-    type: "file",
+    type: 'file',
     size_bytes: row.sizeBytes,
     created_at: row.createdAt.toISOString(),
     filename: row.filename,
@@ -26,8 +26,8 @@ export function serializeFile(row: FileRow, scope?: FileScope): FileResponse {
  */
 export function contentDisposition(filename: string): string {
   if (/^[\x20-\x7e]+$/.test(filename)) {
-    return `attachment; filename="${filename.replace(/["\\]/g, "_")}"`;
+    return `attachment; filename="${filename.replace(/["\\]/g, '_')}"`;
   }
-  const fallback = filename.replace(/[^\w.\-]+/g, "_").replace(/^_+|_+$/g, "") || "file";
+  const fallback = filename.replace(/[^\w.-]+/g, '_').replace(/^_+|_+$/g, '') || 'file';
   return `attachment; filename="${fallback}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
 }

@@ -15,34 +15,34 @@ import {
   listFilesBySessionScopePage,
   listFilesPage,
   newFileId,
-} from "@nano/db";
+} from '@nano/db';
 import {
-  MAX_FILE_BYTES,
-  fileObjectKey,
-  normalizeMimeType,
-  validateFilename,
   type FileDeletedResponse,
   type FileResponse,
   type FileScope,
+  fileObjectKey,
+  MAX_FILE_BYTES,
+  normalizeMimeType,
   type Page,
-} from "@nano/shared";
-import type { Env } from "../../env";
+  validateFilename,
+} from '@nano/shared';
+import type { Env } from '../../env';
 import {
   ApiError,
   invalidRequestError,
   notFoundError,
   requestTooLargeError,
-} from "../../lib/errors";
+} from '../../lib/errors';
 import {
   cursorNumberField,
   cursorStringField,
   encodeCursor,
   type ListParams,
-} from "../../lib/pagination";
-import { serializeFile } from "./serialize";
+} from '../../lib/pagination';
+import { serializeFile } from './serialize';
 
 /** files 列表游标的 kind 前缀,防止与其他列表端点的游标混用 */
-const FILES_CURSOR_KIND = "files";
+const FILES_CURSOR_KIND = 'files';
 
 export const fileService = {
   /**
@@ -52,14 +52,16 @@ export const fileService = {
   async uploadFile(env: Env, file: File): Promise<FileResponse> {
     const filenameError = validateFilename(file.name);
     if (filenameError !== null) {
-      throw invalidRequestError(filenameError, { param: "file" });
+      throw invalidRequestError(filenameError, { param: 'file' });
     }
     if (file.size === 0) {
-      throw invalidRequestError("Uploaded file must not be empty.", { param: "file" });
+      throw invalidRequestError('Uploaded file must not be empty.', {
+        param: 'file',
+      });
     }
     if (file.size > MAX_FILE_BYTES) {
       throw requestTooLargeError(`File exceeds the ${MAX_FILE_BYTES} byte limit.`, {
-        param: "file",
+        param: 'file',
       });
     }
     const mimeType = normalizeMimeType(file.type);
@@ -79,9 +81,9 @@ export const fileService = {
         createdAt: now,
       });
     } catch (err) {
-      console.error("file metadata insert failed:", err);
+      console.error('file metadata insert failed:', err);
       await env.FILES.delete(key).catch(() => {});
-      throw new ApiError("api_error", "Failed to persist the uploaded file.");
+      throw new ApiError('api_error', 'Failed to persist the uploaded file.');
     }
     return serializeFile({
       id,
@@ -101,7 +103,7 @@ export const fileService = {
     }
     return serializeFile(
       found.file,
-      found.scopeSessionId !== null ? { type: "session", id: found.scopeSessionId } : undefined,
+      found.scopeSessionId !== null ? { type: 'session', id: found.scopeSessionId } : undefined,
     );
   },
 
@@ -120,12 +122,16 @@ export const fileService = {
       params.cursor === null
         ? null
         : {
-            createdAt: cursorNumberField(params.cursor, "createdAt"),
-            id: cursorStringField(params.cursor, "id"),
+            createdAt: cursorNumberField(params.cursor, 'createdAt'),
+            id: cursorStringField(params.cursor, 'id'),
           };
     const { rows, nextCursor } =
       params.scopeId === undefined
-        ? await listFilesPage(getDb(env), { limit: params.limit, order: params.order, cursor })
+        ? await listFilesPage(getDb(env), {
+            limit: params.limit,
+            order: params.order,
+            cursor,
+          })
         : await listFilesBySessionScopePage(getDb(env), {
             sessionId: params.scopeId,
             limit: params.limit,
@@ -133,13 +139,13 @@ export const fileService = {
             cursor,
           });
     const mountScope: FileScope | undefined =
-      params.scopeId === undefined ? undefined : { type: "session", id: params.scopeId };
+      params.scopeId === undefined ? undefined : { type: 'session', id: params.scopeId };
     return {
       data: rows.map((entry) =>
         serializeFile(
           entry.file,
           entry.scopeSessionId !== null
-            ? { type: "session", id: entry.scopeSessionId }
+            ? { type: 'session', id: entry.scopeSessionId }
             : mountScope,
         ),
       ),
@@ -160,7 +166,12 @@ export const fileService = {
   async downloadFileContent(
     env: Env,
     fileId: string,
-  ): Promise<{ body: ReadableStream; filename: string; mimeType: string; etag: string }> {
+  ): Promise<{
+    body: ReadableStream;
+    filename: string;
+    mimeType: string;
+    etag: string;
+  }> {
     const row = await findFile(getDb(env), fileId);
     if (!row) {
       throw notFoundError(`File "${fileId}" not found.`);
@@ -168,9 +179,14 @@ export const fileService = {
     const object = await env.FILES.get(fileObjectKey(fileId));
     if (!object) {
       console.error(`file content missing for metadata row: ${fileId}`);
-      throw new ApiError("api_error", "File content is unavailable.");
+      throw new ApiError('api_error', 'File content is unavailable.');
     }
-    return { body: object.body, filename: row.filename, mimeType: row.mimeType, etag: row.etag };
+    return {
+      body: object.body,
+      filename: row.filename,
+      mimeType: row.mimeType,
+      etag: row.etag,
+    };
   },
 
   /**
@@ -183,14 +199,14 @@ export const fileService = {
     if (mounts > 0) {
       throw invalidRequestError(
         `File is mounted by ${mounts} active session(s) and cannot be deleted.`,
-        { param: "fileId", mounts },
+        { param: 'fileId', mounts },
       );
     }
     const outputs = await countActiveSessionOutputs(getDb(env), fileId);
     if (outputs > 0) {
       throw invalidRequestError(
         `File is an output of ${outputs} active session(s) and cannot be deleted.`,
-        { param: "fileId", outputs },
+        { param: 'fileId', outputs },
       );
     }
     const deleted = await deleteFileRow(getDb(env), fileId);
@@ -203,6 +219,6 @@ export const fileService = {
       // 元数据已删,孤儿对象不影响正确性(下载先查元数据);清理留作运维脚本
       console.error(`orphan R2 object after delete: ${fileObjectKey(fileId)}`, err);
     }
-    return { id: fileId, type: "file_deleted" };
+    return { id: fileId, type: 'file_deleted' };
   },
 };

@@ -2,50 +2,50 @@
  * Deployment 与运行记录类型。见 references/deployments.md 与
  * references/api/{create,get,run}-deployment*.md。
  */
-import type { ListQuery, Metadata } from "./common";
-import type { InitialUserMessageEventInput, SessionAgentInput, SessionResource } from "./session";
+import type { ListQuery, Metadata } from './common';
+import type { InitialUserMessageEventInput, SessionAgentInput, SessionResource } from './session';
 
-export type DeploymentStatus = "active" | "paused";
+export type DeploymentStatus = 'active' | 'paused';
 
 export interface CronScheduleInput {
-  type: "cron";
+  type: 'cron';
   /** 五段 cron 表达式;当前仅支持 Asia/Shanghai 时区 */
   expression: string;
-  timezone?: "Asia/Shanghai" | null;
+  timezone?: 'Asia/Shanghai' | null;
 }
 
 export interface CronScheduleResponse {
-  type: "cron";
+  type: 'cron';
   expression: string;
-  timezone: "Asia/Shanghai";
+  timezone: 'Asia/Shanghai';
   last_run_at: string | null;
   upcoming_runs_at: string[];
 }
 
 export interface DeploymentAgent {
-  type: "agent";
+  type: 'agent';
   id: string;
   version: number;
 }
 
 export type DeploymentPausedReason =
-  | { type: "manual" }
+  | { type: 'manual' }
   | {
-      type: "error";
+      type: 'error';
       error: {
         type:
-          | "environment_archived_error"
-          | "environment_not_found_error"
-          | "file_not_found_error"
-          | "memory_store_archived_error"
-          | "vault_archived_error"
-          | "vault_not_found_error";
+          | 'environment_archived_error'
+          | 'environment_not_found_error'
+          | 'file_not_found_error'
+          | 'memory_store_archived_error'
+          | 'vault_archived_error'
+          | 'vault_not_found_error';
       };
     };
 
 export interface Deployment {
   id: string;
-  type: "deployment";
+  type: 'deployment';
   name: string;
   agent: DeploymentAgent;
   environment_id: string;
@@ -92,10 +92,10 @@ export interface DeploymentUpdateInput {
 
 export interface DeploymentRun {
   id: string;
-  type: "deployment_run";
+  type: 'deployment_run';
   deployment_id: string;
   trigger_context: {
-    type: "schedule" | "manual";
+    type: 'schedule' | 'manual';
     /** 仅定时触发的 Run 返回 */
     scheduled_at?: string;
   };
@@ -109,9 +109,9 @@ export interface DeploymentRun {
 export interface DeploymentRunListQuery extends ListQuery {
   deployment_id?: string;
   has_error?: boolean;
-  trigger_type?: "schedule" | "manual";
-  "created_at[gt]"?: string;
-  "created_at[gte]"?: string;
-  "created_at[lt]"?: string;
-  "created_at[lte]"?: string;
+  trigger_type?: 'schedule' | 'manual';
+  'created_at[gt]'?: string;
+  'created_at[gte]'?: string;
+  'created_at[lt]'?: string;
+  'created_at[lte]'?: string;
 }

@@ -7,9 +7,10 @@
  * 替换进来的 model 与 tools 是输入形态,先经 normalize 归一化再合并,
  * 保证合并结果与当前版本同为归一化形态,可直接做无变化比较。
  */
-import type { AgentUpdateRequestInput } from "./schemas";
-import type { NormalizedAgentConfig } from "./normalize";
-import { normalizeModel, normalizeToolset } from "./normalize";
+
+import type { NormalizedAgentConfig } from './normalize';
+import { normalizeModel, normalizeToolset } from './normalize';
+import type { AgentUpdateRequestInput } from './schemas';
 
 /** 把补丁合并进当前配置,返回新的归一化配置 */
 export function mergeAgentConfig(
@@ -19,17 +20,17 @@ export function mergeAgentConfig(
   return {
     name: patch.name ?? current.name,
     model: patch.model === undefined ? current.model : normalizeModel(patch.model),
-    system: patch.system === undefined ? current.system : patch.system ?? null,
-    description: patch.description === undefined ? current.description : patch.description ?? null,
+    system: patch.system === undefined ? current.system : (patch.system ?? null),
+    description:
+      patch.description === undefined ? current.description : (patch.description ?? null),
     tools:
       patch.tools === undefined
         ? current.tools
         : patch.tools === null
           ? []
           : patch.tools.map(normalizeToolset),
-    skills: patch.skills === undefined ? current.skills : patch.skills ?? [],
-    mcp_servers:
-      patch.mcp_servers === undefined ? current.mcp_servers : patch.mcp_servers ?? [],
+    skills: patch.skills === undefined ? current.skills : (patch.skills ?? []),
+    mcp_servers: patch.mcp_servers === undefined ? current.mcp_servers : (patch.mcp_servers ?? []),
     metadata: mergeMetadata(current.metadata, patch.metadata),
   };
 }
@@ -54,7 +55,7 @@ export function mergeMetadata(
 /** 语义化深度相等:键序无关,数组按序比较 */
 export function deepEqual(a: unknown, b: unknown): boolean {
   if (a === b) return true;
-  if (typeof a !== "object" || typeof b !== "object" || a === null || b === null) return false;
+  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false;
   if (Array.isArray(a) || Array.isArray(b)) {
     if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
     return a.every((item, i) => deepEqual(item, b[i]));
@@ -63,7 +64,9 @@ export function deepEqual(a: unknown, b: unknown): boolean {
   const keysB = Object.keys(b);
   if (keysA.length !== keysB.length) return false;
   return keysA.every(
-    (key) => key in b && deepEqual((a as Record<string, unknown>)[key], (b as Record<string, unknown>)[key]),
+    (key) =>
+      key in b &&
+      deepEqual((a as Record<string, unknown>)[key], (b as Record<string, unknown>)[key]),
   );
 }
 

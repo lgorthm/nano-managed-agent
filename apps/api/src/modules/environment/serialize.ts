@@ -1,5 +1,5 @@
-import type { EnvironmentRow } from "@nano/db";
-import type { EnvironmentResponse, NormalizedEnvironmentRecord } from "@nano/shared";
+import type { EnvironmentRow } from '@nano/db';
+import type { EnvironmentResponse, NormalizedEnvironmentRecord } from '@nano/shared';
 
 /**
  * Environment 行到 API JSON 的唯一序列化出口:
@@ -8,7 +8,7 @@ import type { EnvironmentResponse, NormalizedEnvironmentRecord } from "@nano/sha
  */
 export function serializeEnvironment(meta: {
   id: string;
-  state: "active" | "archived";
+  state: 'active' | 'archived';
   createdAt: Date;
   updatedAt: Date;
   archivedAt: Date | null;
@@ -16,12 +16,12 @@ export function serializeEnvironment(meta: {
 }): EnvironmentResponse {
   return {
     id: meta.id,
-    type: "environment",
+    type: 'environment',
     name: meta.record.name,
     description: meta.record.description,
     metadata: meta.record.metadata,
     config: meta.record.config,
-    scope: "organization",
+    scope: 'organization',
     state: meta.state,
     archived_at: meta.archivedAt?.toISOString() ?? null,
     created_at: meta.createdAt.toISOString(),

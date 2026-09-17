@@ -5,6 +5,9 @@
  * - 工具集 default_config 补全为 { enabled: true, permission_policy: always_allow }
  * - configs 中省略/null 的字段继承(已解析的)default_config
  */
+
+import type { z } from 'zod';
+import { defaultModelEffort } from './models';
 import type {
   AgentCreateRequestInput,
   AgentToolsetInput,
@@ -16,14 +19,12 @@ import type {
   PermissionPolicy,
   SkillReference,
   ToolDefaultConfigInputSchema,
-} from "./schemas";
-import { defaultModelEffort } from "./models";
-import type { z } from "zod";
+} from './schemas';
 
 export interface NormalizedModel {
   id: ModelId;
   effort: ModelEffort;
-  speed: "standard";
+  speed: 'standard';
 }
 
 export interface NormalizedToolConfig {
@@ -32,20 +33,20 @@ export interface NormalizedToolConfig {
 }
 
 export interface NormalizedBuiltinToolset {
-  type: "agent_toolset_20260601";
+  type: 'agent_toolset_20260601';
   default_config: NormalizedToolConfig;
   configs: Array<NormalizedToolConfig & { name: string }>;
 }
 
 export interface NormalizedMcpToolset {
-  type: "mcp_toolset";
+  type: 'mcp_toolset';
   mcp_server_name: string;
   default_config: NormalizedToolConfig;
   configs: Array<NormalizedToolConfig & { name: string }>;
 }
 
 export interface NormalizedCustomTool {
-  type: "custom";
+  type: 'custom';
   name: string;
   description: string;
   input_schema: CustomToolInput;
@@ -70,7 +71,7 @@ export interface NormalizedAgentConfig {
 /** Agent 的 API 响应形状(docs/agent/api/create-agent.md 的 ManagedAgent) */
 export interface AgentResponse {
   id: string;
-  type: "agent";
+  type: 'agent';
   name: string;
   description: string | null;
   model: NormalizedModel;
@@ -88,18 +89,18 @@ export interface AgentResponse {
 
 /** 模型输入归一化:简写展开、默认 effort 按模型目录补全、speed 补为 standard(merge 也会复用) */
 export function normalizeModel(model: ModelInput): NormalizedModel {
-  if (typeof model === "string") {
-    return { id: model, effort: defaultModelEffort(model), speed: "standard" };
+  if (typeof model === 'string') {
+    return { id: model, effort: defaultModelEffort(model), speed: 'standard' };
   }
   return {
     id: model.id,
     effort: model.effort ?? defaultModelEffort(model.id),
-    speed: model.speed ?? "standard",
+    speed: model.speed ?? 'standard',
   };
 }
 
 function fallbackDefault(): NormalizedToolConfig {
-  return { enabled: true, permission_policy: { type: "always_allow" } };
+  return { enabled: true, permission_policy: { type: 'always_allow' } };
 }
 
 function normalizeDefaultConfig(
@@ -108,12 +109,15 @@ function normalizeDefaultConfig(
   if (!input) return fallbackDefault();
   return {
     enabled: input.enabled ?? true,
-    permission_policy: input.permission_policy ?? { type: "always_allow" },
+    permission_policy: input.permission_policy ?? { type: 'always_allow' },
   };
 }
 
 function inheritDefault(
-  input: { enabled?: boolean | null; permission_policy?: PermissionPolicy | null },
+  input: {
+    enabled?: boolean | null;
+    permission_policy?: PermissionPolicy | null;
+  },
   base: NormalizedToolConfig,
 ): NormalizedToolConfig {
   return {
@@ -124,9 +128,9 @@ function inheritDefault(
 
 /** 工具集归一化:补全 default_config、解析 configs 继承(merge 也会复用) */
 export function normalizeToolset(toolset: AgentToolsetInput): NormalizedAgentToolset {
-  if (toolset.type === "custom") {
+  if (toolset.type === 'custom') {
     return {
-      type: "custom",
+      type: 'custom',
       name: toolset.name,
       description: toolset.description,
       input_schema: toolset.input_schema,
@@ -137,8 +141,13 @@ export function normalizeToolset(toolset: AgentToolsetInput): NormalizedAgentToo
     name: config.name,
     ...inheritDefault(config, defaultConfig),
   }));
-  if (toolset.type === "mcp_toolset") {
-    return { type: "mcp_toolset", mcp_server_name: toolset.mcp_server_name, default_config: defaultConfig, configs };
+  if (toolset.type === 'mcp_toolset') {
+    return {
+      type: 'mcp_toolset',
+      mcp_server_name: toolset.mcp_server_name,
+      default_config: defaultConfig,
+      configs,
+    };
   }
   return { type: toolset.type, default_config: defaultConfig, configs };
 }

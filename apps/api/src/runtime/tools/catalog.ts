@@ -20,9 +20,9 @@ import {
   getDb,
   newFileId,
   replaceSessionOutput,
-} from "@nano/db";
-import { MAX_FILE_BYTES, MAX_FILENAME_LENGTH, fileObjectKey, mimeTypeFromPath } from "@nano/shared";
-import type { Env } from "../../env";
+} from '@nano/db';
+import { fileObjectKey, MAX_FILE_BYTES, MAX_FILENAME_LENGTH, mimeTypeFromPath } from '@nano/shared';
+import type { Env } from '../../env';
 
 /** 沙箱 outputs 目录的一个文件;path 是 /mnt/session/outputs 下的相对路径 */
 export interface HarvestedOutput {
@@ -39,13 +39,13 @@ export interface HarvestResult {
 
 /** 产出相对路径的合法性:非空、不以 / 开头、不含 .. 段(防回填越界) */
 function validRelativePath(path: string): boolean {
-  if (path === "" || path.startsWith("/")) return false;
-  return !path.split("/").some((segment) => segment === "" || segment === "." || segment === "..");
+  if (path === '' || path.startsWith('/')) return false;
+  return !path.split('/').some((segment) => segment === '' || segment === '.' || segment === '..');
 }
 
 async function sha256Hex(bytes: Uint8Array): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
-  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
 /**
@@ -59,7 +59,12 @@ export async function harvestSessionOutputs(
   sandboxFiles: HarvestedOutput[],
 ): Promise<HarvestResult> {
   const db = getDb(env);
-  const result: HarvestResult = { created: 0, replaced: 0, removed: 0, skippedUnchanged: 0 };
+  const result: HarvestResult = {
+    created: 0,
+    replaced: 0,
+    removed: 0,
+    skippedUnchanged: 0,
+  };
   const existing = new Map(
     (await findSessionOutputsBySession(db, sessionId)).map((row) => [row.path, row]),
   );
@@ -82,7 +87,9 @@ export async function harvestSessionOutputs(
       continue;
     }
     if (file.path.length > MAX_FILENAME_LENGTH) {
-      console.error(`session output filename exceeds ${MAX_FILENAME_LENGTH} chars, skipping catalog: ${file.path}`);
+      console.error(
+        `session output filename exceeds ${MAX_FILENAME_LENGTH} chars, skipping catalog: ${file.path}`,
+      );
       continue;
     }
     const contentSha256 = await sha256Hex(file.bytes);
