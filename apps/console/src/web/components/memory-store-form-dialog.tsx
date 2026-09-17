@@ -1,9 +1,9 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type { MemoryStore, MemoryStoreUpdateInput } from "@nano/shared/glm";
-import { Pencil, Plus } from "lucide-react";
-import { useState } from "react";
-import { createMemoryStore, updateMemoryStore } from "@/api/memories";
-import { Button } from "@/components/ui/button";
+import type { MemoryStore, MemoryStoreUpdateInput } from '@nano/shared/glm';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { Pencil, Plus } from 'lucide-react';
+import { useState } from 'react';
+import { createMemoryStore, updateMemoryStore } from '@/api/memories';
+import { Button } from '@/components/ui/button';
 import {
   Dialog,
   DialogContent,
@@ -11,10 +11,10 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 
 interface StoreFormState {
   name: string;
@@ -22,18 +22,19 @@ interface StoreFormState {
 }
 
 function formFromStore(store: MemoryStore): StoreFormState {
-  return { name: store.name, description: store.description ?? "" };
+  return { name: store.name, description: store.description ?? '' };
 }
 
 function validateForm(form: StoreFormState): string | null {
   const name = form.name.trim();
-  if (!name) return "名称不能为空";
-  if (name.length > 255) return "名称最多 255 个字符";
+  if (!name) return '名称不能为空';
+  if (name.length > 255) return '名称最多 255 个字符';
   // 服务端拒绝控制字符与格式字符(如零宽空格)
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: 校验名称不得含控制/不可见字符,控制字符正是要匹配的目标
   if (/[\u0000-\u001f\u007f\u200b-\u200f\u2028-\u202e\ufeff]/.test(name)) {
-    return "名称不能包含控制字符或不可见格式字符";
+    return '名称不能包含控制字符或不可见格式字符';
   }
-  if (form.description.length > 1024) return "描述最多 1024 个字符";
+  if (form.description.length > 1024) return '描述最多 1024 个字符';
   return null;
 }
 
@@ -43,7 +44,7 @@ function useStoreMutation(submit: () => Promise<unknown>, onDone: () => void) {
     mutationFn: submit,
     onSuccess: () => {
       // 前缀匹配同时覆盖列表与详情查询
-      void queryClient.invalidateQueries({ queryKey: ["memory-stores"] });
+      void queryClient.invalidateQueries({ queryKey: ['memory-stores'] });
       onDone();
     },
   });
@@ -92,12 +93,15 @@ export function CreateMemoryStoreDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const [form, setForm] = useState<StoreFormState>({ name: "", description: "" });
+  const [form, setForm] = useState<StoreFormState>({
+    name: '',
+    description: '',
+  });
   const [attempted, setAttempted] = useState(false);
 
   function close() {
     onOpenChange(false);
-    setForm({ name: "", description: "" });
+    setForm({ name: '', description: '' });
     setAttempted(false);
   }
 
@@ -123,9 +127,15 @@ export function CreateMemoryStoreDialog({
             长期记忆库:挂载到会话后,Agent 可把跨会话要记住的知识按路径写入这里。
           </DialogDescription>
         </DialogHeader>
-        <StoreFormFields form={form} onChange={(patch) => setForm((prev) => ({ ...prev, ...patch }))} idPrefix="create-memstore" />
+        <StoreFormFields
+          form={form}
+          onChange={(patch) => setForm((prev) => ({ ...prev, ...patch }))}
+          idPrefix="create-memstore"
+        />
         {attempted && error ? <p className="text-destructive text-sm">{error}</p> : null}
-        {mutation.isError ? <p className="text-destructive text-sm">{(mutation.error as Error).message}</p> : null}
+        {mutation.isError ? (
+          <p className="text-destructive text-sm">{(mutation.error as Error).message}</p>
+        ) : null}
         <DialogFooter>
           <Button variant="outline" size="sm" disabled={mutation.isPending} onClick={close}>
             取消
@@ -138,7 +148,7 @@ export function CreateMemoryStoreDialog({
               if (!error) mutation.mutate();
             }}
           >
-            {mutation.isPending ? "创建中…" : "创建"}
+            {mutation.isPending ? '创建中…' : '创建'}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -162,13 +172,16 @@ export function UpdateMemoryStoreDialog({ store }: { store: MemoryStore }) {
     setOpen(true);
   }
 
-  const mutation = useStoreMutation(() => {
-    const input: MemoryStoreUpdateInput = {
-      name: form.name.trim(),
-      description: form.description.trim() || null,
-    };
-    return updateMemoryStore(store.id, input);
-  }, () => setOpen(false));
+  const mutation = useStoreMutation(
+    () => {
+      const input: MemoryStoreUpdateInput = {
+        name: form.name.trim(),
+        description: form.description.trim() || null,
+      };
+      return updateMemoryStore(store.id, input);
+    },
+    () => setOpen(false),
+  );
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -180,11 +193,22 @@ export function UpdateMemoryStoreDialog({ store }: { store: MemoryStore }) {
           <DialogTitle>编辑 Memory Store</DialogTitle>
           <DialogDescription>修改名称与描述,不影响已写入的 memory 内容。</DialogDescription>
         </DialogHeader>
-        <StoreFormFields form={form} onChange={(patch) => setForm((prev) => ({ ...prev, ...patch }))} idPrefix="update-memstore" />
+        <StoreFormFields
+          form={form}
+          onChange={(patch) => setForm((prev) => ({ ...prev, ...patch }))}
+          idPrefix="update-memstore"
+        />
         {attempted && error ? <p className="text-destructive text-sm">{error}</p> : null}
-        {mutation.isError ? <p className="text-destructive text-sm">{(mutation.error as Error).message}</p> : null}
+        {mutation.isError ? (
+          <p className="text-destructive text-sm">{(mutation.error as Error).message}</p>
+        ) : null}
         <DialogFooter>
-          <Button variant="outline" size="sm" disabled={mutation.isPending} onClick={() => setOpen(false)}>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={mutation.isPending}
+            onClick={() => setOpen(false)}
+          >
             取消
           </Button>
           <Button
@@ -195,7 +219,7 @@ export function UpdateMemoryStoreDialog({ store }: { store: MemoryStore }) {
               if (!error) mutation.mutate();
             }}
           >
-            {mutation.isPending ? "保存中…" : "保存"}
+            {mutation.isPending ? '保存中…' : '保存'}
           </Button>
         </DialogFooter>
       </DialogContent>

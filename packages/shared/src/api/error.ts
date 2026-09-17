@@ -5,15 +5,15 @@
 
 /** 错误类型枚举,与 GLM Managed Agents 保持一致 */
 export const ERROR_TYPES = [
-  "invalid_request_error",
-  "authentication_error",
-  "permission_error",
-  "not_found_error",
-  "request_too_large",
-  "rate_limit_error",
-  "api_error",
-  "timeout_error",
-  "overloaded_error",
+  'invalid_request_error',
+  'authentication_error',
+  'permission_error',
+  'not_found_error',
+  'request_too_large',
+  'rate_limit_error',
+  'api_error',
+  'timeout_error',
+  'overloaded_error',
 ] as const;
 
 export type ErrorType = (typeof ERROR_TYPES)[number];
@@ -27,7 +27,7 @@ export interface ApiErrorBody {
 
 /** 完整错误信封 */
 export interface ErrorResponse {
-  type: "error";
+  type: 'error';
   error: ApiErrorBody;
   request_id: string;
 }

@@ -1,6 +1,6 @@
-import * as React from "react";
-import { cn } from "cn";
-import { ScrollArea as ScrollAreaPrimitive } from "radix-ui";
+import { cn } from 'cn';
+import { ScrollArea as ScrollAreaPrimitive } from 'radix-ui';
+import type * as React from 'react';
 
 function ScrollArea({
   className,
@@ -10,7 +10,7 @@ function ScrollArea({
   return (
     <ScrollAreaPrimitive.Root
       data-slot="scroll-area"
-      className={cn("relative", className)}
+      className={cn('relative', className)}
       {...props}
     >
       <ScrollAreaPrimitive.Viewport
@@ -27,7 +27,7 @@ function ScrollArea({
 
 function ScrollBar({
   className,
-  orientation = "vertical",
+  orientation = 'vertical',
   ...props
 }: React.ComponentProps<typeof ScrollAreaPrimitive.ScrollAreaScrollbar>) {
   return (
@@ -35,9 +35,9 @@ function ScrollBar({
       data-slot="scroll-area-scrollbar"
       orientation={orientation}
       className={cn(
-        "flex touch-none transition-colors select-none",
-        orientation === "vertical" && "h-full w-2",
-        orientation === "horizontal" && "h-2 flex-col",
+        'flex touch-none transition-colors select-none',
+        orientation === 'vertical' && 'h-full w-2',
+        orientation === 'horizontal' && 'h-2 flex-col',
         className,
       )}
       {...props}

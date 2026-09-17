@@ -1,11 +1,17 @@
-import { useQueryClient } from "@tanstack/react-query";
-import { Server } from "lucide-react";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { setProvider, useProvider, type ApiProvider } from "@/lib/provider";
+import { useQueryClient } from '@tanstack/react-query';
+import { Server } from 'lucide-react';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { type ApiProvider, setProvider, useProvider } from '@/lib/provider';
 
 const PROVIDER_OPTIONS: { value: ApiProvider; label: string }[] = [
-  { value: "nano", label: "nano API" },
-  { value: "glm", label: "GLM API" },
+  { value: 'nano', label: 'nano API' },
+  { value: 'glm', label: 'GLM API' },
 ];
 
 /** sidebar 底部的后端切换;查询缓存没有 provider 维度,切换后全部置为失效重取 */

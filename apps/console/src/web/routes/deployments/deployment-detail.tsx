@@ -1,7 +1,7 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Archive, Inbox, Pause, Play, Zap } from "lucide-react";
-import { useState } from "react";
-import { Link, useParams } from "react-router";
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Archive, Inbox, Pause, Play, Zap } from 'lucide-react';
+import { useState } from 'react';
+import { Link, useParams } from 'react-router';
 import {
   archiveDeployment,
   getDeployment,
@@ -10,17 +10,17 @@ import {
   pauseDeployment,
   resumeDeployment,
   runDeployment,
-} from "@/api/deployments";
-import { BackLink } from "@/components/back-link";
-import { EmptyState } from "@/components/empty-state";
-import { UpdateDeploymentDialog } from "@/components/deployment-form-dialog";
-import { PageHeader } from "@/components/page-header";
-import { QueryError } from "@/components/query-error";
-import { KeyValueRow, SectionCard } from "@/components/section-card";
-import { DeploymentStatusBadge, StatusBadge } from "@/components/status-badges";
-import { TableSkeleton } from "@/components/table-skeleton";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+} from '@/api/deployments';
+import { BackLink } from '@/components/back-link';
+import { UpdateDeploymentDialog } from '@/components/deployment-form-dialog';
+import { EmptyState } from '@/components/empty-state';
+import { PageHeader } from '@/components/page-header';
+import { QueryError } from '@/components/query-error';
+import { KeyValueRow, SectionCard } from '@/components/section-card';
+import { DeploymentStatusBadge, StatusBadge } from '@/components/status-badges';
+import { TableSkeleton } from '@/components/table-skeleton';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import {
   Dialog,
   DialogContent,
@@ -28,9 +28,16 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { formatTime, shortId } from "@/lib/format";
+} from '@/components/ui/dialog';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { formatTime, shortId } from '@/lib/format';
 
 /** 归档是幂等的终态操作:归档后不再触发调度,运行记录保留 */
 function ArchiveDeploymentDialog({ deploymentId }: { deploymentId: string }) {
@@ -39,7 +46,7 @@ function ArchiveDeploymentDialog({ deploymentId }: { deploymentId: string }) {
   const mutation = useMutation({
     mutationFn: () => archiveDeployment(deploymentId),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["deployments"] });
+      void queryClient.invalidateQueries({ queryKey: ['deployments'] });
       setOpen(false);
     },
   });
@@ -51,15 +58,29 @@ function ArchiveDeploymentDialog({ deploymentId }: { deploymentId: string }) {
       <DialogContent showCloseButton={false} className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>归档 Deployment?</DialogTitle>
-          <DialogDescription>归档后不再触发调度,也无法恢复;已有运行记录与会话不受影响。</DialogDescription>
+          <DialogDescription>
+            归档后不再触发调度,也无法恢复;已有运行记录与会话不受影响。
+          </DialogDescription>
         </DialogHeader>
-        {mutation.isError ? <p className="text-destructive text-sm">{(mutation.error as Error).message}</p> : null}
+        {mutation.isError ? (
+          <p className="text-destructive text-sm">{(mutation.error as Error).message}</p>
+        ) : null}
         <DialogFooter>
-          <Button variant="outline" size="sm" disabled={mutation.isPending} onClick={() => setOpen(false)}>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={mutation.isPending}
+            onClick={() => setOpen(false)}
+          >
             取消
           </Button>
-          <Button variant="destructive" size="sm" disabled={mutation.isPending} onClick={() => mutation.mutate()}>
-            {mutation.isPending ? "归档中…" : "确认归档"}
+          <Button
+            variant="destructive"
+            size="sm"
+            disabled={mutation.isPending}
+            onClick={() => mutation.mutate()}
+          >
+            {mutation.isPending ? '归档中…' : '确认归档'}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -80,7 +101,7 @@ function RunDetailDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const runQuery = useQuery({
-    queryKey: ["deployments", deploymentId, "runs", runId],
+    queryKey: ['deployments', deploymentId, 'runs', runId],
     queryFn: () => getDeploymentRun(runId!),
     enabled: open && runId !== null,
   });
@@ -100,7 +121,7 @@ function RunDetailDialog({
                 {run.trigger_context.type}
                 {run.trigger_context.scheduled_at
                   ? ` · 计划于 ${formatTime(run.trigger_context.scheduled_at)}`
-                  : ""}
+                  : ''}
               </span>
             </KeyValueRow>
             <KeyValueRow label="Agent 版本">
@@ -158,29 +179,45 @@ export function DeploymentDetailPage() {
   const queryClient = useQueryClient();
   const [openRunId, setOpenRunId] = useState<string | null>(null);
   const deploymentQuery = useQuery({
-    queryKey: ["deployments", deploymentId],
+    queryKey: ['deployments', deploymentId],
     queryFn: () => getDeployment(deploymentId!),
     enabled: deploymentId !== undefined,
   });
   const runsQuery = useQuery({
-    queryKey: ["deployments", deploymentId, "runs"],
-    queryFn: () => listDeploymentRuns({ deployment_id: deploymentId!, order: "desc", limit: 50 }),
+    queryKey: ['deployments', deploymentId, 'runs'],
+    queryFn: () =>
+      listDeploymentRuns({
+        deployment_id: deploymentId!,
+        order: 'desc',
+        limit: 50,
+      }),
     enabled: deploymentId !== undefined,
   });
 
   const invalidate = () => {
-    void queryClient.invalidateQueries({ queryKey: ["deployments"] });
+    void queryClient.invalidateQueries({ queryKey: ['deployments'] });
   };
-  const runMutation = useMutation({ mutationFn: () => runDeployment(deploymentId!), onSuccess: invalidate });
-  const pauseMutation = useMutation({ mutationFn: () => pauseDeployment(deploymentId!), onSuccess: invalidate });
-  const resumeMutation = useMutation({ mutationFn: () => resumeDeployment(deploymentId!), onSuccess: invalidate });
+  const runMutation = useMutation({
+    mutationFn: () => runDeployment(deploymentId!),
+    onSuccess: invalidate,
+  });
+  const pauseMutation = useMutation({
+    mutationFn: () => pauseDeployment(deploymentId!),
+    onSuccess: invalidate,
+  });
+  const resumeMutation = useMutation({
+    mutationFn: () => resumeDeployment(deploymentId!),
+    onSuccess: invalidate,
+  });
 
   if (deploymentId === undefined) return null;
   if (deploymentQuery.isPending) return <TableSkeleton rows={4} />;
   if (deploymentQuery.isError) return <QueryError error={deploymentQuery.error} />;
 
   const deployment = deploymentQuery.data;
-  const mutationError = (runMutation.error ?? pauseMutation.error ?? resumeMutation.error) as Error | null;
+  const mutationError = (runMutation.error ??
+    pauseMutation.error ??
+    resumeMutation.error) as Error | null;
 
   return (
     <div className="flex flex-1 flex-col gap-4">
@@ -193,8 +230,10 @@ export function DeploymentDetailPage() {
           <>
             <DeploymentStatusBadge status={deployment.status} />
             {!deployment.archived_at ? <UpdateDeploymentDialog deployment={deployment} /> : null}
-            {!deployment.archived_at ? <ArchiveDeploymentDialog deploymentId={deployment.id} /> : null}
-            {deployment.status === "active" ? (
+            {!deployment.archived_at ? (
+              <ArchiveDeploymentDialog deploymentId={deployment.id} />
+            ) : null}
+            {deployment.status === 'active' ? (
               <Button
                 size="sm"
                 variant="outline"
@@ -214,7 +253,7 @@ export function DeploymentDetailPage() {
               </Button>
             )}
             <Button size="sm" disabled={runMutation.isPending} onClick={() => runMutation.mutate()}>
-              <Zap /> {runMutation.isPending ? "触发中…" : "立即运行"}
+              <Zap /> {runMutation.isPending ? '触发中…' : '立即运行'}
             </Button>
           </>
         }
@@ -253,7 +292,9 @@ export function DeploymentDetailPage() {
                 </span>
               </KeyValueRow>
               <KeyValueRow label="上次运行">
-                <span className="text-xs tabular-nums">{formatTime(deployment.schedule.last_run_at)}</span>
+                <span className="text-xs tabular-nums">
+                  {formatTime(deployment.schedule.last_run_at)}
+                </span>
               </KeyValueRow>
               <div className="text-sm">
                 <div className="text-muted-foreground mb-1.5 text-xs">下次运行</div>
@@ -275,11 +316,13 @@ export function DeploymentDetailPage() {
           <ul className="space-y-2 text-sm">
             {deployment.initial_events.map((event, i) => (
               <li key={i} className="flex gap-3 whitespace-pre-wrap">
-                <span className="text-muted-foreground mt-px shrink-0 font-mono text-xs">#{i + 1}</span>
+                <span className="text-muted-foreground mt-px shrink-0 font-mono text-xs">
+                  #{i + 1}
+                </span>
                 <span className="min-w-0 leading-relaxed">
                   {event.content
-                    .map((block) => (block.type === "text" ? block.text : `[${block.type}]`))
-                    .join("\n")}
+                    .map((block) => (block.type === 'text' ? block.text : `[${block.type}]`))
+                    .join('\n')}
                 </span>
               </li>
             ))}
@@ -310,7 +353,11 @@ export function DeploymentDetailPage() {
               </TableHeader>
               <TableBody>
                 {runsQuery.data.data.map((run) => (
-                  <TableRow key={run.id} className="cursor-pointer" onClick={() => setOpenRunId(run.id)}>
+                  <TableRow
+                    key={run.id}
+                    className="cursor-pointer"
+                    onClick={() => setOpenRunId(run.id)}
+                  >
                     <TableCell className="max-w-24 truncate font-mono text-xs underline-offset-2 hover:underline md:max-w-none">
                       {shortId(run.id)}
                     </TableCell>

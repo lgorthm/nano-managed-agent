@@ -18,13 +18,13 @@ export const SCOPE_ID_PATTERN = /^sess_/;
 
 /** 会话作用域:按 scope_id 过滤列出时回显挂载该文件的会话 */
 export interface FileScope {
-  type: "session";
+  type: 'session';
   id: string;
 }
 
 export interface FileResponse {
   id: string;
-  type: "file";
+  type: 'file';
   size_bytes: number;
   created_at: string;
   filename: string;
@@ -37,7 +37,7 @@ export interface FileResponse {
 
 export interface FileDeletedResponse {
   id: string;
-  type: "file_deleted";
+  type: 'file_deleted';
 }
 
 /** R2 对象键:恒 files/{fileId},由 id 确定性派生、不落库(docs/files/schema.md 的约定) */
@@ -48,7 +48,7 @@ export function fileObjectKey(fileId: string): string {
 /** 校验上传文件名:1–256 个字符。返回错误消息,null 表示合法 */
 export function validateFilename(filename: string): string | null {
   if (filename.length === 0) {
-    return "filename must not be empty.";
+    return 'filename must not be empty.';
   }
   if (filename.length > MAX_FILENAME_LENGTH) {
     return `filename exceeds ${MAX_FILENAME_LENGTH} characters.`;
@@ -62,12 +62,12 @@ export function validateFilename(filename: string): string | null {
  * 形态时为 application/octet-stream;essence 超过 128 字符同样视为不可解析。
  */
 export function normalizeMimeType(raw: string | null | undefined): string {
-  const essence = (raw ?? "").split(";")[0]!.trim().toLowerCase();
+  const essence = (raw ?? '').split(';')[0]!.trim().toLowerCase();
   if (essence.length === 0 || essence.length > MAX_MIME_TYPE_LENGTH) {
-    return "application/octet-stream";
+    return 'application/octet-stream';
   }
   if (!/^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/.test(essence)) {
-    return "application/octet-stream";
+    return 'application/octet-stream';
   }
   return essence;
 }

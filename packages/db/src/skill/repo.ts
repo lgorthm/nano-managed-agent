@@ -6,10 +6,11 @@
  * 「Agent 引用 Skill」的两个切面(删除保护 / 存在性校验)都收在这里,
  * agent 与 skill 两个 service 各自调用,谁也不 import 谁。
  */
-import { and, asc, desc, eq, gt, lt, or, sql } from "drizzle-orm";
-import type { CanonicalSkillTree, SkillReference } from "@nano/shared";
-import type { Db } from "../client";
-import { agentVersions, agents, skillFiles, skills, skillVersions } from "../schema";
+
+import type { CanonicalSkillTree, SkillReference } from '@nano/shared';
+import { and, asc, desc, eq, gt, lt, or, sql } from 'drizzle-orm';
+import type { Db } from '../client';
+import { agents, agentVersions, skillFiles, skills, skillVersions } from '../schema';
 
 export type SkillRow = typeof skills.$inferSelect;
 export type SkillVersionRow = typeof skillVersions.$inferSelect;
@@ -80,7 +81,7 @@ export async function createSkillWithFirstVersion(
     db.insert(skills).values({
       id: skillId,
       displayTitle,
-      source: "custom",
+      source: 'custom',
       latestVersionSeq: 1,
       nextVersion: 2,
       createdAt: now,
@@ -110,9 +111,9 @@ export interface SkillsPageCursor {
 export async function listSkillsPage(
   db: Db,
   params: {
-    source?: "custom" | "zai";
+    source?: 'custom' | 'zai';
     limit: number;
-    order: "asc" | "desc";
+    order: 'asc' | 'desc';
     cursor: SkillsPageCursor | null;
   },
 ): Promise<{ rows: SkillRow[]; nextCursor: SkillsPageCursor | null }> {
@@ -121,9 +122,15 @@ export async function listSkillsPage(
     params.cursor
       ? (() => {
           const at = new Date(params.cursor!.createdAt);
-          return params.order === "desc"
-            ? or(lt(skills.createdAt, at), and(eq(skills.createdAt, at), lt(skills.id, params.cursor!.id)))
-            : or(gt(skills.createdAt, at), and(eq(skills.createdAt, at), gt(skills.id, params.cursor!.id)));
+          return params.order === 'desc'
+            ? or(
+                lt(skills.createdAt, at),
+                and(eq(skills.createdAt, at), lt(skills.id, params.cursor!.id)),
+              )
+            : or(
+                gt(skills.createdAt, at),
+                and(eq(skills.createdAt, at), gt(skills.id, params.cursor!.id)),
+              );
         })()
       : undefined,
   ].filter((condition) => condition !== undefined);
@@ -133,16 +140,15 @@ export async function listSkillsPage(
     .from(skills)
     .where(conditions.length > 0 ? and(...conditions) : undefined)
     .orderBy(
-      params.order === "desc" ? desc(skills.createdAt) : asc(skills.createdAt),
-      params.order === "desc" ? desc(skills.id) : asc(skills.id),
+      params.order === 'desc' ? desc(skills.createdAt) : asc(skills.createdAt),
+      params.order === 'desc' ? desc(skills.id) : asc(skills.id),
     )
     .limit(params.limit + 1);
 
   const hasMore = rows.length > params.limit;
   const pageRows = hasMore ? rows.slice(0, params.limit) : rows;
   const last = pageRows[pageRows.length - 1];
-  const nextCursor =
-    hasMore && last ? { createdAt: last.createdAt.getTime(), id: last.id } : null;
+  const nextCursor = hasMore && last ? { createdAt: last.createdAt.getTime(), id: last.id } : null;
   return { rows: pageRows, nextCursor };
 }
 
@@ -180,7 +186,9 @@ export async function insertNextSkillVersionAndAdvance(
     return false;
   }
   await db.batch([
-    db.insert(skillVersions).values(versionValues(skillId, expectedVersion, versionId, meta, tree, now)),
+    db
+      .insert(skillVersions)
+      .values(versionValues(skillId, expectedVersion, versionId, meta, tree, now)),
     ...fileInsertStatements(db, skillId, expectedVersion, tree),
     db
       .update(skills)
@@ -208,13 +216,13 @@ export async function findSkillVersion(
 export async function listSkillVersionsPage(
   db: Db,
   skillId: string,
-  params: { limit: number; order: "asc" | "desc"; cursor: number | null },
+  params: { limit: number; order: 'asc' | 'desc'; cursor: number | null },
 ): Promise<{ rows: SkillVersionRow[]; nextCursor: number | null }> {
   const agentCondition = eq(skillVersions.skillId, skillId);
   const cursorCondition =
     params.cursor === null
       ? undefined
-      : params.order === "desc"
+      : params.order === 'desc'
         ? lt(skillVersions.version, params.cursor)
         : gt(skillVersions.version, params.cursor);
 
@@ -222,7 +230,7 @@ export async function listSkillVersionsPage(
     .select()
     .from(skillVersions)
     .where(cursorCondition === undefined ? agentCondition : and(agentCondition, cursorCondition))
-    .orderBy(params.order === "desc" ? desc(skillVersions.version) : asc(skillVersions.version))
+    .orderBy(params.order === 'desc' ? desc(skillVersions.version) : asc(skillVersions.version))
     .limit(params.limit + 1);
 
   const hasMore = rows.length > params.limit;
@@ -232,7 +240,11 @@ export async function listSkillVersionsPage(
 }
 
 /** 列出指定版本的全部文件行,按 path 有序(复合主键前缀扫描天然有序,ZIP 组装直接消费) */
-export async function listSkillFiles(db: Db, skillId: string, version: number): Promise<SkillFileRow[]> {
+export async function listSkillFiles(
+  db: Db,
+  skillId: string,
+  version: number,
+): Promise<SkillFileRow[]> {
   return db
     .select()
     .from(skillFiles)
@@ -321,8 +333,12 @@ export async function deleteSkillVersionAndRetarget(
 ): Promise<boolean> {
   const { skillId, version, now } = input;
   const results = await db.batch([
-    db.delete(skillFiles).where(and(eq(skillFiles.skillId, skillId), eq(skillFiles.version, version))),
-    db.delete(skillVersions).where(and(eq(skillVersions.skillId, skillId), eq(skillVersions.version, version))),
+    db
+      .delete(skillFiles)
+      .where(and(eq(skillFiles.skillId, skillId), eq(skillFiles.version, version))),
+    db
+      .delete(skillVersions)
+      .where(and(eq(skillVersions.skillId, skillId), eq(skillVersions.version, version))),
     db
       .update(skills)
       .set({
@@ -331,7 +347,9 @@ export async function deleteSkillVersionAndRetarget(
       })
       .where(eq(skills.id, skillId)),
   ]);
-  const versionDelete = results[1] as unknown as { meta?: { changes?: number } };
+  const versionDelete = results[1] as unknown as {
+    meta?: { changes?: number };
+  };
   return (versionDelete.meta?.changes ?? 0) > 0;
 }
 

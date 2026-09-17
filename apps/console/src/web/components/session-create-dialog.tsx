@@ -1,11 +1,11 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus } from "lucide-react";
-import { useState } from "react";
-import { useNavigate } from "react-router";
-import { listAgents } from "@/api/agents";
-import { listEnvironments } from "@/api/environments";
-import { createSession } from "@/api/sessions";
-import { Button } from "@/components/ui/button";
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Plus } from 'lucide-react';
+import { useState } from 'react';
+import { useNavigate } from 'react-router';
+import { listAgents } from '@/api/agents';
+import { listEnvironments } from '@/api/environments';
+import { createSession } from '@/api/sessions';
+import { Button } from '@/components/ui/button';
 import {
   Dialog,
   DialogContent,
@@ -13,18 +13,18 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
-import { shortId } from "@/lib/format";
+} from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
+import { shortId } from '@/lib/format';
 
 /**
  * 新建会话对话框:选 Agent(未归档)与 Environment(active),可选标题与
@@ -32,35 +32,35 @@ import { shortId } from "@/lib/format";
  */
 export function SessionCreateDialog() {
   const [open, setOpen] = useState(false);
-  const [agentId, setAgentId] = useState("");
-  const [environmentId, setEnvironmentId] = useState("");
-  const [title, setTitle] = useState("");
-  const [firstMessage, setFirstMessage] = useState("");
+  const [agentId, setAgentId] = useState('');
+  const [environmentId, setEnvironmentId] = useState('');
+  const [title, setTitle] = useState('');
+  const [firstMessage, setFirstMessage] = useState('');
   const [attempted, setAttempted] = useState(false);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
   const agentsQuery = useQuery({
-    queryKey: ["agents", "for-session"],
+    queryKey: ['agents', 'for-session'],
     queryFn: () => listAgents({ limit: 100 }),
     enabled: open,
   });
   const environmentsQuery = useQuery({
-    queryKey: ["environments", "for-session"],
+    queryKey: ['environments', 'for-session'],
     queryFn: () => listEnvironments({ limit: 100 }),
     enabled: open,
   });
   const agents = (agentsQuery.data?.data ?? []).filter((agent) => agent.archived_at === null);
   const environments = (environmentsQuery.data?.data ?? []).filter(
-    (environment) => environment.state === "active",
+    (environment) => environment.state === 'active',
   );
 
   function close() {
     setOpen(false);
-    setAgentId("");
-    setEnvironmentId("");
-    setTitle("");
-    setFirstMessage("");
+    setAgentId('');
+    setEnvironmentId('');
+    setTitle('');
+    setFirstMessage('');
     setAttempted(false);
   }
 
@@ -73,14 +73,17 @@ export function SessionCreateDialog() {
         ...(firstMessage.trim()
           ? {
               initial_events: [
-                { type: "user.message", content: [{ type: "text", text: firstMessage.trim() }] },
+                {
+                  type: 'user.message',
+                  content: [{ type: 'text', text: firstMessage.trim() }],
+                },
               ],
             }
           : {}),
       }),
     onSuccess: (session) => {
       close();
-      void queryClient.invalidateQueries({ queryKey: ["sessions"] });
+      void queryClient.invalidateQueries({ queryKey: ['sessions'] });
       navigate(`/sessions/${session.id}`);
     },
   });
@@ -104,7 +107,11 @@ export function SessionCreateDialog() {
               <SelectTrigger className="w-full">
                 <SelectValue
                   placeholder={
-                    agentsQuery.isPending ? "加载中…" : agents.length === 0 ? "暂无可选 Agent" : "选择 Agent"
+                    agentsQuery.isPending
+                      ? '加载中…'
+                      : agents.length === 0
+                        ? '暂无可选 Agent'
+                        : '选择 Agent'
                   }
                 />
               </SelectTrigger>
@@ -127,10 +134,10 @@ export function SessionCreateDialog() {
                 <SelectValue
                   placeholder={
                     environmentsQuery.isPending
-                      ? "加载中…"
+                      ? '加载中…'
                       : environments.length === 0
-                        ? "暂无可选 Environment"
-                        : "选择 Environment"
+                        ? '暂无可选 Environment'
+                        : '选择 Environment'
                   }
                 />
               </SelectTrigger>
@@ -143,7 +150,9 @@ export function SessionCreateDialog() {
               </SelectContent>
             </Select>
             {environments.length === 0 && !environmentsQuery.isPending ? (
-              <p className="text-muted-foreground text-xs">请先在 Environments 页面创建 Environment。</p>
+              <p className="text-muted-foreground text-xs">
+                请先在 Environments 页面创建 Environment。
+              </p>
             ) : null}
           </div>
           <div className="grid gap-2">
@@ -167,8 +176,12 @@ export function SessionCreateDialog() {
           </div>
         </div>
         {attempted && !agentId ? <p className="text-destructive text-sm">请选择 Agent</p> : null}
-        {attempted && !environmentId ? <p className="text-destructive text-sm">请选择 Environment</p> : null}
-        {mutation.isError ? <p className="text-destructive text-sm">{(mutation.error as Error).message}</p> : null}
+        {attempted && !environmentId ? (
+          <p className="text-destructive text-sm">请选择 Environment</p>
+        ) : null}
+        {mutation.isError ? (
+          <p className="text-destructive text-sm">{(mutation.error as Error).message}</p>
+        ) : null}
         <DialogFooter>
           <Button variant="outline" size="sm" disabled={mutation.isPending} onClick={close}>
             取消
@@ -181,7 +194,7 @@ export function SessionCreateDialog() {
               if (agentId && environmentId) mutation.mutate();
             }}
           >
-            {mutation.isPending ? "创建中…" : "创建"}
+            {mutation.isPending ? '创建中…' : '创建'}
           </Button>
         </DialogFooter>
       </DialogContent>

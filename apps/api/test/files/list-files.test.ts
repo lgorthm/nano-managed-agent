@@ -1,38 +1,43 @@
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from 'vitest';
+import {
+  createDefaultAgent,
+  createDefaultEnvironment,
+  postSession,
+  type SessionJson,
+} from '../sessions/helpers';
 import {
   applyMigrations,
   createDefaultFile,
-  jsonBody,
-  listFiles,
   type ErrorEnvelope,
   type FileJson,
+  jsonBody,
+  listFiles,
   type PageJson,
-} from "./helpers";
-import { createDefaultAgent, createDefaultEnvironment, postSession, type SessionJson } from "../sessions/helpers";
+} from './helpers';
 
 /** 带 scope 的 File 断言形状(scope_id 过滤时回显) */
 type ScopedFileJson = FileJson & { scope?: { type: string; id: string } };
 
 beforeAll(applyMigrations);
 
-function isSorted(items: FileJson[], order: "asc" | "desc"): boolean {
+function isSorted(items: FileJson[], order: 'asc' | 'desc'): boolean {
   for (let i = 1; i < items.length; i++) {
     const prev = items[i - 1]!.created_at;
     const curr = items[i]!.created_at;
-    if (order === "desc" ? prev < curr : prev > curr) return false;
+    if (order === 'desc' ? prev < curr : prev > curr) return false;
   }
   return true;
 }
 
-describe("GET /v1/files 分页", () => {
-  it("默认参数:每页 20、按上传时间倒序,游标翻到尾页", async () => {
+describe('GET /v1/files 分页', () => {
+  it('默认参数:每页 20、按上传时间倒序,游标翻到尾页', async () => {
     for (let i = 0; i < 25; i++) {
       await createDefaultFile(`item ${i}`);
     }
     const page1 = await jsonBody<PageJson<FileJson>>(await listFiles());
     expect(page1.data).toHaveLength(20);
     expect(page1.next_page).toBeTruthy();
-    expect(isSorted(page1.data, "desc")).toBe(true);
+    expect(isSorted(page1.data, 'desc')).toBe(true);
 
     const page2 = await jsonBody<PageJson<FileJson>>(await listFiles(`?page=${page1.next_page}`));
     expect(page2.data).toHaveLength(5);
@@ -43,86 +48,88 @@ describe("GET /v1/files 分页", () => {
     }
   });
 
-  it("limit=5 生效且两页无重叠", async () => {
-    const page1 = await jsonBody<PageJson<FileJson>>(await listFiles("?limit=5"));
+  it('limit=5 生效且两页无重叠', async () => {
+    const page1 = await jsonBody<PageJson<FileJson>>(await listFiles('?limit=5'));
     expect(page1.data).toHaveLength(5);
-    const page2 = await jsonBody<PageJson<FileJson>>(await listFiles(`?limit=5&page=${page1.next_page}`));
+    const page2 = await jsonBody<PageJson<FileJson>>(
+      await listFiles(`?limit=5&page=${page1.next_page}`),
+    );
     const ids1 = new Set(page1.data.map((f) => f.id));
     for (const item of page2.data) {
       expect(ids1.has(item.id)).toBe(false);
     }
   });
 
-  it("order=asc 正序", async () => {
-    const page = await jsonBody<PageJson<FileJson>>(await listFiles("?order=asc&limit=100"));
+  it('order=asc 正序', async () => {
+    const page = await jsonBody<PageJson<FileJson>>(await listFiles('?order=asc&limit=100'));
     expect(page.data.length).toBeGreaterThan(0);
-    expect(isSorted(page.data, "asc")).toBe(true);
+    expect(isSorted(page.data, 'asc')).toBe(true);
   });
 
-  it("limit=200 被截断为 100", async () => {
+  it('limit=200 被截断为 100', async () => {
     // 库中已有 30 个,再造 105 个确保超过 100;恰好返回 100 条证明截断生效
     for (let i = 0; i < 105; i++) {
       await createDefaultFile(`bulk ${i}`);
     }
-    const page = await jsonBody<PageJson<FileJson>>(await listFiles("?limit=200"));
+    const page = await jsonBody<PageJson<FileJson>>(await listFiles('?limit=200'));
     expect(page.data).toHaveLength(100);
     expect(page.next_page).toBeTruthy();
   });
 });
 
-describe("GET /v1/files 参数校验", () => {
-  it("limit=0、order 非法、游标篡改、其他端点游标混用分别返回 400", async () => {
-    for (const query of ["?limit=0", "?limit=abc", "?order=bogus", "?page=not-a-cursor"]) {
+describe('GET /v1/files 参数校验', () => {
+  it('limit=0、order 非法、游标篡改、其他端点游标混用分别返回 400', async () => {
+    for (const query of ['?limit=0', '?limit=abc', '?order=bogus', '?page=not-a-cursor']) {
       const res = await listFiles(query);
       expect(res.status).toBe(400);
-      expect((await jsonBody<ErrorEnvelope>(res)).error.type).toBe("invalid_request_error");
+      expect((await jsonBody<ErrorEnvelope>(res)).error.type).toBe('invalid_request_error');
     }
     // kind 前缀不同的游标(agents)传给 files 端点 → 400,静默错页被挡下
-    const alienCursor = btoa(JSON.stringify({ kind: "agents", createdAt: 1, id: "x" }));
+    const alienCursor = btoa(JSON.stringify({ kind: 'agents', createdAt: 1, id: 'x' }));
     expect((await listFiles(`?page=${alienCursor}`)).status).toBe(400);
   });
 });
 
-describe("GET /v1/files scope_id 过滤", () => {
-  it("不存在的会话自然返回空页", async () => {
+describe('GET /v1/files scope_id 过滤', () => {
+  it('不存在的会话自然返回空页', async () => {
     const page = await jsonBody<PageJson<FileJson>>(
-      await listFiles("?scope_id=sess_01911111-3333-7444-8555-666666666666"),
+      await listFiles('?scope_id=sess_01911111-3333-7444-8555-666666666666'),
     );
     expect(page.data).toEqual([]);
     expect(page.next_page).toBeNull();
   });
 
-  it("真实过滤:返回被该会话挂载的 File 并回显 scope,未挂载的不出现", async () => {
+  it('真实过滤:返回被该会话挂载的 File 并回显 scope,未挂载的不出现', async () => {
     const mounted = await createDefaultFile();
-    const unmounted = await createDefaultFile();
+    const _unmounted = await createDefaultFile();
     const session = await jsonBody<SessionJson>(
       await postSession({
         agent: (await createDefaultAgent()).id,
         environment_id: (await createDefaultEnvironment()).id,
-        resources: [{ type: "file", file_id: mounted.id }],
+        resources: [{ type: 'file', file_id: mounted.id }],
       }),
     );
     const page = await jsonBody<PageJson<ScopedFileJson>>(
       await listFiles(`?scope_id=${session.id}`),
     );
     expect(page.data.map((row) => row.id)).toEqual([mounted.id]);
-    expect(page.data[0]?.scope).toEqual({ type: "session", id: session.id });
+    expect(page.data[0]?.scope).toEqual({ type: 'session', id: session.id });
 
     // 租户级列表(不带 scope_id)不输出 scope 字段
-    const tenant = await jsonBody<PageJson<ScopedFileJson>>(await listFiles("?limit=100"));
+    const tenant = await jsonBody<PageJson<ScopedFileJson>>(await listFiles('?limit=100'));
     for (const row of tenant.data) {
       expect(row.scope).toBeUndefined();
     }
   });
 
-  it("非 sess_ 前缀返回 400", async () => {
-    const res = await listFiles("?scope_id=agent_01911111");
+  it('非 sess_ 前缀返回 400', async () => {
+    const res = await listFiles('?scope_id=agent_01911111');
     expect(res.status).toBe(400);
-    expect((await jsonBody<ErrorEnvelope>(res)).error.type).toBe("invalid_request_error");
+    expect((await jsonBody<ErrorEnvelope>(res)).error.type).toBe('invalid_request_error');
   });
 
-  it("缺少凭证返回 401", async () => {
-    const res = await listFiles("", { Authorization: "" });
+  it('缺少凭证返回 401', async () => {
+    const res = await listFiles('', { Authorization: '' });
     expect(res.status).toBe(401);
   });
 });

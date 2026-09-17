@@ -7,10 +7,10 @@ import type {
   SkillPage,
   SkillVersion,
   SkillVersionDeleted,
-} from "@nano/shared/glm";
-import { filenameFromDisposition, glmFetch, glmFetchPage, glmFetchRaw, qs } from "./client";
+} from '@nano/shared/glm';
+import { filenameFromDisposition, glmFetch, glmFetchPage, glmFetchRaw, qs } from './client';
 
-const BASE = "/agent/managed/v1/skills";
+const BASE = '/agent/managed/v1/skills';
 
 export function listSkills(query: SkillListQuery = {}) {
   return glmFetch<SkillPage>(`${BASE}${qs(query)}`);
@@ -30,7 +30,7 @@ export function getSkillVersion(skillId: string, version: string) {
 
 function buildUploadForm(input: SkillCreateInput): FormData {
   const form = new FormData();
-  if (input.displayTitle) form.set("display_title", input.displayTitle);
+  if (input.displayTitle) form.set('display_title', input.displayTitle);
   // 字段名是 Skill 内相对路径;filename 同步为 path,服务端按字段名归一化
   for (const { path, file } of input.files) form.set(path, file, path);
   return form;
@@ -38,13 +38,16 @@ function buildUploadForm(input: SkillCreateInput): FormData {
 
 /** multipart 上传完整目录,创建 Skill 与首个版本(v1) */
 export function createSkill(input: SkillCreateInput) {
-  return glmFetch<Skill>(BASE, { method: "POST", body: buildUploadForm(input) });
+  return glmFetch<Skill>(BASE, {
+    method: 'POST',
+    body: buildUploadForm(input),
+  });
 }
 
 /** 重新上传完整目录生成新版本;不接受任何文本字段 */
-export function createSkillVersion(skillId: string, input: Omit<SkillCreateInput, "displayTitle">) {
+export function createSkillVersion(skillId: string, input: Omit<SkillCreateInput, 'displayTitle'>) {
   return glmFetch<SkillVersion>(`${BASE}/${skillId}/versions`, {
-    method: "POST",
+    method: 'POST',
     body: buildUploadForm(input),
   });
 }
@@ -54,16 +57,16 @@ export async function downloadSkillZip(skillId: string, version: string, fallbac
   const res = await glmFetchRaw(`${BASE}/${skillId}/versions/${version}/content`);
   return {
     blob: await res.blob(),
-    filename: filenameFromDisposition(res.headers.get("content-disposition")) ?? fallbackName,
+    filename: filenameFromDisposition(res.headers.get('content-disposition')) ?? fallbackName,
   };
 }
 
 export function deleteSkill(skillId: string) {
-  return glmFetch<SkillDeleted>(`${BASE}/${skillId}`, { method: "DELETE" });
+  return glmFetch<SkillDeleted>(`${BASE}/${skillId}`, { method: 'DELETE' });
 }
 
 export function deleteSkillVersion(skillId: string, version: string) {
   return glmFetch<SkillVersionDeleted>(`${BASE}/${skillId}/versions/${version}`, {
-    method: "DELETE",
+    method: 'DELETE',
   });
 }

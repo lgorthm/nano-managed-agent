@@ -1,30 +1,41 @@
-import { useQuery } from "@tanstack/react-query";
-import { Bot, Brain, CalendarClock, Container, Files, KeyRound, Menu, MessagesSquare, Puzzle, Settings } from "lucide-react";
-import { useState } from "react";
-import { NavLink, Outlet } from "react-router";
-import { getIdentity } from "@/auth/identity";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { ProviderSelect } from "@/components/layout/provider-select";
+import { useQuery } from '@tanstack/react-query';
+import {
+  Bot,
+  Brain,
+  CalendarClock,
+  Container,
+  Files,
+  KeyRound,
+  Menu,
+  MessagesSquare,
+  Puzzle,
+  Settings,
+} from 'lucide-react';
+import { useState } from 'react';
+import { NavLink, Outlet } from 'react-router';
+import { getIdentity } from '@/auth/identity';
+import { ProviderSelect } from '@/components/layout/provider-select';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import {
   Sheet,
   SheetContent,
   SheetDescription,
   SheetTitle,
   SheetTrigger,
-} from "@/components/ui/sheet";
-import { cn } from "@/lib/utils";
+} from '@/components/ui/sheet';
+import { cn } from '@/lib/utils';
 
 const NAV_ITEMS = [
-  { to: "/agents", label: "Agents", icon: Bot },
-  { to: "/sessions", label: "Sessions", icon: MessagesSquare },
-  { to: "/deployments", label: "Deployments", icon: CalendarClock },
-  { to: "/environments", label: "Environments", icon: Container },
-  { to: "/skills", label: "Skills", icon: Puzzle },
-  { to: "/files", label: "Files", icon: Files },
-  { to: "/memories", label: "Memories", icon: Brain },
-  { to: "/vaults", label: "Vaults", icon: KeyRound },
-  { to: "/settings", label: "Settings", icon: Settings },
+  { to: '/agents', label: 'Agents', icon: Bot },
+  { to: '/sessions', label: 'Sessions', icon: MessagesSquare },
+  { to: '/deployments', label: 'Deployments', icon: CalendarClock },
+  { to: '/environments', label: 'Environments', icon: Container },
+  { to: '/skills', label: 'Skills', icon: Puzzle },
+  { to: '/files', label: 'Files', icon: Files },
+  { to: '/memories', label: 'Memories', icon: Brain },
+  { to: '/vaults', label: 'Vaults', icon: KeyRound },
+  { to: '/settings', label: 'Settings', icon: Settings },
 ];
 
 function BrandMark() {
@@ -50,10 +61,10 @@ function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
           onClick={onNavigate}
           className={({ isActive }) =>
             cn(
-              "flex items-center gap-2.5 rounded-lg border border-transparent px-3 py-2 text-sm transition-colors md:py-[7px]",
+              'flex items-center gap-2.5 rounded-lg border border-transparent px-3 py-2 text-sm transition-colors md:py-[7px]',
               isActive
-                ? "bg-card text-foreground shadow-xs border-border/80 font-medium [&_svg]:text-pine-600"
-                : "text-muted-foreground hover:bg-sidebar-accent/70 hover:text-foreground",
+                ? 'bg-card text-foreground shadow-xs border-border/80 font-medium [&_svg]:text-pine-600'
+                : 'text-muted-foreground hover:bg-sidebar-accent/70 hover:text-foreground',
             )
           }
         >
@@ -66,15 +77,24 @@ function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
 }
 
 function IdentityTag() {
-  const { data } = useQuery({ queryKey: ["identity"], queryFn: getIdentity, staleTime: Infinity });
-  if (!data) return <Badge variant="outline" className="font-normal text-muted-foreground">local dev</Badge>;
+  const { data } = useQuery({
+    queryKey: ['identity'],
+    queryFn: getIdentity,
+    staleTime: Infinity,
+  });
+  if (!data)
+    return (
+      <Badge variant="outline" className="font-normal text-muted-foreground">
+        local dev
+      </Badge>
+    );
   return (
     <Badge
       variant="secondary"
       className="max-w-48 truncate font-normal"
       title={data.email ?? data.name}
     >
-      {data.name ?? data.email ?? "已登录"}
+      {data.name ?? data.email ?? '已登录'}
     </Badge>
   );
 }

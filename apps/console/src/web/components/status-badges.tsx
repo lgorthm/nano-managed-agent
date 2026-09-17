@@ -1,5 +1,5 @@
-import type { DeploymentStatus, EnvironmentState, SessionStatus } from "@nano/shared/glm";
-import { cn } from "@/lib/utils";
+import type { DeploymentStatus, EnvironmentState, SessionStatus } from '@nano/shared/glm';
+import { cn } from '@/lib/utils';
 
 /**
  * 状态徽章:圆点 + 语义 tint(tint-* 类统一在 index.css 定义,亮暗主题各自适配)。
@@ -17,7 +17,7 @@ export function StatusBadge({
   return (
     <span
       className={cn(
-        "inline-flex w-fit shrink-0 items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap",
+        'inline-flex w-fit shrink-0 items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap',
         tint,
         className,
       )}
@@ -29,13 +29,19 @@ export function StatusBadge({
 }
 
 const SESSION_STATUS_TINT: Record<SessionStatus, string> = {
-  idle: "tint-neutral",
-  running: "tint-positive",
-  rescheduling: "tint-warning",
-  terminated: "tint-neutral",
+  idle: 'tint-neutral',
+  running: 'tint-positive',
+  rescheduling: 'tint-warning',
+  terminated: 'tint-neutral',
 };
 
-export function SessionStatusBadge({ status, className }: { status: SessionStatus; className?: string }) {
+export function SessionStatusBadge({
+  status,
+  className,
+}: {
+  status: SessionStatus;
+  className?: string;
+}) {
   return (
     <StatusBadge tint={SESSION_STATUS_TINT[status]} className={className}>
       {status}
@@ -43,10 +49,16 @@ export function SessionStatusBadge({ status, className }: { status: SessionStatu
   );
 }
 
-export function DeploymentStatusBadge({ status, className }: { status: DeploymentStatus; className?: string }) {
+export function DeploymentStatusBadge({
+  status,
+  className,
+}: {
+  status: DeploymentStatus;
+  className?: string;
+}) {
   return (
     <StatusBadge
-      tint={status === "active" ? "tint-positive" : "tint-warning"}
+      tint={status === 'active' ? 'tint-positive' : 'tint-warning'}
       className={className}
     >
       {status}
@@ -54,9 +66,15 @@ export function DeploymentStatusBadge({ status, className }: { status: Deploymen
   );
 }
 
-export function EnvironmentStateBadge({ state, className }: { state: EnvironmentState; className?: string }) {
+export function EnvironmentStateBadge({
+  state,
+  className,
+}: {
+  state: EnvironmentState;
+  className?: string;
+}) {
   return (
-    <StatusBadge tint={state === "active" ? "tint-positive" : "tint-neutral"} className={className}>
+    <StatusBadge tint={state === 'active' ? 'tint-positive' : 'tint-neutral'} className={className}>
       {state}
     </StatusBadge>
   );

@@ -29,7 +29,5 @@
   // 404 "error code: 1042"),服务绑定是官方通道:绑定的 fetch 忽略 URL 主机,
   // 直接路由到目标 Worker,路径与查询串仍由 proxy.ts 按 NANO_API_BASE 构造。
   // 本地 vite dev 不建立该绑定,代码在无绑定时回退普通 fetch(连本地 127.0.0.1:8787)。
-  "services": [
-    { "binding": "NANO_API_SERVICE", "service": "nano-api" }
-  ]
+  "services": [{ "binding": "NANO_API_SERVICE", "service": "nano-api" }]
 }

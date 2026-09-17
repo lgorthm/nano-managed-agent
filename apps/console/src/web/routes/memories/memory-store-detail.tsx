@@ -1,35 +1,34 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Memory, MemoryPrefix } from "@nano/shared/glm";
-import { Archive, Brain, ChevronRight, Folder, Trash2 } from "lucide-react";
-import { useState } from "react";
-import { useNavigate, useParams } from "react-router";
+import type { Memory, MemoryPrefix } from '@nano/shared/glm';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Archive, Brain, ChevronRight, Folder, Trash2 } from 'lucide-react';
+import { useState } from 'react';
+import { useNavigate, useParams } from 'react-router';
 import {
   archiveMemoryStore,
   deleteMemoryStore,
   getMemoryStore,
   listMemories,
   listMemoryVersions,
-} from "@/api/memories";
-import { BackLink } from "@/components/back-link";
-import { DataPager } from "@/components/data-pager";
-import { useCursorPage } from "@/hooks/use-cursor-page";
-import { EmptyState } from "@/components/empty-state";
+} from '@/api/memories';
+import { BackLink } from '@/components/back-link';
+import { DataPager } from '@/components/data-pager';
+import { EmptyState } from '@/components/empty-state';
 import {
   CreateMemoryDialog,
   DeleteMemoryDialog,
   MemoryVersionDialog,
   UpdateMemoryDialog,
   ViewMemoryDialog,
-} from "@/components/memory-dialogs";
-import { UpdateMemoryStoreDialog } from "@/components/memory-store-form-dialog";
-import { PageHeader } from "@/components/page-header";
-import { QueryError } from "@/components/query-error";
-import { RefreshButton } from "@/components/refresh-button";
-import { KeyValueRow, SectionCard } from "@/components/section-card";
-import { StatusBadge } from "@/components/status-badges";
-import { TableSkeleton } from "@/components/table-skeleton";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
+} from '@/components/memory-dialogs';
+import { UpdateMemoryStoreDialog } from '@/components/memory-store-form-dialog';
+import { PageHeader } from '@/components/page-header';
+import { QueryError } from '@/components/query-error';
+import { RefreshButton } from '@/components/refresh-button';
+import { KeyValueRow, SectionCard } from '@/components/section-card';
+import { StatusBadge } from '@/components/status-badges';
+import { TableSkeleton } from '@/components/table-skeleton';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
 import {
   Dialog,
   DialogContent,
@@ -37,16 +36,24 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
+} from '@/components/ui/dialog';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { formatBytes, formatTime } from "@/lib/format";
+} from '@/components/ui/select';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { useCursorPage } from '@/hooks/use-cursor-page';
+import { formatBytes, formatTime } from '@/lib/format';
 
 const MEMORY_PAGE_SIZE = 100;
 const VERSION_PAGE_SIZE = 50;
@@ -58,7 +65,7 @@ function ArchiveMemoryStoreDialog({ storeId }: { storeId: string }) {
   const mutation = useMutation({
     mutationFn: () => archiveMemoryStore(storeId),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["memory-stores"] });
+      void queryClient.invalidateQueries({ queryKey: ['memory-stores'] });
       setOpen(false);
     },
   });
@@ -71,16 +78,29 @@ function ArchiveMemoryStoreDialog({ storeId }: { storeId: string }) {
         <DialogHeader>
           <DialogTitle>归档 Memory Store?</DialogTitle>
           <DialogDescription>
-            归档后不能再挂载到新的会话或部署,且无法恢复;已挂载它的会话在下一次访问 memory 的交互时会失败。
+            归档后不能再挂载到新的会话或部署,且无法恢复;已挂载它的会话在下一次访问 memory
+            的交互时会失败。
           </DialogDescription>
         </DialogHeader>
-        {mutation.isError ? <p className="text-destructive text-sm">{(mutation.error as Error).message}</p> : null}
+        {mutation.isError ? (
+          <p className="text-destructive text-sm">{(mutation.error as Error).message}</p>
+        ) : null}
         <DialogFooter>
-          <Button variant="outline" size="sm" disabled={mutation.isPending} onClick={() => setOpen(false)}>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={mutation.isPending}
+            onClick={() => setOpen(false)}
+          >
             取消
           </Button>
-          <Button variant="destructive" size="sm" disabled={mutation.isPending} onClick={() => mutation.mutate()}>
-            {mutation.isPending ? "归档中…" : "确认归档"}
+          <Button
+            variant="destructive"
+            size="sm"
+            disabled={mutation.isPending}
+            onClick={() => mutation.mutate()}
+          >
+            {mutation.isPending ? '归档中…' : '确认归档'}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -96,29 +116,47 @@ function DeleteMemoryStoreDialog({ storeId }: { storeId: string }) {
   const mutation = useMutation({
     mutationFn: () => deleteMemoryStore(storeId),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["memory-stores"] });
-      void navigate("/memories");
+      void queryClient.invalidateQueries({ queryKey: ['memory-stores'] });
+      void navigate('/memories');
     },
   });
   return (
     <Dialog open={open} onOpenChange={mutation.isPending ? undefined : setOpen}>
-      <Button size="sm" variant="outline" className="text-destructive" onClick={() => setOpen(true)}>
+      <Button
+        size="sm"
+        variant="outline"
+        className="text-destructive"
+        onClick={() => setOpen(true)}
+      >
         <Trash2 /> 删除
       </Button>
       <DialogContent showCloseButton={false} className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>删除 Memory Store?</DialogTitle>
           <DialogDescription>
-            级联删除其中全部 memory 与版本历史,不可恢复;挂载中的会话将读不到它。删除前请确认没有活跃引用。
+            级联删除其中全部 memory
+            与版本历史,不可恢复;挂载中的会话将读不到它。删除前请确认没有活跃引用。
           </DialogDescription>
         </DialogHeader>
-        {mutation.isError ? <p className="text-destructive text-sm">{(mutation.error as Error).message}</p> : null}
+        {mutation.isError ? (
+          <p className="text-destructive text-sm">{(mutation.error as Error).message}</p>
+        ) : null}
         <DialogFooter>
-          <Button variant="outline" size="sm" disabled={mutation.isPending} onClick={() => setOpen(false)}>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={mutation.isPending}
+            onClick={() => setOpen(false)}
+          >
             取消
           </Button>
-          <Button variant="destructive" size="sm" disabled={mutation.isPending} onClick={() => mutation.mutate()}>
-            {mutation.isPending ? "删除中…" : "确认删除"}
+          <Button
+            variant="destructive"
+            size="sm"
+            disabled={mutation.isPending}
+            onClick={() => mutation.mutate()}
+          >
+            {mutation.isPending ? '删除中…' : '确认删除'}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -134,18 +172,18 @@ function PrefixBreadcrumb({
   prefix: string;
   onNavigate: (prefix: string) => void;
 }) {
-  const segments = prefix === "/" ? [] : prefix.replace(/^\//, "").replace(/\/$/, "").split("/");
+  const segments = prefix === '/' ? [] : prefix.replace(/^\//, '').replace(/\/$/, '').split('/');
   return (
     <nav className="flex min-w-0 flex-wrap items-center gap-0.5 font-mono text-xs">
       <button
         type="button"
         className="hover:bg-accent rounded px-1.5 py-0.5"
-        onClick={() => onNavigate("/")}
+        onClick={() => onNavigate('/')}
       >
         /
       </button>
       {segments.map((segment, index) => {
-        const target = `/${segments.slice(0, index + 1).join("/")}/`;
+        const target = `/${segments.slice(0, index + 1).join('/')}/`;
         const isLast = index === segments.length - 1;
         return (
           <span key={target} className="flex items-center">
@@ -168,23 +206,23 @@ function PrefixBreadcrumb({
 export function MemoryStoreDetailPage() {
   const { memoryStoreId } = useParams();
   const queryClient = useQueryClient();
-  const [prefix, setPrefix] = useState("/");
-  const [depth, setDepth] = useState("1");
+  const [prefix, setPrefix] = useState('/');
+  const [depth, setDepth] = useState('1');
   const [createOpen, setCreateOpen] = useState(false);
   const memoryPager = useCursorPage();
   const versionPager = useCursorPage();
   const [viewingMemory, setViewingMemory] = useState<Memory | null>(null);
   const [rowError, setRowError] = useState<string | null>(null);
   const [openVersionId, setOpenVersionId] = useState<string | null>(null);
-  const [versionMemoryFilter, setVersionMemoryFilter] = useState("");
+  const [versionMemoryFilter, setVersionMemoryFilter] = useState('');
 
   const storeQuery = useQuery({
-    queryKey: ["memory-stores", memoryStoreId],
+    queryKey: ['memory-stores', memoryStoreId],
     queryFn: () => getMemoryStore(memoryStoreId!),
     enabled: memoryStoreId !== undefined,
   });
   const memoriesQuery = useQuery({
-    queryKey: ["memory-stores", memoryStoreId, "memories", prefix, depth, memoryPager.cursor],
+    queryKey: ['memory-stores', memoryStoreId, 'memories', prefix, depth, memoryPager.cursor],
     queryFn: () =>
       listMemories(memoryStoreId!, {
         path_prefix: prefix,
@@ -197,15 +235,15 @@ export function MemoryStoreDetailPage() {
   });
   const versionsQuery = useQuery({
     queryKey: [
-      "memory-stores",
+      'memory-stores',
       memoryStoreId,
-      "memory_versions",
+      'memory_versions',
       versionMemoryFilter,
       versionPager.cursor,
     ],
     queryFn: () =>
       listMemoryVersions(memoryStoreId!, {
-        view: "basic",
+        view: 'basic',
         limit: VERSION_PAGE_SIZE,
         ...(versionMemoryFilter.trim() ? { memory_id: versionMemoryFilter.trim() } : {}),
         ...(versionPager.cursor ? { page: versionPager.cursor } : {}),
@@ -220,11 +258,14 @@ export function MemoryStoreDetailPage() {
 
   const store = storeQuery.data;
   const items = memoriesQuery.data?.data ?? [];
-  const prefixes = items.filter((item): item is MemoryPrefix => item.type === "memory_prefix");
-  const memories = items.filter((item): item is Memory => item.type === "memory");
+  const prefixes = items.filter((item): item is MemoryPrefix => item.type === 'memory_prefix');
+  const memories = items.filter((item): item is Memory => item.type === 'memory');
   const versions = versionsQuery.data?.data ?? [];
 
-  const refreshAll = () => void queryClient.invalidateQueries({ queryKey: ["memory-stores", memoryStoreId] });
+  const refreshAll = () =>
+    void queryClient.invalidateQueries({
+      queryKey: ['memory-stores', memoryStoreId],
+    });
 
   return (
     <div className="flex flex-1 flex-col gap-4">
@@ -262,8 +303,8 @@ export function MemoryStoreDetailPage() {
               <span className="font-mono text-xs">{store.id}</span>
             </KeyValueRow>
             <KeyValueRow label="状态">
-              <StatusBadge tint={store.archived_at ? "tint-neutral" : "tint-positive"}>
-                {store.archived_at ? "archived" : "active"}
+              <StatusBadge tint={store.archived_at ? 'tint-neutral' : 'tint-positive'}>
+                {store.archived_at ? 'archived' : 'active'}
               </StatusBadge>
             </KeyValueRow>
             <KeyValueRow label="创建 / 更新">
@@ -273,7 +314,9 @@ export function MemoryStoreDetailPage() {
             </KeyValueRow>
             {Object.keys(store.metadata).length > 0 ? (
               <KeyValueRow label="metadata">
-                <span className="font-mono text-xs break-all">{JSON.stringify(store.metadata)}</span>
+                <span className="font-mono text-xs break-all">
+                  {JSON.stringify(store.metadata)}
+                </span>
               </KeyValueRow>
             ) : null}
           </div>
@@ -321,20 +364,20 @@ export function MemoryStoreDetailPage() {
                         <StatusBadge
                           tint={
                             version.redacted_at
-                              ? "tint-neutral"
-                              : version.operation === "deleted"
-                                ? "tint-warning"
-                                : "tint-positive"
+                              ? 'tint-neutral'
+                              : version.operation === 'deleted'
+                                ? 'tint-warning'
+                                : 'tint-positive'
                           }
                         >
-                          {version.redacted_at ? "redacted" : version.operation}
+                          {version.redacted_at ? 'redacted' : version.operation}
                         </StatusBadge>
                       </TableCell>
                       <TableCell className="hidden max-w-40 truncate font-mono text-xs md:table-cell">
-                        {version.path ?? "—"}
+                        {version.path ?? '—'}
                       </TableCell>
                       <TableCell className="text-muted-foreground hidden font-mono text-xs md:table-cell">
-                        {version.created_by.type === "session_actor" ? "session" : "user"}
+                        {version.created_by.type === 'session_actor' ? 'session' : 'user'}
                       </TableCell>
                       <TableCell className="text-muted-foreground text-right text-xs tabular-nums">
                         {formatTime(version.created_at)}
@@ -430,7 +473,9 @@ export function MemoryStoreDetailPage() {
                           <span className="truncate">{item.path}</span>
                         </span>
                       </TableCell>
-                      <TableCell className="text-muted-foreground hidden text-xs md:table-cell">目录</TableCell>
+                      <TableCell className="text-muted-foreground hidden text-xs md:table-cell">
+                        目录
+                      </TableCell>
                       <TableCell className="text-muted-foreground text-right text-xs">—</TableCell>
                       <TableCell />
                     </TableRow>
@@ -438,7 +483,11 @@ export function MemoryStoreDetailPage() {
                   {memories.map((memory) => (
                     <TableRow key={memory.id}>
                       <TableCell className="max-w-52 font-mono text-xs md:max-w-none">
-                        <button type="button" className="hover:underline" onClick={() => setViewingMemory(memory)}>
+                        <button
+                          type="button"
+                          className="hover:underline"
+                          onClick={() => setViewingMemory(memory)}
+                        >
                           {memory.path}
                         </button>
                       </TableCell>
@@ -450,12 +499,22 @@ export function MemoryStoreDetailPage() {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1.5">
-                          <Button size="sm" variant="ghost" onClick={() => setViewingMemory(memory)}>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setViewingMemory(memory)}
+                          >
                             查看
                           </Button>
-                          {!store.archived_at ? <UpdateMemoryDialog storeId={store.id} memory={memory} /> : null}
                           {!store.archived_at ? (
-                            <DeleteMemoryDialog storeId={store.id} memory={memory} onError={setRowError} />
+                            <UpdateMemoryDialog storeId={store.id} memory={memory} />
+                          ) : null}
+                          {!store.archived_at ? (
+                            <DeleteMemoryDialog
+                              storeId={store.id}
+                              memory={memory}
+                              onError={setRowError}
+                            />
                           ) : null}
                         </div>
                       </TableCell>
@@ -478,8 +537,8 @@ export function MemoryStoreDetailPage() {
 
       <ViewMemoryDialog
         storeId={store.id}
-        memoryId={viewingMemory?.id ?? ""}
-        path={viewingMemory?.path ?? ""}
+        memoryId={viewingMemory?.id ?? ''}
+        path={viewingMemory?.path ?? ''}
         open={viewingMemory !== null}
         onOpenChange={(open) => {
           if (!open) setViewingMemory(null);

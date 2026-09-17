@@ -1,15 +1,15 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type {
   Environment,
   EnvironmentConfigInput,
   EnvironmentNetworkingInput,
   EnvironmentPackagesInput,
-} from "@nano/shared/glm";
-import { Pencil, Plus } from "lucide-react";
-import { useState } from "react";
-import { createEnvironment, updateEnvironment } from "@/api/environments";
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
+} from '@nano/shared/glm';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { Pencil, Plus } from 'lucide-react';
+import { useState } from 'react';
+import { createEnvironment, updateEnvironment } from '@/api/environments';
+import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog,
   DialogContent,
@@ -17,36 +17,36 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
+} from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
 
-type PackageManager = "apt" | "cargo" | "gem" | "go" | "npm" | "pip";
+type PackageManager = 'apt' | 'cargo' | 'gem' | 'go' | 'npm' | 'pip';
 
 /** 服务端按 apt → cargo → gem → go → npm → pip 的顺序安装 */
-const PACKAGE_MANAGERS: PackageManager[] = ["apt", "cargo", "gem", "go", "npm", "pip"];
+const PACKAGE_MANAGERS: PackageManager[] = ['apt', 'cargo', 'gem', 'go', 'npm', 'pip'];
 
 const PACKAGE_PLACEHOLDER: Record<PackageManager, string> = {
-  apt: "poppler-utils",
-  cargo: "ripgrep",
-  gem: "rails",
-  go: "hugo",
-  npm: "typescript",
-  pip: "pandas\nmatplotlib",
+  apt: 'poppler-utils',
+  cargo: 'ripgrep',
+  gem: 'rails',
+  go: 'hugo',
+  npm: 'typescript',
+  pip: 'pandas\nmatplotlib',
 };
 
 interface EnvironmentFormState {
   name: string;
   description: string;
-  networkingType: "unrestricted" | "limited";
+  networkingType: 'unrestricted' | 'limited';
   /** 一行一个 host */
   allowedHosts: string;
   allowPackageManagers: boolean;
@@ -57,13 +57,13 @@ interface EnvironmentFormState {
 
 function blankForm(): EnvironmentFormState {
   return {
-    name: "",
-    description: "",
-    networkingType: "unrestricted",
-    allowedHosts: "",
+    name: '',
+    description: '',
+    networkingType: 'unrestricted',
+    allowedHosts: '',
     allowPackageManagers: false,
     allowMcpServers: false,
-    packages: { apt: "", cargo: "", gem: "", go: "", npm: "", pip: "" },
+    packages: { apt: '', cargo: '', gem: '', go: '', npm: '', pip: '' },
   };
 }
 
@@ -72,22 +72,25 @@ function formFromEnvironment(environment: Environment): EnvironmentFormState {
   const { config } = environment;
   const packages = { ...blankForm().packages };
   for (const manager of PACKAGE_MANAGERS) {
-    packages[manager] = config.packages[manager].join("\n");
+    packages[manager] = config.packages[manager].join('\n');
   }
   return {
     name: environment.name,
-    description: environment.description ?? "",
+    description: environment.description ?? '',
     networkingType: config.networking.type,
-    allowedHosts: config.networking.type === "limited" ? config.networking.allowed_hosts.join("\n") : "",
-    allowPackageManagers: config.networking.type === "limited" ? config.networking.allow_package_managers : false,
-    allowMcpServers: config.networking.type === "limited" ? config.networking.allow_mcp_servers : false,
+    allowedHosts:
+      config.networking.type === 'limited' ? config.networking.allowed_hosts.join('\n') : '',
+    allowPackageManagers:
+      config.networking.type === 'limited' ? config.networking.allow_package_managers : false,
+    allowMcpServers:
+      config.networking.type === 'limited' ? config.networking.allow_mcp_servers : false,
     packages,
   };
 }
 
 function parseLines(text: string): string[] {
   return text
-    .split("\n")
+    .split('\n')
     .map((line) => line.trim())
     .filter((line) => line.length > 0);
 }
@@ -97,19 +100,21 @@ function validatePackageItems(manager: PackageManager, items: string[]): string 
   if (items.length > 200) return `${manager} 最多 200 项`;
   for (const item of items) {
     if (item.length > 256) return `${manager} 中的 "${item.slice(0, 24)}…" 超过 256 字符`;
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: 校验用户输入不得含控制字符,控制字符正是要匹配的目标
     if (/[\s\u0000-\u001f\u007f]/.test(item)) return `${manager} 中的 "${item}" 含空白或控制字符`;
-    if (item.startsWith("-")) return `${manager} 中的 "${item}" 不能以 - 开头`;
+    if (item.startsWith('-')) return `${manager} 中的 "${item}" 不能以 - 开头`;
   }
   return null;
 }
 
 /** 与服务端一致的 host 校验:仅接受主机名或 *.example.com 通配,不带协议、端口或路径 */
 function validateHosts(hosts: string[]): string | null {
-  if (hosts.length > 256) return "allowed_hosts 最多 256 项";
+  if (hosts.length > 256) return 'allowed_hosts 最多 256 项';
   for (const host of hosts) {
     if (host.length > 255) return `host "${host.slice(0, 24)}…" 超过 255 字符`;
-    if (host.includes("://")) return `host "${host}" 不能带协议前缀,写 github.com 而不是 https://github.com`;
-    if (host.includes("/") || host.includes(":")) return `host "${host}" 不能带端口或路径`;
+    if (host.includes('://'))
+      return `host "${host}" 不能带协议前缀,写 github.com 而不是 https://github.com`;
+    if (host.includes('/') || host.includes(':')) return `host "${host}" 不能带端口或路径`;
   }
   return null;
 }
@@ -122,31 +127,31 @@ function buildConfig(form: EnvironmentFormState): EnvironmentConfigInput {
     if (items.length > 0) packages[manager] = items;
   }
   const networking: EnvironmentNetworkingInput =
-    form.networkingType === "unrestricted"
-      ? { type: "unrestricted" }
+    form.networkingType === 'unrestricted'
+      ? { type: 'unrestricted' }
       : {
-          type: "limited",
+          type: 'limited',
           allowed_hosts: parseLines(form.allowedHosts),
           allow_package_managers: form.allowPackageManagers,
           allow_mcp_servers: form.allowMcpServers,
         };
-  return { type: "cloud", packages, networking };
+  return { type: 'cloud', packages, networking };
 }
 
 /** 提交前的本地校验;返回第一条错误 */
 function validateForm(form: EnvironmentFormState): string | null {
-  if (!form.name.trim()) return "名称不能为空";
+  if (!form.name.trim()) return '名称不能为空';
   for (const manager of PACKAGE_MANAGERS) {
     const error = validatePackageItems(manager, parseLines(form.packages[manager]));
     if (error) return error;
   }
-  if (form.networkingType === "limited") {
+  if (form.networkingType === 'limited') {
     const hostsError = validateHosts(parseLines(form.allowedHosts));
     if (hostsError) return hostsError;
     // 服务端硬约束:limited 声明了 packages 时必须显式放行包管理器,否则 400
     const hasPackages = PACKAGE_MANAGERS.some((m) => parseLines(form.packages[m]).length > 0);
     if (hasPackages && !form.allowPackageManagers) {
-      return "limited 网络下声明了软件包时,必须允许包管理器联网,否则安装会失败";
+      return 'limited 网络下声明了软件包时,必须允许包管理器联网,否则安装会失败';
     }
   }
   return null;
@@ -187,7 +192,11 @@ function EnvironmentFormFields({
         <Label>网络策略</Label>
         <Select
           value={form.networkingType}
-          onValueChange={(v) => onChange({ networkingType: v as EnvironmentFormState["networkingType"] })}
+          onValueChange={(v) =>
+            onChange({
+              networkingType: v as EnvironmentFormState['networkingType'],
+            })
+          }
         >
           <SelectTrigger className="w-full">
             <SelectValue />
@@ -198,7 +207,7 @@ function EnvironmentFormFields({
           </SelectContent>
         </Select>
       </div>
-      {form.networkingType === "limited" ? (
+      {form.networkingType === 'limited' ? (
         <div className="bg-muted/40 grid gap-3 rounded-lg border p-3">
           <div className="grid gap-2">
             <Label htmlFor={`${idPrefix}-hosts`}>放行的主机(一行一个)</Label>
@@ -207,7 +216,7 @@ function EnvironmentFormFields({
               rows={3}
               value={form.allowedHosts}
               onChange={(e) => onChange({ allowedHosts: e.target.value })}
-              placeholder={"api.example.com\n*.internal.example.com"}
+              placeholder={'api.example.com\n*.internal.example.com'}
             />
             <p className="text-muted-foreground text-xs">
               只接受主机名或 *.example.com 通配,不带协议、端口或路径;最多 256 项。
@@ -234,7 +243,10 @@ function EnvironmentFormFields({
         <div className="grid gap-2 sm:grid-cols-2">
           {PACKAGE_MANAGERS.map((manager) => (
             <div key={manager} className="grid gap-1">
-              <Label htmlFor={`${idPrefix}-pkg-${manager}`} className="text-muted-foreground font-mono text-xs">
+              <Label
+                htmlFor={`${idPrefix}-pkg-${manager}`}
+                className="text-muted-foreground font-mono text-xs"
+              >
                 {manager}
               </Label>
               <Textarea
@@ -242,7 +254,11 @@ function EnvironmentFormFields({
                 rows={2}
                 className="min-h-0 font-mono text-xs"
                 value={form.packages[manager]}
-                onChange={(e) => onChange({ packages: { ...form.packages, [manager]: e.target.value } })}
+                onChange={(e) =>
+                  onChange({
+                    packages: { ...form.packages, [manager]: e.target.value },
+                  })
+                }
                 placeholder={PACKAGE_PLACEHOLDER[manager]}
               />
             </div>
@@ -256,16 +272,13 @@ function EnvironmentFormFields({
   );
 }
 
-function useEnvironmentMutation(
-  submit: () => Promise<unknown>,
-  onDone: () => void,
-) {
+function useEnvironmentMutation(submit: () => Promise<unknown>, onDone: () => void) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: submit,
     onSuccess: () => {
       // 前缀匹配同时覆盖列表与详情查询
-      void queryClient.invalidateQueries({ queryKey: ["environments"] });
+      void queryClient.invalidateQueries({ queryKey: ['environments'] });
       onDone();
     },
   });
@@ -312,9 +325,15 @@ export function CreateEnvironmentDialog({
             会话沙箱的蓝图:声明预装软件包与出网策略,创建后可在多个会话与部署里复用。
           </DialogDescription>
         </DialogHeader>
-        <EnvironmentFormFields form={form} onChange={(patch) => setForm((prev) => ({ ...prev, ...patch }))} idPrefix="create-env" />
+        <EnvironmentFormFields
+          form={form}
+          onChange={(patch) => setForm((prev) => ({ ...prev, ...patch }))}
+          idPrefix="create-env"
+        />
         {attempted && error ? <p className="text-destructive text-sm">{error}</p> : null}
-        {mutation.isError ? <p className="text-destructive text-sm">{(mutation.error as Error).message}</p> : null}
+        {mutation.isError ? (
+          <p className="text-destructive text-sm">{(mutation.error as Error).message}</p>
+        ) : null}
         <DialogFooter>
           <Button variant="outline" size="sm" disabled={mutation.isPending} onClick={close}>
             取消
@@ -327,7 +346,7 @@ export function CreateEnvironmentDialog({
               if (!error) mutation.mutate();
             }}
           >
-            {mutation.isPending ? "创建中…" : "创建"}
+            {mutation.isPending ? '创建中…' : '创建'}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -373,11 +392,22 @@ export function UpdateEnvironmentDialog({ environment }: { environment: Environm
             配置整体替换;更新只影响之后创建的会话,正在运行的会话不受影响。
           </DialogDescription>
         </DialogHeader>
-        <EnvironmentFormFields form={form} onChange={(patch) => setForm((prev) => ({ ...prev, ...patch }))} idPrefix="update-env" />
+        <EnvironmentFormFields
+          form={form}
+          onChange={(patch) => setForm((prev) => ({ ...prev, ...patch }))}
+          idPrefix="update-env"
+        />
         {attempted && error ? <p className="text-destructive text-sm">{error}</p> : null}
-        {mutation.isError ? <p className="text-destructive text-sm">{(mutation.error as Error).message}</p> : null}
+        {mutation.isError ? (
+          <p className="text-destructive text-sm">{(mutation.error as Error).message}</p>
+        ) : null}
         <DialogFooter>
-          <Button variant="outline" size="sm" disabled={mutation.isPending} onClick={() => setOpen(false)}>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={mutation.isPending}
+            onClick={() => setOpen(false)}
+          >
             取消
           </Button>
           <Button
@@ -388,7 +418,7 @@ export function UpdateEnvironmentDialog({ environment }: { environment: Environm
               if (!error) mutation.mutate();
             }}
           >
-            {mutation.isPending ? "保存中…" : "保存"}
+            {mutation.isPending ? '保存中…' : '保存'}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -1,7 +1,7 @@
-import type { Context } from "hono";
-import { MAX_FILE_BYTES, MAX_TOTAL_BYTES, type RawSkillFile } from "@nano/shared";
-import type { AppEnv } from "../env";
-import { invalidRequestError, requestTooLargeError } from "./errors";
+import { MAX_FILE_BYTES, MAX_TOTAL_BYTES, type RawSkillFile } from '@nano/shared';
+import type { Context } from 'hono';
+import type { AppEnv } from '../env';
+import { invalidRequestError, requestTooLargeError } from './errors';
 
 /** multipart 解析结果:文本字段与文件字段分开,字段名即 Skill 内相对路径 */
 export interface ParsedMultipart {
@@ -18,12 +18,12 @@ export interface ParsedMultipart {
  * - File.name 是客户端本地文件名,参与校验会让同一目录在不同机器上传出不同结果,忽略之。
  */
 export async function parseMultipart(c: Context<AppEnv>): Promise<ParsedMultipart> {
-  const contentType = c.req.header("content-type")?.toLowerCase() ?? "";
-  if (!contentType.startsWith("multipart/form-data")) {
-    throw invalidRequestError("Content-Type must be multipart/form-data.");
+  const contentType = c.req.header('content-type')?.toLowerCase() ?? '';
+  if (!contentType.startsWith('multipart/form-data')) {
+    throw invalidRequestError('Content-Type must be multipart/form-data.');
   }
 
-  const declaredLength = Number(c.req.header("content-length"));
+  const declaredLength = Number(c.req.header('content-length'));
   if (Number.isFinite(declaredLength) && declaredLength > MAX_TOTAL_BYTES) {
     throw requestTooLargeError(`Upload exceeds the ${MAX_TOTAL_BYTES} byte limit.`);
   }
@@ -32,7 +32,7 @@ export async function parseMultipart(c: Context<AppEnv>): Promise<ParsedMultipar
   try {
     form = await c.req.raw.formData();
   } catch {
-    throw invalidRequestError("Malformed multipart/form-data body.");
+    throw invalidRequestError('Malformed multipart/form-data body.');
   }
 
   const textFields: Record<string, string> = {};
@@ -40,14 +40,19 @@ export async function parseMultipart(c: Context<AppEnv>): Promise<ParsedMultipar
   const seen = new Set<string>();
   for (const [name, value] of form.entries()) {
     if (seen.has(name)) {
-      throw invalidRequestError(`Duplicate multipart field name "${name}".`, { param: name });
+      throw invalidRequestError(`Duplicate multipart field name "${name}".`, {
+        param: name,
+      });
     }
     seen.add(name);
-    if (typeof value === "string") {
+    if (typeof value === 'string') {
       textFields[name] = value;
       continue;
     }
-    files.push({ path: name, bytes: new Uint8Array(await value.arrayBuffer()) });
+    files.push({
+      path: name,
+      bytes: new Uint8Array(await value.arrayBuffer()),
+    });
   }
   return { textFields, files };
 }
@@ -63,12 +68,12 @@ const MULTIPART_OVERHEAD_SLACK = 64 * 1024;
  *   精确裁决在服务层按 file.size 完成。
  */
 export async function parseFileUpload(c: Context<AppEnv>): Promise<File> {
-  const contentType = c.req.header("content-type")?.toLowerCase() ?? "";
-  if (!contentType.startsWith("multipart/form-data")) {
-    throw invalidRequestError("Content-Type must be multipart/form-data.");
+  const contentType = c.req.header('content-type')?.toLowerCase() ?? '';
+  if (!contentType.startsWith('multipart/form-data')) {
+    throw invalidRequestError('Content-Type must be multipart/form-data.');
   }
 
-  const declaredLength = Number(c.req.header("content-length"));
+  const declaredLength = Number(c.req.header('content-length'));
   if (
     Number.isFinite(declaredLength) &&
     declaredLength > MAX_FILE_BYTES + MULTIPART_OVERHEAD_SLACK
@@ -80,25 +85,31 @@ export async function parseFileUpload(c: Context<AppEnv>): Promise<File> {
   try {
     form = await c.req.raw.formData();
   } catch {
-    throw invalidRequestError("Malformed multipart/form-data body.");
+    throw invalidRequestError('Malformed multipart/form-data body.');
   }
 
   let file: File | undefined;
   for (const [name, value] of form.entries()) {
-    if (name === "file") {
-      if (typeof value === "string") {
-        throw invalidRequestError('Field "file" must be a file part.', { param: "file" });
+    if (name === 'file') {
+      if (typeof value === 'string') {
+        throw invalidRequestError('Field "file" must be a file part.', {
+          param: 'file',
+        });
       }
       if (file !== undefined) {
-        throw invalidRequestError('Multiple "file" parts are not allowed.', { param: "file" });
+        throw invalidRequestError('Multiple "file" parts are not allowed.', {
+          param: 'file',
+        });
       }
       file = value;
       continue;
     }
-    throw invalidRequestError(`Unknown multipart field "${name}".`, { param: name });
+    throw invalidRequestError(`Unknown multipart field "${name}".`, {
+      param: name,
+    });
   }
   if (file === undefined) {
-    throw invalidRequestError('Multipart request must contain a "file" field.', { param: "file" });
+    throw invalidRequestError('Multipart request must contain a "file" field.', { param: 'file' });
   }
   return file;
 }

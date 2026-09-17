@@ -1,23 +1,30 @@
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { Brain, Plus } from "lucide-react";
-import { useState } from "react";
-import { Link } from "react-router";
-import { listMemoryStores } from "@/api/memories";
-import { CreateMemoryStoreDialog } from "@/components/memory-store-form-dialog";
-import { DataPager } from "@/components/data-pager";
-import { useCursorPage } from "@/hooks/use-cursor-page";
-import { TableCard } from "@/components/table-card";
-import { EmptyState } from "@/components/empty-state";
-import { PageHeader } from "@/components/page-header";
-import { QueryError } from "@/components/query-error";
-import { RefreshButton } from "@/components/refresh-button";
-import { StatusBadge } from "@/components/status-badges";
-import { TableSkeleton } from "@/components/table-skeleton";
-import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { formatTime } from "@/lib/format";
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { Brain, Plus } from 'lucide-react';
+import { useState } from 'react';
+import { Link } from 'react-router';
+import { listMemoryStores } from '@/api/memories';
+import { DataPager } from '@/components/data-pager';
+import { EmptyState } from '@/components/empty-state';
+import { CreateMemoryStoreDialog } from '@/components/memory-store-form-dialog';
+import { PageHeader } from '@/components/page-header';
+import { QueryError } from '@/components/query-error';
+import { RefreshButton } from '@/components/refresh-button';
+import { StatusBadge } from '@/components/status-badges';
+import { TableCard } from '@/components/table-card';
+import { TableSkeleton } from '@/components/table-skeleton';
+import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { useCursorPage } from '@/hooks/use-cursor-page';
+import { formatTime } from '@/lib/format';
 
 const PAGE_SIZE = 20;
 
@@ -25,7 +32,7 @@ export function MemoryStoreListPage() {
   const pager = useCursorPage();
   const [includeArchived, setIncludeArchived] = useState(false);
   const query = useQuery({
-    queryKey: ["memory-stores", pager.cursor, includeArchived],
+    queryKey: ['memory-stores', pager.cursor, includeArchived],
     queryFn: () =>
       listMemoryStores({
         limit: PAGE_SIZE,
@@ -96,14 +103,16 @@ export function MemoryStoreListPage() {
                     >
                       {store.name}
                     </Link>
-                    <div className="text-muted-foreground hidden font-mono text-xs md:block">{store.id}</div>
+                    <div className="text-muted-foreground hidden font-mono text-xs md:block">
+                      {store.id}
+                    </div>
                   </TableCell>
                   <TableCell className="text-muted-foreground hidden max-w-64 truncate text-sm md:table-cell">
-                    {store.description || "—"}
+                    {store.description || '—'}
                   </TableCell>
                   <TableCell>
-                    <StatusBadge tint={store.archived_at ? "tint-neutral" : "tint-positive"}>
-                      {store.archived_at ? "archived" : "active"}
+                    <StatusBadge tint={store.archived_at ? 'tint-neutral' : 'tint-positive'}>
+                      {store.archived_at ? 'archived' : 'active'}
                     </StatusBadge>
                   </TableCell>
                   <TableCell className="text-muted-foreground hidden text-sm tabular-nums md:table-cell">

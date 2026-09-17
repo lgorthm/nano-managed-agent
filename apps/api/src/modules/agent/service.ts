@@ -8,27 +8,35 @@ import {
   listAgentsPage,
   listAgentVersionsPage,
   newAgentId,
-  type Db,
-} from "@nano/db";
+} from '@nano/db';
 import type {
   AgentCreateRequestInput,
   AgentResponse,
   AgentUpdateRequestInput,
   Page,
-} from "@nano/shared";
-import { agentConfigIssues, normalizeAgentConfig } from "@nano/shared";
-import type { Env } from "../../env";
-import { conflictError, invalidRequestError, notFoundError } from "../../lib/errors";
-import { cursorNumberField, cursorStringField, encodeCursor, type ListParams } from "../../lib/pagination";
-import { assertSkillReferencesResolvable } from "../../lib/skill-refs";
-import { mergeAgentConfig, agentConfigEquals } from "@nano/shared";
-import { serializeAgent, serializeAgentRow, versionRowToConfig } from "./serialize";
+} from '@nano/shared';
+import {
+  agentConfigEquals,
+  agentConfigIssues,
+  mergeAgentConfig,
+  normalizeAgentConfig,
+} from '@nano/shared';
+import type { Env } from '../../env';
+import { conflictError, invalidRequestError, notFoundError } from '../../lib/errors';
+import {
+  cursorNumberField,
+  cursorStringField,
+  encodeCursor,
+  type ListParams,
+} from '../../lib/pagination';
+import { assertSkillReferencesResolvable } from '../../lib/skill-refs';
+import { serializeAgent, serializeAgentRow, versionRowToConfig } from './serialize';
 
 /** agents 列表游标的 kind 前缀,防止与其他列表端点的游标混用 */
-const AGENTS_CURSOR_KIND = "agents";
+const AGENTS_CURSOR_KIND = 'agents';
 
 /** agent 版本列表游标的 kind 前缀 */
-const AGENT_VERSIONS_CURSOR_KIND = "agent-versions";
+const AGENT_VERSIONS_CURSOR_KIND = 'agent-versions';
 
 /**
  * Agent 资源的业务编排层。
@@ -42,7 +50,14 @@ export const agentService = {
     const id = newAgentId();
     const now = new Date();
     await createAgentWithFirstVersion(db, { id, config, now });
-    return serializeAgent({ id, version: 1, createdAt: now, updatedAt: now, archivedAt: null, config });
+    return serializeAgent({
+      id,
+      version: 1,
+      createdAt: now,
+      updatedAt: now,
+      archivedAt: null,
+      config,
+    });
   },
 
   /** 获取当前版本及完整配置;不存在时抛 404 */
@@ -60,8 +75,8 @@ export const agentService = {
       params.cursor === null
         ? null
         : {
-            createdAt: cursorNumberField(params.cursor, "createdAt"),
-            id: cursorStringField(params.cursor, "id"),
+            createdAt: cursorNumberField(params.cursor, 'createdAt'),
+            id: cursorStringField(params.cursor, 'id'),
           };
     const { rows, nextCursor } = await listAgentsPage(getDb(env), {
       limit: params.limit,
@@ -71,7 +86,11 @@ export const agentService = {
     return {
       data: rows.map((row) => serializeAgentRow(row.agent, row.version)),
       next_page: nextCursor
-        ? encodeCursor({ kind: AGENTS_CURSOR_KIND, createdAt: nextCursor.createdAt, id: nextCursor.id })
+        ? encodeCursor({
+            kind: AGENTS_CURSOR_KIND,
+            createdAt: nextCursor.createdAt,
+            id: nextCursor.id,
+          })
         : null,
     };
   },
@@ -81,14 +100,18 @@ export const agentService = {
    * 取当前版本(null → 404)→ 已归档拒绝(400)→ 合并补丁 → 合并结果做跨字段校验 →
    * 无变化直接返回现有版本(不写库)→ CAS 写入新版本(失败 → 409)。
    */
-  async updateAgent(env: Env, agentId: string, patch: AgentUpdateRequestInput): Promise<AgentResponse> {
+  async updateAgent(
+    env: Env,
+    agentId: string,
+    patch: AgentUpdateRequestInput,
+  ): Promise<AgentResponse> {
     const db = getDb(env);
     const current = await findCurrentAgent(db, agentId);
     if (!current) {
       throw notFoundError(`Agent "${agentId}" not found.`);
     }
     if (current.agent.archivedAt !== null) {
-      throw invalidRequestError("Agent is archived and cannot be updated.");
+      throw invalidRequestError('Agent is archived and cannot be updated.');
     }
 
     const currentConfig = versionRowToConfig(current.version);
@@ -96,15 +119,12 @@ export const agentService = {
 
     const issues = agentConfigIssues(merged);
     if (issues.length > 0) {
-      throw invalidRequestError(
-        "Merged configuration is invalid.",
-        {
-          issues: issues.map((issue) => ({
-            path: issue.path.map(String).join(".") || "(root)",
-            message: issue.message,
-          })),
-        },
-      );
+      throw invalidRequestError('Merged configuration is invalid.', {
+        issues: issues.map((issue) => ({
+          path: issue.path.map(String).join('.') || '(root)',
+          message: issue.message,
+        })),
+      });
     }
 
     // 提交了 skills(含传 null 清空)才校验;未提交时保持现状,不必重查
@@ -146,14 +166,17 @@ export const agentService = {
    * 时间戳语义(docs/agent/api/list-agent-versions.md):各版本用自身的时间戳,
    * archived_at 保持 Agent 级(同一 Agent 的所有条目回显同一个值)。
    */
-  async listAgentVersions(env: Env, agentId: string, params: ListParams): Promise<Page<AgentResponse>> {
+  async listAgentVersions(
+    env: Env,
+    agentId: string,
+    params: ListParams,
+  ): Promise<Page<AgentResponse>> {
     const db = getDb(env);
     const agent = await findAgentRow(db, agentId);
     if (!agent) {
       throw notFoundError(`Agent "${agentId}" not found.`);
     }
-    const cursor =
-      params.cursor === null ? null : cursorNumberField(params.cursor, "version");
+    const cursor = params.cursor === null ? null : cursorNumberField(params.cursor, 'version');
     const { rows, nextCursor } = await listAgentVersionsPage(db, agentId, {
       limit: params.limit,
       order: params.order,
@@ -173,7 +196,10 @@ export const agentService = {
       next_page:
         nextCursor === null
           ? null
-          : encodeCursor({ kind: AGENT_VERSIONS_CURSOR_KIND, version: nextCursor }),
+          : encodeCursor({
+              kind: AGENT_VERSIONS_CURSOR_KIND,
+              version: nextCursor,
+            }),
     };
   },
 

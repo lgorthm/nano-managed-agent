@@ -1,7 +1,7 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Memory } from "@nano/shared/glm";
-import { Pencil, Plus } from "lucide-react";
-import { useState } from "react";
+import type { Memory } from '@nano/shared/glm';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Pencil, Plus } from 'lucide-react';
+import { useState } from 'react';
 import {
   createMemory,
   deleteMemory,
@@ -9,8 +9,8 @@ import {
   getMemoryVersion,
   redactMemoryVersion,
   updateMemory,
-} from "@/api/memories";
-import { Button } from "@/components/ui/button";
+} from '@/api/memories';
+import { Button } from '@/components/ui/button';
 import {
   Dialog,
   DialogContent,
@@ -18,33 +18,33 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { formatBytes, formatTime } from "@/lib/format";
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { formatBytes, formatTime } from '@/lib/format';
 
 const encoder = new TextEncoder();
 
 /** 与服务端一致的路径校验:以 / 开头、NFC、无空段与 . / .. 段、UTF-8 ≤1024 字节 */
 export function validateMemoryPath(path: string): string | null {
-  if (!path.startsWith("/")) return "路径必须以 / 开头";
-  if (path.normalize("NFC") !== path) return "路径必须是 NFC 规范化形式(检查是否有组合字符)";
-  if (encoder.encode(path).length > 1024) return "路径 UTF-8 总长度不能超过 1024 字节";
-  const segments = path.slice(1).split("/");
+  if (!path.startsWith('/')) return '路径必须以 / 开头';
+  if (path.normalize('NFC') !== path) return '路径必须是 NFC 规范化形式(检查是否有组合字符)';
+  if (encoder.encode(path).length > 1024) return '路径 UTF-8 总长度不能超过 1024 字节';
+  const segments = path.slice(1).split('/');
   if (segments.some((segment) => segment.length === 0)) {
-    return "路径不能包含空段(连续 // 或以 / 结尾)";
+    return '路径不能包含空段(连续 // 或以 / 结尾)';
   }
-  if (segments.some((segment) => segment === "." || segment === "..")) {
-    return "路径不能包含 . 或 .. 段";
+  if (segments.some((segment) => segment === '.' || segment === '..')) {
+    return '路径不能包含 . 或 .. 段';
   }
   return null;
 }
 
 /** 内容默认上限 102400 字节(平台可调整) */
 export function validateMemoryContent(content: string): string | null {
-  if (content.length === 0) return "内容不能为空;要移除条目请使用删除";
-  if (encoder.encode(content).length > 102400) return "内容超过 102400 字节上限";
+  if (content.length === 0) return '内容不能为空;要移除条目请使用删除';
+  if (encoder.encode(content).length > 102400) return '内容超过 102400 字节上限';
   return null;
 }
 
@@ -54,7 +54,7 @@ function useMemoryMutation(submit: () => Promise<unknown>, onDone: () => void) {
     mutationFn: submit,
     onSuccess: () => {
       // 前缀匹配覆盖 store 详情、memories 与 memory_versions 列表
-      void queryClient.invalidateQueries({ queryKey: ["memory-stores"] });
+      void queryClient.invalidateQueries({ queryKey: ['memory-stores'] });
       onDone();
     },
   });
@@ -73,22 +73,19 @@ export function CreateMemoryDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const [path, setPath] = useState(`${defaultPrefix === "/" ? "/" : defaultPrefix}`);
-  const [content, setContent] = useState("");
+  const [path, setPath] = useState(`${defaultPrefix === '/' ? '/' : defaultPrefix}`);
+  const [content, setContent] = useState('');
   const [attempted, setAttempted] = useState(false);
 
   function close() {
     onOpenChange(false);
     setPath(defaultPrefix);
-    setContent("");
+    setContent('');
     setAttempted(false);
   }
 
   const error = validateMemoryPath(path) ?? validateMemoryContent(content);
-  const mutation = useMemoryMutation(
-    () => createMemory(storeId, { path, content }),
-    close,
-  );
+  const mutation = useMemoryMutation(() => createMemory(storeId, { path, content }), close);
   return (
     <Dialog open={open} onOpenChange={close}>
       <Button size="sm" onClick={() => onOpenChange(true)}>
@@ -122,11 +119,15 @@ export function CreateMemoryDialog({
               onChange={(e) => setContent(e.target.value)}
               placeholder="要长期记住的内容…"
             />
-            <p className="text-muted-foreground text-xs">{encoder.encode(content).length} / 102400 字节</p>
+            <p className="text-muted-foreground text-xs">
+              {encoder.encode(content).length} / 102400 字节
+            </p>
           </div>
         </div>
         {attempted && error ? <p className="text-destructive text-sm">{error}</p> : null}
-        {mutation.isError ? <p className="text-destructive text-sm">{(mutation.error as Error).message}</p> : null}
+        {mutation.isError ? (
+          <p className="text-destructive text-sm">{(mutation.error as Error).message}</p>
+        ) : null}
         <DialogFooter>
           <Button variant="outline" size="sm" disabled={mutation.isPending} onClick={close}>
             取消
@@ -139,7 +140,7 @@ export function CreateMemoryDialog({
               if (!error) mutation.mutate();
             }}
           >
-            {mutation.isPending ? "写入中…" : "写入"}
+            {mutation.isPending ? '写入中…' : '写入'}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -151,13 +152,13 @@ export function CreateMemoryDialog({
 export function UpdateMemoryDialog({ storeId, memory }: { storeId: string; memory: Memory }) {
   const [open, setOpen] = useState(false);
   const [path, setPath] = useState(memory.path);
-  const [content, setContent] = useState(memory.content ?? "");
+  const [content, setContent] = useState(memory.content ?? '');
   const [attempted, setAttempted] = useState(false);
 
   function openDialog() {
     // 内容以完整视图为准(列表 basic 视图里 content 为 null)
     setPath(memory.path);
-    setContent(memory.content ?? "");
+    setContent(memory.content ?? '');
     setAttempted(false);
     setOpen(true);
   }
@@ -169,7 +170,10 @@ export function UpdateMemoryDialog({ storeId, memory }: { storeId: string; memor
         updateMemory(storeId, memory.id, {
           path,
           content,
-          precondition: { type: "content_sha256", content_sha256: full.content_sha256 },
+          precondition: {
+            type: 'content_sha256',
+            content_sha256: full.content_sha256,
+          },
         }),
       ),
     () => setOpen(false),
@@ -206,13 +210,22 @@ export function UpdateMemoryDialog({ storeId, memory }: { storeId: string; memor
               value={content}
               onChange={(e) => setContent(e.target.value)}
             />
-            <p className="text-muted-foreground text-xs">{encoder.encode(content).length} / 102400 字节</p>
+            <p className="text-muted-foreground text-xs">
+              {encoder.encode(content).length} / 102400 字节
+            </p>
           </div>
         </div>
         {attempted && error ? <p className="text-destructive text-sm">{error}</p> : null}
-        {mutation.isError ? <p className="text-destructive text-sm">{(mutation.error as Error).message}</p> : null}
+        {mutation.isError ? (
+          <p className="text-destructive text-sm">{(mutation.error as Error).message}</p>
+        ) : null}
         <DialogFooter>
-          <Button variant="outline" size="sm" disabled={mutation.isPending} onClick={() => setOpen(false)}>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={mutation.isPending}
+            onClick={() => setOpen(false)}
+          >
             取消
           </Button>
           <Button
@@ -223,7 +236,7 @@ export function UpdateMemoryDialog({ storeId, memory }: { storeId: string; memor
               if (!error) mutation.mutate();
             }}
           >
-            {mutation.isPending ? "保存中…" : "保存"}
+            {mutation.isPending ? '保存中…' : '保存'}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -246,7 +259,7 @@ export function ViewMemoryDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const query = useQuery({
-    queryKey: ["memory-stores", storeId, "memories", memoryId, "full"],
+    queryKey: ['memory-stores', storeId, 'memories', memoryId, 'full'],
     queryFn: () => getMemory(storeId, memoryId),
     enabled: open,
   });
@@ -260,11 +273,11 @@ export function ViewMemoryDialog({
           <DialogDescription>
             {memory
               ? `${formatBytes(memory.content_size_bytes)} · SHA-256 ${memory.content_sha256.slice(0, 12)}…`
-              : "加载中…"}
+              : '加载中…'}
           </DialogDescription>
         </DialogHeader>
         <pre className="bg-muted/40 max-h-96 overflow-auto rounded-lg border p-3 font-mono text-xs whitespace-pre-wrap">
-          {memory?.content ?? (query.isError ? String(query.error) : "加载中…")}
+          {memory?.content ?? (query.isError ? String(query.error) : '加载中…')}
         </pre>
         <DialogFooter>
           <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>
@@ -290,7 +303,9 @@ export function DeleteMemoryDialog({
   const [open, setOpen] = useState(false);
   const mutation = useMemoryMutation(
     () =>
-      deleteMemory(storeId, memory.id, { expected_content_sha256: memory.content_sha256 }),
+      deleteMemory(storeId, memory.id, {
+        expected_content_sha256: memory.content_sha256,
+      }),
     () => setOpen(false),
   );
 
@@ -317,13 +332,25 @@ export function DeleteMemoryDialog({
             永久删除该条目;版本历史会保留一条 deleted 记录。挂载中的会话将读不到它。
           </DialogDescription>
         </DialogHeader>
-        {mutation.isError ? <p className="text-destructive text-sm">{(mutation.error as Error).message}</p> : null}
+        {mutation.isError ? (
+          <p className="text-destructive text-sm">{(mutation.error as Error).message}</p>
+        ) : null}
         <DialogFooter>
-          <Button variant="outline" size="sm" disabled={mutation.isPending} onClick={() => setOpen(false)}>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={mutation.isPending}
+            onClick={() => setOpen(false)}
+          >
             取消
           </Button>
-          <Button variant="destructive" size="sm" disabled={mutation.isPending} onClick={() => mutation.mutate()}>
-            {mutation.isPending ? "删除中…" : "确认删除"}
+          <Button
+            variant="destructive"
+            size="sm"
+            disabled={mutation.isPending}
+            onClick={() => mutation.mutate()}
+          >
+            {mutation.isPending ? '删除中…' : '确认删除'}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -346,7 +373,7 @@ export function MemoryVersionDialog({
   const [confirmRedact, setConfirmRedact] = useState(false);
   const queryClient = useQueryClient();
   const query = useQuery({
-    queryKey: ["memory-stores", storeId, "memory_versions", versionId],
+    queryKey: ['memory-stores', storeId, 'memory_versions', versionId],
     queryFn: () => getMemoryVersion(storeId, versionId!),
     enabled: open && versionId !== null,
   });
@@ -354,7 +381,9 @@ export function MemoryVersionDialog({
   const redactMutation = useMutation({
     mutationFn: () => redactMemoryVersion(storeId, versionId!),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["memory-stores", storeId] });
+      void queryClient.invalidateQueries({
+        queryKey: ['memory-stores', storeId],
+      });
       setConfirmRedact(false);
       onOpenChange(false);
     },
@@ -373,9 +402,9 @@ export function MemoryVersionDialog({
           <DialogDescription>
             {version
               ? `${version.operation} · ${formatTime(version.created_at)} · ${
-                  version.content_size_bytes != null ? formatBytes(version.content_size_bytes) : "—"
+                  version.content_size_bytes != null ? formatBytes(version.content_size_bytes) : '—'
                 }`
-              : "加载中…"}
+              : '加载中…'}
           </DialogDescription>
         </DialogHeader>
         {version ? (
@@ -383,12 +412,14 @@ export function MemoryVersionDialog({
             <div className="grid gap-1 text-sm">
               <div className="flex justify-between gap-4">
                 <span className="text-muted-foreground shrink-0">路径</span>
-                <span className="min-w-0 truncate text-right font-mono text-xs">{version.path ?? "—"}</span>
+                <span className="min-w-0 truncate text-right font-mono text-xs">
+                  {version.path ?? '—'}
+                </span>
               </div>
               <div className="flex justify-between gap-4">
                 <span className="text-muted-foreground shrink-0">写入者</span>
                 <span className="min-w-0 truncate text-right font-mono text-xs">
-                  {version.created_by.type === "session_actor"
+                  {version.created_by.type === 'session_actor'
                     ? `session ${version.created_by.session_id}`
                     : `user ${version.created_by.user_id}`}
                 </span>
@@ -396,12 +427,14 @@ export function MemoryVersionDialog({
               {version.redacted_at ? (
                 <div className="flex justify-between gap-4">
                   <span className="text-muted-foreground shrink-0">已脱敏</span>
-                  <span className="text-right text-xs tabular-nums">{formatTime(version.redacted_at)}</span>
+                  <span className="text-right text-xs tabular-nums">
+                    {formatTime(version.redacted_at)}
+                  </span>
                 </div>
               ) : null}
             </div>
             <pre className="bg-muted/40 max-h-72 overflow-auto rounded-lg border p-3 font-mono text-xs whitespace-pre-wrap">
-              {version.content ?? (version.redacted_at ? "(内容已脱敏)" : "(该版本无内容)")}
+              {version.content ?? (version.redacted_at ? '(内容已脱敏)' : '(该版本无内容)')}
             </pre>
           </div>
         ) : query.isError ? (
@@ -413,10 +446,15 @@ export function MemoryVersionDialog({
           <p className="text-destructive text-sm">{(redactMutation.error as Error).message}</p>
         ) : null}
         <DialogFooter>
-          {version && !version.redacted_at && version.operation !== "deleted" ? (
+          {version && !version.redacted_at && version.operation !== 'deleted' ? (
             confirmRedact ? (
               <>
-                <Button variant="outline" size="sm" disabled={redactMutation.isPending} onClick={() => setConfirmRedact(false)}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={redactMutation.isPending}
+                  onClick={() => setConfirmRedact(false)}
+                >
                   取消
                 </Button>
                 <Button
@@ -425,7 +463,7 @@ export function MemoryVersionDialog({
                   disabled={redactMutation.isPending}
                   onClick={() => redactMutation.mutate()}
                 >
-                  {redactMutation.isPending ? "脱敏中…" : "确认脱敏"}
+                  {redactMutation.isPending ? '脱敏中…' : '确认脱敏'}
                 </Button>
               </>
             ) : (

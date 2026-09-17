@@ -12,11 +12,11 @@ export const SKILL_NAME_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/;
 export const MAX_SKILL_DESCRIPTION_LENGTH = 1024;
 
 export type FrontmatterErrorCode =
-  | "missing_frontmatter"
-  | "missing_name"
-  | "missing_description"
-  | "invalid_name"
-  | "invalid_description";
+  | 'missing_frontmatter'
+  | 'missing_name'
+  | 'missing_description'
+  | 'invalid_name'
+  | 'invalid_description';
 
 export interface FrontmatterError {
   code: FrontmatterErrorCode;
@@ -41,14 +41,14 @@ function error(code: FrontmatterErrorCode, message: string): ParseSkillFrontmatt
  * 键匹配 `key: value` 形态;无法解析的行忽略,但 name / description 必须存在且合法。
  */
 export function parseSkillFrontmatter(bytes: Uint8Array): ParseSkillFrontmatterResult {
-  const text = new TextDecoder("utf-8").decode(bytes);
+  const text = new TextDecoder('utf-8').decode(bytes);
   const lines = text.split(/\r?\n/);
-  if ((lines[0] ?? "").trim() !== "---") {
-    return error("missing_frontmatter", "SKILL.md must start with a YAML frontmatter block (---).");
+  if ((lines[0] ?? '').trim() !== '---') {
+    return error('missing_frontmatter', 'SKILL.md must start with a YAML frontmatter block (---).');
   }
-  const closing = lines.findIndex((line, index) => index > 0 && line.trim() === "---");
+  const closing = lines.findIndex((line, index) => index > 0 && line.trim() === '---');
   if (closing === -1) {
-    return error("missing_frontmatter", "SKILL.md frontmatter block is not closed.");
+    return error('missing_frontmatter', 'SKILL.md frontmatter block is not closed.');
   }
 
   const entries = new Map<string, string>();
@@ -59,24 +59,24 @@ export function parseSkillFrontmatter(bytes: Uint8Array): ParseSkillFrontmatterR
     }
   }
 
-  const name = entries.get("name");
-  if (name === undefined || name === "") {
-    return error("missing_name", 'Frontmatter must provide a "name" key.');
+  const name = entries.get('name');
+  if (name === undefined || name === '') {
+    return error('missing_name', 'Frontmatter must provide a "name" key.');
   }
   if (!SKILL_NAME_PATTERN.test(name)) {
     return error(
-      "invalid_name",
+      'invalid_name',
       `Frontmatter "name" ("${name}") must match ${SKILL_NAME_PATTERN.source}.`,
     );
   }
 
-  const description = entries.get("description");
-  if (description === undefined || description === "") {
-    return error("missing_description", 'Frontmatter must provide a "description" key.');
+  const description = entries.get('description');
+  if (description === undefined || description === '') {
+    return error('missing_description', 'Frontmatter must provide a "description" key.');
   }
   if (description.length > MAX_SKILL_DESCRIPTION_LENGTH) {
     return error(
-      "invalid_description",
+      'invalid_description',
       `Frontmatter "description" exceeds ${MAX_SKILL_DESCRIPTION_LENGTH} characters.`,
     );
   }

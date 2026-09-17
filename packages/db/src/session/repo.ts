@@ -5,17 +5,18 @@
  * "0 行受影响"的歧义(agent 不存在 / 已归档 / running)不在本层消解,
  * 统一返回 false,由 service 重读一次区分错误码。
  */
-import { and, asc, desc, eq, gt, gte, inArray, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
-import type { BatchItem } from "drizzle-orm/batch";
+
 import type {
   NormalizedEnvironmentConfig,
   SessionAgentConfig,
   SessionListFilters,
   SessionStatus,
-} from "@nano/shared";
-import type { Db } from "../client";
-import type { FileInsertValues } from "../file/repo";
-import { files, sessionOutputs, sessionResources, sessions } from "../schema";
+} from '@nano/shared';
+import { and, asc, desc, eq, gt, gte, inArray, isNull, lt, lte, ne, or, sql } from 'drizzle-orm';
+import type { BatchItem } from 'drizzle-orm/batch';
+import type { Db } from '../client';
+import type { FileInsertValues } from '../file/repo';
+import { files, sessionOutputs, sessionResources, sessions } from '../schema';
 
 export type SessionRow = typeof sessions.$inferSelect;
 export type SessionResourceRow = typeof sessionResources.$inferSelect;
@@ -43,7 +44,11 @@ export interface CreateSessionResourceValues {
 /** 创建 Session 及其挂载资源;全部插入在同一 batch 中原子执行 */
 export async function createSession(
   db: Db,
-  input: { session: CreateSessionValues; resources: CreateSessionResourceValues[]; now: Date },
+  input: {
+    session: CreateSessionValues;
+    resources: CreateSessionResourceValues[];
+    now: Date;
+  },
 ): Promise<void> {
   const { session, resources, now } = input;
   await db.batch([
@@ -54,7 +59,7 @@ export async function createSession(
       agentConfig: session.agentConfig,
       environmentId: session.environmentId,
       environmentSnapshot: session.environmentSnapshot,
-      status: "idle",
+      status: 'idle',
       title: session.title,
       metadata: session.metadata,
       inputTokens: 0,
@@ -67,7 +72,7 @@ export async function createSession(
       db.insert(sessionResources).values({
         id: resource.id,
         sessionId: resource.sessionId,
-        type: "file",
+        type: 'file',
         fileId: resource.fileId,
         mountPath: resource.mountPath,
         createdAt: now,
@@ -99,27 +104,40 @@ export async function listSessionsPage(
   params: {
     filters: SessionListFilters;
     limit: number;
-    order: "asc" | "desc";
+    order: 'asc' | 'desc';
     cursor: SessionsPageCursor | null;
   },
 ): Promise<{ rows: SessionRow[]; nextCursor: SessionsPageCursor | null }> {
   const { filters } = params;
   const conditions = [
     filters.agentId !== undefined ? eq(sessions.agentId, filters.agentId) : undefined,
-    filters.agentVersion !== undefined ? eq(sessions.agentVersion, filters.agentVersion) : undefined,
+    filters.agentVersion !== undefined
+      ? eq(sessions.agentVersion, filters.agentVersion)
+      : undefined,
     filters.statuses !== undefined && filters.statuses.length > 0
       ? inArray(sessions.status, filters.statuses as SessionStatus[])
       : undefined,
-    filters.createdAtGt !== undefined ? gt(sessions.createdAt, new Date(filters.createdAtGt)) : undefined,
-    filters.createdAtGte !== undefined ? gte(sessions.createdAt, new Date(filters.createdAtGte)) : undefined,
-    filters.createdAtLt !== undefined ? lt(sessions.createdAt, new Date(filters.createdAtLt)) : undefined,
-    filters.createdAtLte !== undefined ? lte(sessions.createdAt, new Date(filters.createdAtLte)) : undefined,
+    filters.createdAtGt !== undefined
+      ? gt(sessions.createdAt, new Date(filters.createdAtGt))
+      : undefined,
+    filters.createdAtGte !== undefined
+      ? gte(sessions.createdAt, new Date(filters.createdAtGte))
+      : undefined,
+    filters.createdAtLt !== undefined
+      ? lt(sessions.createdAt, new Date(filters.createdAtLt))
+      : undefined,
+    filters.createdAtLte !== undefined
+      ? lte(sessions.createdAt, new Date(filters.createdAtLte))
+      : undefined,
     filters.includeArchived ? undefined : isNull(sessions.archivedAt),
     params.cursor
       ? (() => {
           const at = new Date(params.cursor!.createdAt);
-          return params.order === "desc"
-            ? or(lt(sessions.createdAt, at), and(eq(sessions.createdAt, at), lt(sessions.id, params.cursor!.id)))
+          return params.order === 'desc'
+            ? or(
+                lt(sessions.createdAt, at),
+                and(eq(sessions.createdAt, at), lt(sessions.id, params.cursor!.id)),
+              )
             : or(
                 gt(sessions.createdAt, at),
                 and(eq(sessions.createdAt, at), gt(sessions.id, params.cursor!.id)),
@@ -133,16 +151,15 @@ export async function listSessionsPage(
     .from(sessions)
     .where(conditions.length > 0 ? and(...conditions) : undefined)
     .orderBy(
-      params.order === "desc" ? desc(sessions.createdAt) : asc(sessions.createdAt),
-      params.order === "desc" ? desc(sessions.id) : asc(sessions.id),
+      params.order === 'desc' ? desc(sessions.createdAt) : asc(sessions.createdAt),
+      params.order === 'desc' ? desc(sessions.id) : asc(sessions.id),
     )
     .limit(params.limit + 1);
 
   const hasMore = rows.length > params.limit;
   const pageRows = hasMore ? rows.slice(0, params.limit) : rows;
   const last = pageRows[pageRows.length - 1];
-  const nextCursor =
-    hasMore && last ? { createdAt: last.createdAt.getTime(), id: last.id } : null;
+  const nextCursor = hasMore && last ? { createdAt: last.createdAt.getTime(), id: last.id } : null;
   return { rows: pageRows, nextCursor };
 }
 
@@ -185,7 +202,7 @@ export async function archiveSession(db: Db, sessionId: string, now: Date): Prom
     .update(sessions)
     .set({ archivedAt: now, updatedAt: now })
     .where(
-      and(eq(sessions.id, sessionId), isNull(sessions.archivedAt), ne(sessions.status, "running")),
+      and(eq(sessions.id, sessionId), isNull(sessions.archivedAt), ne(sessions.status, 'running')),
     )) as unknown as { meta?: { changes?: number } };
   return (result.meta?.changes ?? 0) > 0;
 }
@@ -203,26 +220,34 @@ export async function deleteSession(
   input: { sessionId: string; outputFileIds: string[] },
 ): Promise<boolean> {
   const { sessionId, outputFileIds } = input;
-  const statements: [BatchItem<"sqlite">, ...BatchItem<"sqlite">[]] = [
+  const statements: [BatchItem<'sqlite'>, ...BatchItem<'sqlite'>[]] = [
     db.delete(sessionResources).where(eq(sessionResources.sessionId, sessionId)),
     db.delete(sessionOutputs).where(eq(sessionOutputs.sessionId, sessionId)),
     ...(outputFileIds.length > 0 ? [db.delete(files).where(inArray(files.id, outputFileIds))] : []),
-    db.delete(sessions).where(and(eq(sessions.id, sessionId), ne(sessions.status, "running"))),
+    db.delete(sessions).where(and(eq(sessions.id, sessionId), ne(sessions.status, 'running'))),
   ];
   const results = await db.batch(statements);
-  const deleteResult = results[results.length - 1] as unknown as { meta?: { changes?: number } };
+  const deleteResult = results[results.length - 1] as unknown as {
+    meta?: { changes?: number };
+  };
   return (deleteResult.meta?.changes ?? 0) > 0;
 }
 
 /** 挂载一个 File 资源;mount_path 完全相同时 UNIQUE 约束抛错,由 service 转 400 */
 export async function insertSessionResource(
   db: Db,
-  resource: { id: string; sessionId: string; fileId: string; mountPath: string; now: Date },
+  resource: {
+    id: string;
+    sessionId: string;
+    fileId: string;
+    mountPath: string;
+    now: Date;
+  },
 ): Promise<void> {
   await db.insert(sessionResources).values({
     id: resource.id,
     sessionId: resource.sessionId,
-    type: "file",
+    type: 'file',
     fileId: resource.fileId,
     mountPath: resource.mountPath,
     createdAt: resource.now,
@@ -268,16 +293,19 @@ export async function listSessionResourcesPage(
   params: {
     sessionId: string;
     limit: number;
-    order: "asc" | "desc";
+    order: 'asc' | 'desc';
     cursor: SessionResourcesPageCursor | null;
   },
-): Promise<{ rows: SessionResourceRow[]; nextCursor: SessionResourcesPageCursor | null }> {
+): Promise<{
+  rows: SessionResourceRow[];
+  nextCursor: SessionResourcesPageCursor | null;
+}> {
   const conditions = [
     eq(sessionResources.sessionId, params.sessionId),
     params.cursor
       ? (() => {
           const at = new Date(params.cursor!.createdAt);
-          return params.order === "desc"
+          return params.order === 'desc'
             ? or(
                 lt(sessionResources.createdAt, at),
                 and(eq(sessionResources.createdAt, at), lt(sessionResources.id, params.cursor!.id)),
@@ -295,16 +323,15 @@ export async function listSessionResourcesPage(
     .from(sessionResources)
     .where(and(...conditions))
     .orderBy(
-      params.order === "desc" ? desc(sessionResources.createdAt) : asc(sessionResources.createdAt),
-      params.order === "desc" ? desc(sessionResources.id) : asc(sessionResources.id),
+      params.order === 'desc' ? desc(sessionResources.createdAt) : asc(sessionResources.createdAt),
+      params.order === 'desc' ? desc(sessionResources.id) : asc(sessionResources.id),
     )
     .limit(params.limit + 1);
 
   const hasMore = rows.length > params.limit;
   const pageRows = hasMore ? rows.slice(0, params.limit) : rows;
   const last = pageRows[pageRows.length - 1];
-  const nextCursor =
-    hasMore && last ? { createdAt: last.createdAt.getTime(), id: last.id } : null;
+  const nextCursor = hasMore && last ? { createdAt: last.createdAt.getTime(), id: last.id } : null;
   return { rows: pageRows, nextCursor };
 }
 
@@ -316,7 +343,9 @@ export async function findSessionResource(
   const rows = await db
     .select()
     .from(sessionResources)
-    .where(and(eq(sessionResources.id, keys.resourceId), eq(sessionResources.sessionId, keys.sessionId)))
+    .where(
+      and(eq(sessionResources.id, keys.resourceId), eq(sessionResources.sessionId, keys.sessionId)),
+    )
     .limit(1);
   return rows[0] ?? null;
 }
@@ -361,7 +390,13 @@ export async function findSessionOutputsBySession(
 /** 新产出编目:file 行与映射行同一 batch 原子插入;调用方需先完成 R2 put */
 export async function createSessionOutput(
   db: Db,
-  input: { file: FileInsertValues; sessionId: string; path: string; contentSha256: string; now: Date },
+  input: {
+    file: FileInsertValues;
+    sessionId: string;
+    path: string;
+    contentSha256: string;
+    now: Date;
+  },
 ): Promise<void> {
   await db.batch([
     db.insert(files).values(input.file),
@@ -383,7 +418,13 @@ export async function createSessionOutput(
  */
 export async function replaceSessionOutput(
   db: Db,
-  input: { file: FileInsertValues; sessionId: string; path: string; contentSha256: string; now: Date },
+  input: {
+    file: FileInsertValues;
+    sessionId: string;
+    path: string;
+    contentSha256: string;
+    now: Date;
+  },
 ): Promise<string | null> {
   const existing = await db
     .select()
@@ -493,13 +534,19 @@ export async function updateSessionRuntimeState(
           }
         : {}),
       ...(input.activeSecondsDelta !== undefined && input.activeSecondsDelta > 0
-        ? { activeSeconds: sql`${sessions.activeSeconds} + ${input.activeSecondsDelta}` }
+        ? {
+            activeSeconds: sql`${sessions.activeSeconds} + ${input.activeSecondsDelta}`,
+          }
         : {}),
       ...(input.activeSecondsDelta !== undefined
-        ? { durationSeconds: sql`MAX(0.0, (CAST((julianday('now') - 2440587.5) * 86400000 AS REAL) - ${sessions.createdAt}) / 1000.0)` }
+        ? {
+            durationSeconds: sql`MAX(0.0, (CAST((julianday('now') - 2440587.5) * 86400000 AS REAL) - ${sessions.createdAt}) / 1000.0)`,
+          }
         : {}),
       updatedAt: input.now,
     })
-    .where(eq(sessions.id, input.sessionId))) as unknown as { meta?: { changes?: number } };
+    .where(eq(sessions.id, input.sessionId))) as unknown as {
+    meta?: { changes?: number };
+  };
   return (result.meta?.changes ?? 0) > 0;
 }

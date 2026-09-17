@@ -5,14 +5,14 @@
  */
 
 export interface FileScope {
-  type: "session";
+  type: 'session';
   /** 归属的 Session ID(sess_ 前缀) */
   id: string;
 }
 
 /** 注意与 DOM 的 File 重名:统一用 ManagedFile 指代 */
 export interface ManagedFile {
-  type: "file";
+  type: 'file';
   id: string;
   size_bytes: number;
   created_at: string;
@@ -44,5 +44,5 @@ export interface FileListQuery {
 
 export interface FileDeleted {
   id: string;
-  type: "file_deleted";
+  type: 'file_deleted';
 }

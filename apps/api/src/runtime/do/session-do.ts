@@ -7,8 +7,8 @@
  * 与控制面的边界(§8):存在性/归档门禁在 service 侧查 D1 先行裁决;
  * D1 的 sessions.status 与 usage 三列是本类状态机的投影,迁移即时回写。
  */
-import { DurableObject } from "cloudflare:workers";
-import { getSandbox } from "@cloudflare/sandbox";
+import { DurableObject } from 'cloudflare:workers';
+import { getSandbox } from '@cloudflare/sandbox';
 import {
   findSession,
   findSessionOutputsBySession,
@@ -16,37 +16,36 @@ import {
   findSkillVersion,
   getDb,
   listSkillFiles,
-  updateSessionRuntimeState,
   type SessionUsageDelta,
-} from "@nano/db";
+  updateSessionRuntimeState,
+} from '@nano/db';
 import {
   BUILTIN_TOOL_DEFINITIONS,
-  resolveBuiltinTools,
-  resolveWireModel,
-  validateToolInvocation,
-  type ChatToolDefinition,
   type DeltaEventType,
   type EventInput,
   type EventListFilters,
   type EventType,
   type JsonValue,
   type PersistedEventJson,
+  resolveBuiltinTools,
+  resolveWireModel,
   type SessionStatus,
   type StopReason,
-} from "@nano/shared";
-import type { Env } from "../../env";
-import { newEventId, newTurnId } from "../ids";
-import { ModelHttpError } from "../model-client";
-import { createToolRunner, type ToolRunner } from "../tools/runner";
+  validateToolInvocation,
+} from '@nano/shared';
+import type { Env } from '../../env';
+import { newEventId, newTurnId } from '../ids';
+import { ModelHttpError } from '../model-client';
+import { createToolRunner, type ToolRunner } from '../tools/runner';
 import {
   initialTurnSnapshot,
+  type PendingConfirmationRecord,
   parseTurnSnapshot,
   runTurn,
-  type PendingConfirmationRecord,
   type TurnModelConfig,
   type TurnResume,
   type TurnSnapshot,
-} from "./turn-executor";
+} from './turn-executor';
 
 /** SSE 订阅上限(§7):超出即 429,客户端补历史 + 重连自愈 */
 const MAX_SUBSCRIBERS = 16;
@@ -73,9 +72,9 @@ type Row = Record<string, string | number | bigint | ArrayBuffer | null>;
 /** 输入事件的顶层载荷(信封字段之外);user.interrupt 无载荷 */
 function inputEventPayload(event: EventInput): Record<string, unknown> {
   switch (event.type) {
-    case "user.message":
+    case 'user.message':
       return { content: event.content };
-    case "user.tool_confirmation":
+    case 'user.tool_confirmation':
       return {
         tool_use_id: event.tool_use_id,
         result: event.result,
@@ -87,7 +86,7 @@ function inputEventPayload(event: EventInput): Record<string, unknown> {
 }
 
 export class SessionDo extends DurableObject<Env> {
-  private status: SessionStatus = "idle";
+  private status: SessionStatus = 'idle';
   private interruptFlag = false;
   private deleted = false;
   private turnActive = false;
@@ -104,13 +103,18 @@ export class SessionDo extends DurableObject<Env> {
     super(ctx, env);
     this.ensureSchema();
     for (const row of this.query("SELECT value FROM session_state WHERE key = 'status'")) {
-      if (row.value === "running" || row.value === "idle" || row.value === "rescheduling" || row.value === "terminated") {
+      if (
+        row.value === 'running' ||
+        row.value === 'idle' ||
+        row.value === 'rescheduling' ||
+        row.value === 'terminated'
+      ) {
         this.status = row.value;
       }
     }
     // 构造唤醒 = 强制逐出后的恢复入口之一(§6,等价 onStart);无孤儿 turn 行时是廉价空查
     void this.recoverOrphanTurnIfAny().catch((err) => {
-      console.error("session turn recovery on wake failed:", err);
+      console.error('session turn recovery on wake failed:', err);
     });
   }
 
@@ -162,8 +166,8 @@ export class SessionDo extends DurableObject<Env> {
 
   private setState(key: string, value: string): void {
     this.exec(
-      "INSERT INTO session_state (key, value) VALUES (?, ?) " +
-        "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+      'INSERT INTO session_state (key, value) VALUES (?, ?) ' +
+        'ON CONFLICT(key) DO UPDATE SET value = excluded.value',
       key,
       value,
     );
@@ -182,7 +186,8 @@ export class SessionDo extends DurableObject<Env> {
   ): PersistedEventJson {
     const id = options.id ?? newEventId();
     const createdAt = new Date();
-    const processedAt = options.processedAt !== undefined ? options.processedAt : createdAt.toISOString();
+    const processedAt =
+      options.processedAt !== undefined ? options.processedAt : createdAt.toISOString();
     const event: PersistedEventJson = {
       id,
       type,
@@ -191,7 +196,7 @@ export class SessionDo extends DurableObject<Env> {
       ...fields,
     };
     const written = this.exec(
-      "INSERT OR IGNORE INTO events (id, type, payload, created_at, processed_at) VALUES (?, ?, ?, ?, ?)",
+      'INSERT OR IGNORE INTO events (id, type, payload, created_at, processed_at) VALUES (?, ?, ?, ?, ?)',
       id,
       type,
       JSON.stringify(event),
@@ -205,12 +210,12 @@ export class SessionDo extends DurableObject<Env> {
 
   /** processed_at 回填(§2.1 的唯一可变字段例外);不重广播——订阅者已收排队帧 */
   private markProcessed(id: string, processedAt: string): void {
-    for (const row of this.query("SELECT payload FROM events WHERE id = ?", id)) {
-      if (typeof row.payload !== "string") continue;
+    for (const row of this.query('SELECT payload FROM events WHERE id = ?', id)) {
+      if (typeof row.payload !== 'string') continue;
       const event = JSON.parse(row.payload) as PersistedEventJson;
       event.processed_at = processedAt;
       this.exec(
-        "UPDATE events SET payload = ?, processed_at = ? WHERE id = ?",
+        'UPDATE events SET payload = ?, processed_at = ? WHERE id = ?',
         JSON.stringify(event),
         Date.parse(processedAt),
         id,
@@ -236,41 +241,60 @@ export class SessionDo extends DurableObject<Env> {
    */
   async sendEvents(events: EventInput[]): Promise<DoResult<string[]>> {
     if (this.deleted) {
-      return doFailure(409, "Session storage has been deleted.");
+      return doFailure(409, 'Session storage has been deleted.');
     }
     const persisted: PersistedEventJson[] = [];
     let hasMessage = false;
     let hasConfirmation = false;
     const confirmedInBatch = new Set<string>();
     for (const event of events) {
-      if (event.type === "user.tool_confirmation") {
+      if (event.type === 'user.tool_confirmation') {
         // 权限文档:tool_use_id 必须恰在待审批集合中;同批同 id 只允许一条确认
         if (confirmedInBatch.has(event.tool_use_id)) {
-          return doFailure(400, `Duplicate confirmation for tool_use_id "${event.tool_use_id}" in one request.`);
+          return doFailure(
+            400,
+            `Duplicate confirmation for tool_use_id "${event.tool_use_id}" in one request.`,
+          );
         }
         confirmedInBatch.add(event.tool_use_id);
-        const outcome = this.confirmPending(event.tool_use_id, event.result, event.deny_message ?? null);
-        if (outcome === "missing") {
-          return doFailure(400, `No pending tool confirmation for tool_use_id "${event.tool_use_id}".`);
+        const outcome = this.confirmPending(
+          event.tool_use_id,
+          event.result,
+          event.deny_message ?? null,
+        );
+        if (outcome === 'missing') {
+          return doFailure(
+            400,
+            `No pending tool confirmation for tool_use_id "${event.tool_use_id}".`,
+          );
         }
-        if (outcome === "decided") {
+        if (outcome === 'decided') {
           return doFailure(400, `Tool use "${event.tool_use_id}" has already been confirmed.`);
         }
         hasConfirmation = true;
       }
-      persisted.push(this.appendEvent(event.type, inputEventPayload(event), { processedAt: null }));
-      if (event.type === "user.message") hasMessage = true;
-      if (event.type === "user.interrupt") this.interruptFlag = true;
+      persisted.push(
+        this.appendEvent(event.type, inputEventPayload(event), {
+          processedAt: null,
+        }),
+      );
+      if (event.type === 'user.message') hasMessage = true;
+      if (event.type === 'user.interrupt') this.interruptFlag = true;
     }
     if (hasConfirmation && this.allConfirmationsDecided()) {
       // 全部待审批都有裁决 → 回 running 续跑(§4.3);排队消息由续跑的 turn 一并消费
       void this.executeConfirmedTurn().catch((err) => {
-        console.error("confirmed turn resume failed:", err);
-        this.appendEvent("session.error", { message: "The confirmed turn failed to resume." });
+        console.error('confirmed turn resume failed:', err);
+        this.appendEvent('session.error', {
+          message: 'The confirmed turn failed to resume.',
+        });
       });
-      return { ok: true, value: persisted.map((event) => JSON.stringify(event)) };
+      return {
+        ok: true,
+        value: persisted.map((event) => JSON.stringify(event)),
+      };
     }
-    if (hasMessage && this.status === "idle") {
+    if (hasMessage && this.status === 'idle') {
       this.startTurn();
     }
     return { ok: true, value: persisted.map((event) => JSON.stringify(event)) };
@@ -279,33 +303,38 @@ export class SessionDo extends DurableObject<Env> {
   /** 记录一条裁决(行内持久化——逐出后恢复入口可重入);missing/decided 为无效确认 */
   private confirmPending(
     toolUseId: string,
-    result: "allow" | "deny",
+    result: 'allow' | 'deny',
     denyMessage: string | null,
-  ): "updated" | "missing" | "decided" {
-    for (const row of this.query("SELECT decision FROM pending_confirmations WHERE tool_use_id = ? LIMIT 1", toolUseId)) {
+  ): 'updated' | 'missing' | 'decided' {
+    for (const row of this.query(
+      'SELECT decision FROM pending_confirmations WHERE tool_use_id = ? LIMIT 1',
+      toolUseId,
+    )) {
       if (row.decision === null) {
         this.exec(
-          "UPDATE pending_confirmations SET decision = ?, deny_message = ? WHERE tool_use_id = ?",
+          'UPDATE pending_confirmations SET decision = ?, deny_message = ? WHERE tool_use_id = ?',
           result,
           denyMessage,
           toolUseId,
         );
-        return "updated";
+        return 'updated';
       }
-      return "decided";
+      return 'decided';
     }
-    return "missing";
+    return 'missing';
   }
 
   /** 待审批集合非空且每条都有裁决(有空缺时继续等待,§4.3「所有待审批事件都被处理后」) */
   private allConfirmationsDecided(): boolean {
     let any = false;
-    for (const _row of this.query("SELECT 1 FROM pending_confirmations LIMIT 1")) {
+    for (const _row of this.query('SELECT 1 FROM pending_confirmations LIMIT 1')) {
       any = true;
       break;
     }
     if (!any) return false;
-    for (const _row of this.query("SELECT 1 FROM pending_confirmations WHERE decision IS NULL LIMIT 1")) {
+    for (const _row of this.query(
+      'SELECT 1 FROM pending_confirmations WHERE decision IS NULL LIMIT 1',
+    )) {
       return false;
     }
     return true;
@@ -317,40 +346,40 @@ export class SessionDo extends DurableObject<Env> {
   async listEvents(params: {
     filters: EventListFilters;
     limit: number;
-    order: "asc" | "desc";
+    order: 'asc' | 'desc';
     cursorSeq?: number;
   }): Promise<{ data: string[]; nextPageSeq: number | null }> {
     const filters = params.filters;
     const conditions: string[] = [];
     const values: Array<string | number> = [];
     if (filters.types !== undefined && filters.types.length > 0) {
-      conditions.push(`type IN (${filters.types.map(() => "?").join(", ")})`);
+      conditions.push(`type IN (${filters.types.map(() => '?').join(', ')})`);
       values.push(...filters.types);
     }
     if (filters.createdAtGt !== undefined) {
-      conditions.push("created_at > ?");
+      conditions.push('created_at > ?');
       values.push(filters.createdAtGt);
     }
     if (filters.createdAtGte !== undefined) {
-      conditions.push("created_at >= ?");
+      conditions.push('created_at >= ?');
       values.push(filters.createdAtGte);
     }
     if (filters.createdAtLt !== undefined) {
-      conditions.push("created_at < ?");
+      conditions.push('created_at < ?');
       values.push(filters.createdAtLt);
     }
     if (filters.createdAtLte !== undefined) {
-      conditions.push("created_at <= ?");
+      conditions.push('created_at <= ?');
       values.push(filters.createdAtLte);
     }
     if (params.cursorSeq !== undefined) {
-      conditions.push(params.order === "asc" ? "seq > ?" : "seq < ?");
+      conditions.push(params.order === 'asc' ? 'seq > ?' : 'seq < ?');
       values.push(params.cursorSeq);
     }
-    const where = conditions.length > 0 ? ` WHERE ${conditions.join(" AND ")}` : "";
+    const where = conditions.length > 0 ? ` WHERE ${conditions.join(' AND ')}` : '';
     const rows = [
       ...this.query(
-        `SELECT seq, payload FROM events${where} ORDER BY seq ${params.order === "asc" ? "ASC" : "DESC"} LIMIT ?`,
+        `SELECT seq, payload FROM events${where} ORDER BY seq ${params.order === 'asc' ? 'ASC' : 'DESC'} LIMIT ?`,
         ...values,
         params.limit + 1,
       ),
@@ -369,7 +398,7 @@ export class SessionDo extends DurableObject<Env> {
   /** 建立订阅:只推连接后的新事件(不回放);重连协议 = 列表补历史 + 按 id 去重 */
   async subscribe(deltas: DeltaEventType[]): Promise<DoResult<ReadableStream>> {
     if (this.subscribers.length >= MAX_SUBSCRIBERS) {
-      return doFailure(429, "Too many event stream subscribers for this session.");
+      return doFailure(429, 'Too many event stream subscribers for this session.');
     }
     const { readable, writable } = new IdentityTransformStream();
     const writer = writable.getWriter();
@@ -385,13 +414,18 @@ export class SessionDo extends DurableObject<Env> {
     this.subscribers.push(subscriber);
     this.startHeartbeat();
     // 立即写一帧心跳:客户端确认流已建立(注释帧,不携带事件语义)
-    void subscriber.write(": ping\n\n").catch(() => this.removeSubscriber(subscriber));
+    void subscriber.write(': ping\n\n').catch(() => this.removeSubscriber(subscriber));
     return { ok: true, value: readable };
   }
 
   /** 推送增量帧(仅流上存在、不落库;M1 的模型流式调用使用,§7 的 .delta 形态) */
   emitDelta(type: DeltaEventType, eventId: string, seq: number, text: string): void {
-    const frame = { type: `${type}.delta`, event_id: eventId, seq, delta: { text } };
+    const frame = {
+      type: `${type}.delta`,
+      event_id: eventId,
+      seq,
+      delta: { text },
+    };
     this.broadcastFrame(`data: ${JSON.stringify(frame)}\n\n`, (subscriber) =>
       subscriber.deltas.has(type),
     );
@@ -406,7 +440,7 @@ export class SessionDo extends DurableObject<Env> {
   private startHeartbeat(): void {
     if (this.heartbeatTimer !== null) return;
     this.heartbeatTimer = setInterval(() => {
-      this.broadcastFrame(": ping\n\n");
+      this.broadcastFrame(': ping\n\n');
     }, HEARTBEAT_INTERVAL_MS);
   }
 
@@ -428,17 +462,20 @@ export class SessionDo extends DurableObject<Env> {
   // ---------- RPC:控制面事件与删除联动(§2.3 / §8) ----------
 
   /** 控制面外发事件;M0 只有更新端点的 session.updated */
-  async appendControlEvent(type: "session.updated"): Promise<DoResult<string>> {
+  async appendControlEvent(type: 'session.updated'): Promise<DoResult<string>> {
     if (this.deleted) {
-      return doFailure(409, "Session storage has been deleted.");
+      return doFailure(409, 'Session storage has been deleted.');
     }
-    return { ok: true, value: JSON.stringify(this.appendEvent(type, {}, { processedAt: new Date().toISOString() })) };
+    return {
+      ok: true,
+      value: JSON.stringify(this.appendEvent(type, {}, { processedAt: new Date().toISOString() })),
+    };
   }
 
   /** 删除联动:销毁沙箱 → 广播 session.deleted → 断开订阅 → 清空全部存储 */
   async wipe(): Promise<void> {
     await this.destroySandbox().catch((err) => {
-      console.error("sandbox destroy on wipe failed:", err);
+      console.error('sandbox destroy on wipe failed:', err);
     });
     this.deleted = true;
     this.turnActive = false;
@@ -447,7 +484,7 @@ export class SessionDo extends DurableObject<Env> {
       this.broadcastFrame(
         `data: ${JSON.stringify({
           id: newEventId(),
-          type: "session.deleted",
+          type: 'session.deleted',
           created_at: new Date().toISOString(),
           processed_at: null,
         })}\n\n`,
@@ -466,13 +503,13 @@ export class SessionDo extends DurableObject<Env> {
    * mock(测试)与未配置绑定时为空操作;沙箱可能从未创建,失败只记日志。
    */
   async destroySandbox(): Promise<void> {
-    if (this.env.TOOL_SANDBOX_MOCK === "1" || this.env.SANDBOX === undefined) return;
+    if (this.env.TOOL_SANDBOX_MOCK === '1' || this.env.SANDBOX === undefined) return;
     const sessionId = this.ctx.id.name;
     if (sessionId === undefined) return;
     try {
       await getSandbox(this.env.SANDBOX, sessionId).destroy();
     } catch (err) {
-      console.error("sandbox destroy failed:", err);
+      console.error('sandbox destroy failed:', err);
     }
   }
 
@@ -480,20 +517,20 @@ export class SessionDo extends DurableObject<Env> {
 
   /** idle→running:落 status_running、插 turn 行(带完整初始检查点)、保活、fire-and-forget 执行 */
   private startTurn(): void {
-    if (this.status !== "idle" || this.turnActive) return;
+    if (this.status !== 'idle' || this.turnActive) return;
     // 挂起待审批期间不开新 turn(§4.3):排队消息由确认链续跑的 turn 一并消费
-    for (const _row of this.query("SELECT 1 FROM pending_confirmations LIMIT 1")) {
+    for (const _row of this.query('SELECT 1 FROM pending_confirmations LIMIT 1')) {
       return;
     }
-    this.status = "running";
-    this.setState("status", "running");
-    this.appendEvent("session.status_running", {});
-    void this.writeback({ status: "running" });
+    this.status = 'running';
+    this.setState('status', 'running');
+    this.appendEvent('session.status_running', {});
+    void this.writeback({ status: 'running' });
 
     const turnId = newTurnId();
     const snapshot = initialTurnSnapshot(turnId);
     this.exec(
-      "INSERT INTO session_turns (turn_id, iteration, snapshot, created_at) VALUES (?, ?, ?, ?)",
+      'INSERT INTO session_turns (turn_id, iteration, snapshot, created_at) VALUES (?, ?, ?, ?)',
       turnId,
       0,
       JSON.stringify(snapshot),
@@ -510,24 +547,31 @@ export class SessionDo extends DurableObject<Env> {
   }
 
   private turnFailed(turnId: string, token: number, err: unknown): void {
-    console.error("session turn failed:", err);
+    console.error('session turn failed:', err);
     if (token !== this.currentExecutionToken) return; // 被取代的执行(逐出模拟/双重恢复)失败:静默
     this.turnActive = false;
     if (this.deleted) return;
     // 行已不存在 = turn 已终局(恢复路径与在途执行的竞态):只复位内存,不补发事件
-    for (const _row of this.query("SELECT 1 FROM session_turns WHERE turn_id = ? LIMIT 1", turnId)) {
+    for (const _row of this.query(
+      'SELECT 1 FROM session_turns WHERE turn_id = ? LIMIT 1',
+      turnId,
+    )) {
       // 分诊(M4):上游 HTTP 错误带状态码,连接/断流类给出错误摘要,均可恢复——
       // 会话回 idle,下一条消息照常驱动新 turn
       const message =
         err instanceof ModelHttpError
           ? `The model API request failed (HTTP ${err.status}).`
           : `The agent turn failed: ${err instanceof Error ? err.message : String(err)}`;
-      this.appendEvent("session.error", { message });
-      void this.finishTurn(turnId, { type: "interrupted" }, {
-        input_tokens: 0,
-        output_tokens: 0,
-        cache_read_input_tokens: 0,
-      });
+      this.appendEvent('session.error', { message });
+      void this.finishTurn(
+        turnId,
+        { type: 'interrupted' },
+        {
+          input_tokens: 0,
+          output_tokens: 0,
+          cache_read_input_tokens: 0,
+        },
+      );
       return;
     }
   }
@@ -536,17 +580,20 @@ export class SessionDo extends DurableObject<Env> {
 
   appendProducedEvent(
     type:
-      | "agent.thinking"
-      | "agent.message"
-      | "agent.tool_use"
-      | "agent.tool_result"
-      | "session.usage"
-      | "session.error"
-      | "system.message",
+      | 'agent.thinking'
+      | 'agent.message'
+      | 'agent.tool_use'
+      | 'agent.tool_result'
+      | 'session.usage'
+      | 'session.error'
+      | 'system.message',
     fields: Record<string, unknown>,
     options: { id?: string } = {},
   ): void {
-    this.appendEvent(type, fields, { id: options.id, processedAt: new Date().toISOString() });
+    this.appendEvent(type, fields, {
+      id: options.id,
+      processedAt: new Date().toISOString(),
+    });
   }
 
   consumePendingUserMessages(): number {
@@ -554,7 +601,7 @@ export class SessionDo extends DurableObject<Env> {
     for (const row of this.query(
       "SELECT id FROM events WHERE type = 'user.message' AND processed_at IS NULL ORDER BY seq",
     )) {
-      if (typeof row.id === "string") ids.push(row.id);
+      if (typeof row.id === 'string') ids.push(row.id);
     }
     const processedAt = new Date().toISOString();
     for (const id of ids) this.markProcessed(id, processedAt);
@@ -564,7 +611,7 @@ export class SessionDo extends DurableObject<Env> {
   /** 细粒度检查点整体替换(§3):同步 SQL,无 await 间隙 */
   saveTurnSnapshot(turnId: string, iteration: number, snapshot: TurnSnapshot): void {
     this.exec(
-      "UPDATE session_turns SET iteration = ?, snapshot = ? WHERE turn_id = ?",
+      'UPDATE session_turns SET iteration = ?, snapshot = ? WHERE turn_id = ?',
       iteration,
       JSON.stringify(snapshot),
       turnId,
@@ -573,8 +620,8 @@ export class SessionDo extends DurableObject<Env> {
 
   loadEventsForContext(): PersistedEventJson[] {
     const events: PersistedEventJson[] = [];
-    for (const row of this.query("SELECT payload FROM events ORDER BY seq ASC")) {
-      if (typeof row.payload !== "string") continue;
+    for (const row of this.query('SELECT payload FROM events ORDER BY seq ASC')) {
+      if (typeof row.payload !== 'string') continue;
       try {
         events.push(JSON.parse(row.payload) as PersistedEventJson);
       } catch {
@@ -588,24 +635,28 @@ export class SessionDo extends DurableObject<Env> {
   async loadTurnConfig(): Promise<TurnModelConfig> {
     const sessionId = this.ctx.id.name;
     const row = sessionId !== undefined ? await findSession(getDb(this.env), sessionId) : null;
-    const agentConfig = row?.agentConfig ?? { system: null as string | null, model: { id: "glm-5.3" }, tools: [] };
+    const agentConfig = row?.agentConfig ?? {
+      system: null as string | null,
+      model: { id: 'glm-5.3' },
+      tools: [],
+    };
     // 模型服务经 AI Gateway REST API(chat completions):env 缺失给出可诊断的错误,
     // 经 runTurn 的 catch → turnFailed 落 session.error,会话回 idle
     if (this.env.CLOUDFLARE_API_TOKEN === undefined) {
-      throw new Error("Model API is not configured: missing secret CLOUDFLARE_API_TOKEN.");
+      throw new Error('Model API is not configured: missing secret CLOUDFLARE_API_TOKEN.');
     }
     if (this.env.AI_GATEWAY_ID === undefined) {
-      throw new Error("Model API is not configured: missing var AI_GATEWAY_ID.");
+      throw new Error('Model API is not configured: missing var AI_GATEWAY_ID.');
     }
     if (this.env.AI_API_BASE === undefined && this.env.CLOUDFLARE_ACCOUNT_ID === undefined) {
-      throw new Error("Model API is not configured: missing var CLOUDFLARE_ACCOUNT_ID.");
+      throw new Error('Model API is not configured: missing var CLOUDFLARE_ACCOUNT_ID.');
     }
     const baseUrl =
       this.env.AI_API_BASE ??
       `https://api.cloudflare.com/client/v4/accounts/${this.env.CLOUDFLARE_ACCOUNT_ID}/ai/v1`;
     // always_ask 工具一并提供给模型(执行时才分叉挂起,§4.3)
     const resolved = resolveBuiltinTools(agentConfig.tools);
-    const toolPermissions: Record<string, "always_allow" | "always_ask"> = {};
+    const toolPermissions: Record<string, 'always_allow' | 'always_ask'> = {};
     for (const tool of resolved) toolPermissions[tool.name] = tool.permission;
     return {
       system: agentConfig.system ?? null,
@@ -639,7 +690,7 @@ export class SessionDo extends DurableObject<Env> {
     }));
     const skills = [];
     for (const reference of row.agentConfig.skills) {
-      if (reference.type !== "custom") continue;
+      if (reference.type !== 'custom') continue;
       const version = Number(reference.version);
       if (!Number.isSafeInteger(version) || version < 1) continue;
       const versionRow = await findSkillVersion(db, reference.skill_id, version);
@@ -647,7 +698,10 @@ export class SessionDo extends DurableObject<Env> {
       if (versionRow !== null && files.length > 0) {
         skills.push({
           directory: versionRow.directory,
-          files: files.map((file) => ({ path: file.path, content: file.content })),
+          files: files.map((file) => ({
+            path: file.path,
+            content: file.content,
+          })),
         });
       }
     }
@@ -672,8 +726,8 @@ export class SessionDo extends DurableObject<Env> {
     const now = Date.now();
     for (const record of records) {
       this.exec(
-        "INSERT OR IGNORE INTO pending_confirmations (tool_use_id, name, input_json, result_event_id, decision, deny_message, created_at) " +
-          "VALUES (?, ?, ?, ?, NULL, NULL, ?)",
+        'INSERT OR IGNORE INTO pending_confirmations (tool_use_id, name, input_json, result_event_id, decision, deny_message, created_at) ' +
+          'VALUES (?, ?, ?, ?, NULL, NULL, ?)',
         record.toolUseId,
         record.name,
         record.inputJson,
@@ -700,8 +754,8 @@ export class SessionDo extends DurableObject<Env> {
       denyMessage: string | null;
     }> = [];
     for (const row of this.query(
-      "SELECT tool_use_id, name, input_json, result_event_id, decision, deny_message FROM pending_confirmations " +
-        "WHERE decision IS NOT NULL ORDER BY rowid", // rowid = 挂起批次的插入序 = 模型调用序(同毫秒插入时 created_at 会平局)
+      'SELECT tool_use_id, name, input_json, result_event_id, decision, deny_message FROM pending_confirmations ' +
+        'WHERE decision IS NOT NULL ORDER BY rowid', // rowid = 挂起批次的插入序 = 模型调用序(同毫秒插入时 created_at 会平局)
     )) {
       decided.push({
         toolUseId: String(row.tool_use_id),
@@ -709,7 +763,7 @@ export class SessionDo extends DurableObject<Env> {
         inputJson: String(row.input_json),
         resultEventId: String(row.result_event_id),
         decision: String(row.decision),
-        denyMessage: typeof row.deny_message === "string" ? row.deny_message : null,
+        denyMessage: typeof row.deny_message === 'string' ? row.deny_message : null,
       });
     }
     if (decided.length === 0) return;
@@ -720,11 +774,11 @@ export class SessionDo extends DurableObject<Env> {
     const token = ++this.currentExecutionToken;
     this.turnActive = true;
     this.turnStartedAt = Date.now();
-    if (this.status !== "running") {
-      this.status = "running";
-      this.setState("status", "running");
-      this.appendEvent("session.status_running", {});
-      void this.writeback({ status: "running" });
+    if (this.status !== 'running') {
+      this.status = 'running';
+      this.setState('status', 'running');
+      this.appendEvent('session.status_running', {});
+      void this.writeback({ status: 'running' });
     }
     this.keepAlive();
 
@@ -733,8 +787,8 @@ export class SessionDo extends DurableObject<Env> {
     for (const entry of decided) {
       let content: string;
       let isError: boolean;
-      if (entry.decision === "deny") {
-        content = `The tool call was rejected by the user${entry.denyMessage !== null ? `: ${entry.denyMessage}` : "."}`;
+      if (entry.decision === 'deny') {
+        content = `The tool call was rejected by the user${entry.denyMessage !== null ? `: ${entry.denyMessage}` : '.'}`;
         isError = true;
       } else {
         let input: JsonValue;
@@ -750,8 +804,15 @@ export class SessionDo extends DurableObject<Env> {
         } else {
           const outcome =
             runner !== null
-              ? await runner.run({ toolUseId: entry.toolUseId, name: entry.name, input })
-              : { content: "Tool execution is unavailable: no sandbox binding is configured.", isError: true };
+              ? await runner.run({
+                  toolUseId: entry.toolUseId,
+                  name: entry.name,
+                  input,
+                })
+              : {
+                  content: 'Tool execution is unavailable: no sandbox binding is configured.',
+                  isError: true,
+                };
           if (token !== this.currentExecutionToken) return; // 被取代:交由恢复重入
           content = outcome.content;
           isError = outcome.isError;
@@ -759,15 +820,15 @@ export class SessionDo extends DurableObject<Env> {
         }
       }
       this.appendEvent(
-        "agent.tool_result",
+        'agent.tool_result',
         {
           tool_use_id: entry.toolUseId,
-          content: [{ type: "text", text: content }],
+          content: [{ type: 'text', text: content }],
           ...(isError ? { is_error: true } : {}),
         },
         { id: entry.resultEventId, processedAt: new Date().toISOString() },
       );
-      this.exec("DELETE FROM pending_confirmations WHERE tool_use_id = ?", entry.toolUseId);
+      this.exec('DELETE FROM pending_confirmations WHERE tool_use_id = ?', entry.toolUseId);
     }
     if (toolsRan && runner !== null) await runner.harvestOutputs();
 
@@ -775,7 +836,7 @@ export class SessionDo extends DurableObject<Env> {
     const turnId = newTurnId();
     const snapshot = initialTurnSnapshot(turnId);
     this.exec(
-      "INSERT INTO session_turns (turn_id, iteration, snapshot, created_at) VALUES (?, ?, ?, ?)",
+      'INSERT INTO session_turns (turn_id, iteration, snapshot, created_at) VALUES (?, ?, ?, ?)',
       turnId,
       0,
       JSON.stringify(snapshot),
@@ -790,7 +851,7 @@ export class SessionDo extends DurableObject<Env> {
   estimateNextSeq(): number {
     if (this.lastSeq === null) {
       this.lastSeq = 0;
-      for (const row of this.query("SELECT MAX(seq) AS max_seq FROM events")) {
+      for (const row of this.query('SELECT MAX(seq) AS max_seq FROM events')) {
         const max = Number(row.max_seq ?? 0);
         if (Number.isFinite(max)) this.lastSeq = max;
       }
@@ -812,16 +873,20 @@ export class SessionDo extends DurableObject<Env> {
    * end_turn 后仍有积压输入时立即开新 turn(§4.4 的收尾竞态兜底);
    * interrupted 不续跑——积压留给下一条用户消息。
    */
-  async finishTurn(turnId: string, stopReason: StopReason, usage: UsagePayloadInput): Promise<void> {
-    const deletedRows = this.exec("DELETE FROM session_turns WHERE turn_id = ?", turnId);
+  async finishTurn(
+    turnId: string,
+    stopReason: StopReason,
+    usage: UsagePayloadInput,
+  ): Promise<void> {
+    const deletedRows = this.exec('DELETE FROM session_turns WHERE turn_id = ?', turnId);
     if (deletedRows === 0) return;
     this.turnActive = false;
     this.interruptFlag = false;
     if (this.deleted) return;
 
-    this.status = "idle";
-    this.setState("status", "idle");
-    this.appendEvent("session.status_idle", { stop_reason: stopReason });
+    this.status = 'idle';
+    this.setState('status', 'idle');
+    this.appendEvent('session.status_idle', { stop_reason: stopReason });
 
     const usageDelta: SessionUsageDelta | undefined =
       usage.input_tokens !== 0 || usage.output_tokens !== 0 || usage.cache_read_input_tokens !== 0
@@ -833,11 +898,17 @@ export class SessionDo extends DurableObject<Env> {
         : undefined;
     // stats 投影(M4):active 按 turn 实际时长累计(内存起点,逐出丢失则该次少计)
     const activeDelta =
-      this.turnStartedAt !== null ? Math.max(0, (Date.now() - this.turnStartedAt) / 1000) : undefined;
+      this.turnStartedAt !== null
+        ? Math.max(0, (Date.now() - this.turnStartedAt) / 1000)
+        : undefined;
     this.turnStartedAt = null;
-    await this.writeback({ status: "idle", usageDelta, activeSecondsDelta: activeDelta });
+    await this.writeback({
+      status: 'idle',
+      usageDelta,
+      activeSecondsDelta: activeDelta,
+    });
 
-    if (stopReason.type === "end_turn" && this.hasPendingUserMessages()) {
+    if (stopReason.type === 'end_turn' && this.hasPendingUserMessages()) {
       this.startTurn();
     }
   }
@@ -846,7 +917,7 @@ export class SessionDo extends DurableObject<Env> {
 
   /** 保活间隔可注入(测试 2s 才能等到巡检),默认 30s */
   private keepAliveIntervalMs(): number {
-    const parsed = Number.parseInt(this.env.TURN_KEEPALIVE_INTERVAL_MS ?? "", 10);
+    const parsed = Number.parseInt(this.env.TURN_KEEPALIVE_INTERVAL_MS ?? '', 10);
     return Number.isFinite(parsed) && parsed > 0 ? parsed : KEEPALIVE_INTERVAL_MS;
   }
 
@@ -871,15 +942,19 @@ export class SessionDo extends DurableObject<Env> {
   private async recoverOrphanTurnIfAny(): Promise<void> {
     if (this.turnActive || this.deleted) return;
     // 确认执行被逐出打断(有裁决的行仍在):先续跑确认链,turn 由其内部接管
-    for (const _row of this.query("SELECT 1 FROM pending_confirmations WHERE decision IS NOT NULL LIMIT 1")) {
+    for (const _row of this.query(
+      'SELECT 1 FROM pending_confirmations WHERE decision IS NOT NULL LIMIT 1',
+    )) {
       await this.executeConfirmedTurn();
       return;
     }
     let turnId: string | null = null;
     let iteration = 0;
     let snapshot: TurnSnapshot | null = null;
-    for (const row of this.query("SELECT turn_id, iteration, snapshot FROM session_turns LIMIT 1")) {
-      if (typeof row.turn_id === "string") turnId = row.turn_id;
+    for (const row of this.query(
+      'SELECT turn_id, iteration, snapshot FROM session_turns LIMIT 1',
+    )) {
+      if (typeof row.turn_id === 'string') turnId = row.turn_id;
       iteration = Number(row.iteration ?? 0);
       snapshot = parseTurnSnapshot(row.snapshot);
       break;
@@ -888,16 +963,18 @@ export class SessionDo extends DurableObject<Env> {
 
     this.turnActive = true;
     this.keepAlive();
-    if (this.status !== "running") {
+    if (this.status !== 'running') {
       // 逐出时状态机事实应为 running;防御性归一,保证续跑期间的门禁语义
-      this.status = "running";
-      this.setState("status", "running");
-      this.appendEvent("session.status_running", {});
-      void this.writeback({ status: "running" });
+      this.status = 'running';
+      this.setState('status', 'running');
+      this.appendEvent('session.status_running', {});
+      void this.writeback({ status: 'running' });
     }
     this.appendEvent(
-      "system.message",
-      { content: "The session recovered after an interruption; the in-flight turn was restarted." },
+      'system.message',
+      {
+        content: 'The session recovered after an interruption; the in-flight turn was restarted.',
+      },
       { processedAt: new Date().toISOString() },
     );
     const resume: TurnResume | undefined = snapshot !== null ? { iteration, snapshot } : undefined;
@@ -912,7 +989,7 @@ export class SessionDo extends DurableObject<Env> {
    */
   async simulateEvictionForTest(): Promise<DoResult<null>> {
     if (!this.turnActive) {
-      return doFailure(409, "No active turn in memory to evict.");
+      return doFailure(409, 'No active turn in memory to evict.');
     }
     this.turnActive = false;
     await this.recoverOrphanTurnIfAny();
@@ -939,7 +1016,7 @@ export class SessionDo extends DurableObject<Env> {
         now: new Date(),
       });
     } catch (err) {
-      console.error("session d1 writeback failed:", err);
+      console.error('session d1 writeback failed:', err);
     }
   }
 }

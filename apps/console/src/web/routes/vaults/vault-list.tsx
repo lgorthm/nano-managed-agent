@@ -1,23 +1,30 @@
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { KeyRound, Plus } from "lucide-react";
-import { useState } from "react";
-import { Link } from "react-router";
-import { listVaults } from "@/api/vaults";
-import { DataPager } from "@/components/data-pager";
-import { useCursorPage } from "@/hooks/use-cursor-page";
-import { TableCard } from "@/components/table-card";
-import { EmptyState } from "@/components/empty-state";
-import { PageHeader } from "@/components/page-header";
-import { QueryError } from "@/components/query-error";
-import { RefreshButton } from "@/components/refresh-button";
-import { StatusBadge } from "@/components/status-badges";
-import { TableSkeleton } from "@/components/table-skeleton";
-import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { formatTime } from "@/lib/format";
-import { CreateVaultDialog } from "@/components/vault-form-dialog";
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { KeyRound, Plus } from 'lucide-react';
+import { useState } from 'react';
+import { Link } from 'react-router';
+import { listVaults } from '@/api/vaults';
+import { DataPager } from '@/components/data-pager';
+import { EmptyState } from '@/components/empty-state';
+import { PageHeader } from '@/components/page-header';
+import { QueryError } from '@/components/query-error';
+import { RefreshButton } from '@/components/refresh-button';
+import { StatusBadge } from '@/components/status-badges';
+import { TableCard } from '@/components/table-card';
+import { TableSkeleton } from '@/components/table-skeleton';
+import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { CreateVaultDialog } from '@/components/vault-form-dialog';
+import { useCursorPage } from '@/hooks/use-cursor-page';
+import { formatTime } from '@/lib/format';
 
 const PAGE_SIZE = 20;
 
@@ -26,7 +33,7 @@ export function VaultListPage() {
   const [includeArchived, setIncludeArchived] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const query = useQuery({
-    queryKey: ["vaults", pager.cursor, includeArchived],
+    queryKey: ['vaults', pager.cursor, includeArchived],
     queryFn: () =>
       listVaults({
         limit: PAGE_SIZE,
@@ -95,11 +102,13 @@ export function VaultListPage() {
                     >
                       {vault.display_name}
                     </Link>
-                    <div className="text-muted-foreground hidden font-mono text-xs md:block">{vault.id}</div>
+                    <div className="text-muted-foreground hidden font-mono text-xs md:block">
+                      {vault.id}
+                    </div>
                   </TableCell>
                   <TableCell>
-                    <StatusBadge tint={vault.archived_at ? "tint-neutral" : "tint-positive"}>
-                      {vault.archived_at ? "archived" : "active"}
+                    <StatusBadge tint={vault.archived_at ? 'tint-neutral' : 'tint-positive'}>
+                      {vault.archived_at ? 'archived' : 'active'}
                     </StatusBadge>
                   </TableCell>
                   <TableCell className="text-muted-foreground hidden text-sm tabular-nums md:table-cell">

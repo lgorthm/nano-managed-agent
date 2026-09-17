@@ -1,20 +1,19 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Environment } from "@nano/shared/glm";
-import { Archive, Container, Trash2 } from "lucide-react";
-import { useState } from "react";
-import { useNavigate, useParams } from "react-router";
-import { archiveEnvironment, deleteEnvironment, getEnvironment } from "@/api/environments";
-import { BackLink } from "@/components/back-link";
-import { EmptyState } from "@/components/empty-state";
-import { UpdateEnvironmentDialog } from "@/components/environment-form-dialog";
-import { PageHeader } from "@/components/page-header";
-import { QueryError } from "@/components/query-error";
-import { RefreshButton } from "@/components/refresh-button";
-import { SectionCard, KeyValueRow } from "@/components/section-card";
-import { TableSkeleton } from "@/components/table-skeleton";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import type { Environment } from '@nano/shared/glm';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Archive, Container, Trash2 } from 'lucide-react';
+import { useState } from 'react';
+import { useNavigate, useParams } from 'react-router';
+import { archiveEnvironment, deleteEnvironment, getEnvironment } from '@/api/environments';
+import { BackLink } from '@/components/back-link';
+import { UpdateEnvironmentDialog } from '@/components/environment-form-dialog';
+import { PageHeader } from '@/components/page-header';
+import { QueryError } from '@/components/query-error';
+import { RefreshButton } from '@/components/refresh-button';
+import { KeyValueRow, SectionCard } from '@/components/section-card';
+import { TableSkeleton } from '@/components/table-skeleton';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import {
   Dialog,
   DialogContent,
@@ -22,10 +21,10 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import { formatTime } from "@/lib/format";
+} from '@/components/ui/dialog';
+import { formatTime } from '@/lib/format';
 
-const PACKAGE_MANAGERS = ["apt", "cargo", "gem", "go", "npm", "pip"] as const;
+const PACKAGE_MANAGERS = ['apt', 'cargo', 'gem', 'go', 'npm', 'pip'] as const;
 
 /** 归档不可逆(无恢复接口):阻止新绑定,仍引用的会话在下一次消费环境的交互时被终止 */
 function ArchiveEnvironmentDialog({ environment }: { environment: Environment }) {
@@ -34,7 +33,7 @@ function ArchiveEnvironmentDialog({ environment }: { environment: Environment })
   const mutation = useMutation({
     mutationFn: () => archiveEnvironment(environment.id),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["environments"] });
+      void queryClient.invalidateQueries({ queryKey: ['environments'] });
       setOpen(false);
     },
   });
@@ -50,13 +49,25 @@ function ArchiveEnvironmentDialog({ environment }: { environment: Environment })
             归档后不能再绑定到新的会话或部署,且无法恢复;仍引用它的会话在下一次消费环境的交互时会被终止。
           </DialogDescription>
         </DialogHeader>
-        {mutation.isError ? <p className="text-destructive text-sm">{(mutation.error as Error).message}</p> : null}
+        {mutation.isError ? (
+          <p className="text-destructive text-sm">{(mutation.error as Error).message}</p>
+        ) : null}
         <DialogFooter>
-          <Button variant="outline" size="sm" disabled={mutation.isPending} onClick={() => setOpen(false)}>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={mutation.isPending}
+            onClick={() => setOpen(false)}
+          >
             取消
           </Button>
-          <Button variant="destructive" size="sm" disabled={mutation.isPending} onClick={() => mutation.mutate()}>
-            {mutation.isPending ? "归档中…" : "确认归档"}
+          <Button
+            variant="destructive"
+            size="sm"
+            disabled={mutation.isPending}
+            onClick={() => mutation.mutate()}
+          >
+            {mutation.isPending ? '归档中…' : '确认归档'}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -72,29 +83,47 @@ function DeleteEnvironmentDialog({ environment }: { environment: Environment }) 
   const mutation = useMutation({
     mutationFn: () => deleteEnvironment(environment.id),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["environments"] });
-      void navigate("/environments");
+      void queryClient.invalidateQueries({ queryKey: ['environments'] });
+      void navigate('/environments');
     },
   });
   return (
     <Dialog open={open} onOpenChange={mutation.isPending ? undefined : setOpen}>
-      <Button size="sm" variant="outline" className="text-destructive" onClick={() => setOpen(true)}>
+      <Button
+        size="sm"
+        variant="outline"
+        className="text-destructive"
+        onClick={() => setOpen(true)}
+      >
         <Trash2 /> 删除
       </Button>
       <DialogContent showCloseButton={false} className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>删除 Environment?</DialogTitle>
           <DialogDescription>
-            永久删除且不做引用计数:引用方在下一次使用时才会得到 not found,定时部署的下一次触发会在创建会话阶段失败。删除前请确认没有活跃引用。
+            永久删除且不做引用计数:引用方在下一次使用时才会得到 not
+            found,定时部署的下一次触发会在创建会话阶段失败。删除前请确认没有活跃引用。
           </DialogDescription>
         </DialogHeader>
-        {mutation.isError ? <p className="text-destructive text-sm">{(mutation.error as Error).message}</p> : null}
+        {mutation.isError ? (
+          <p className="text-destructive text-sm">{(mutation.error as Error).message}</p>
+        ) : null}
         <DialogFooter>
-          <Button variant="outline" size="sm" disabled={mutation.isPending} onClick={() => setOpen(false)}>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={mutation.isPending}
+            onClick={() => setOpen(false)}
+          >
             取消
           </Button>
-          <Button variant="destructive" size="sm" disabled={mutation.isPending} onClick={() => mutation.mutate()}>
-            {mutation.isPending ? "删除中…" : "确认删除"}
+          <Button
+            variant="destructive"
+            size="sm"
+            disabled={mutation.isPending}
+            onClick={() => mutation.mutate()}
+          >
+            {mutation.isPending ? '删除中…' : '确认删除'}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -104,7 +133,7 @@ function DeleteEnvironmentDialog({ environment }: { environment: Environment }) 
 
 function NetworkingSection({ environment }: { environment: Environment }) {
   const networking = environment.config.networking;
-  if (networking.type === "unrestricted") {
+  if (networking.type === 'unrestricted') {
     return (
       <SectionCard title="网络策略">
         <div className="space-y-2.5">
@@ -127,23 +156,29 @@ function NetworkingSection({ environment }: { environment: Environment }) {
           </Badge>
         </KeyValueRow>
         <KeyValueRow label="包管理器联网">
-          <span className={networking.allow_package_managers ? "" : "text-muted-foreground"}>
-            {networking.allow_package_managers ? "允许" : "禁止"}
+          <span className={networking.allow_package_managers ? '' : 'text-muted-foreground'}>
+            {networking.allow_package_managers ? '允许' : '禁止'}
           </span>
         </KeyValueRow>
         <KeyValueRow label="MCP 联网">
-          <span className={networking.allow_mcp_servers ? "" : "text-muted-foreground"}>
-            {networking.allow_mcp_servers ? "允许" : "禁止"}
+          <span className={networking.allow_mcp_servers ? '' : 'text-muted-foreground'}>
+            {networking.allow_mcp_servers ? '允许' : '禁止'}
           </span>
         </KeyValueRow>
         <div className="text-sm">
-          <div className="text-muted-foreground mb-1.5">放行的主机({networking.allowed_hosts.length})</div>
+          <div className="text-muted-foreground mb-1.5">
+            放行的主机({networking.allowed_hosts.length})
+          </div>
           {networking.allowed_hosts.length === 0 ? (
             <p className="text-muted-foreground text-sm">(未放行任何主机)</p>
           ) : (
             <div className="flex max-h-40 flex-wrap gap-1.5 overflow-y-auto">
               {networking.allowed_hosts.map((host) => (
-                <Badge key={host} variant="secondary" className="max-w-full font-mono text-xs font-normal">
+                <Badge
+                  key={host}
+                  variant="secondary"
+                  className="max-w-full font-mono text-xs font-normal"
+                >
                   <span className="truncate">{host}</span>
                 </Badge>
               ))}
@@ -157,13 +192,16 @@ function NetworkingSection({ environment }: { environment: Environment }) {
 
 function PackagesSection({ environment }: { environment: Environment }) {
   const packages = environment.config.packages;
-  const groups = PACKAGE_MANAGERS.map((manager) => ({ manager, items: packages[manager] }));
+  const groups = PACKAGE_MANAGERS.map((manager) => ({
+    manager,
+    items: packages[manager],
+  }));
   const hasAny = groups.some(({ items }) => items.length > 0);
   return (
     <SectionCard
       title="预装软件包"
       className="md:col-span-2"
-      contentClassName={hasAny ? "max-h-72 overflow-auto" : undefined}
+      contentClassName={hasAny ? 'max-h-72 overflow-auto' : undefined}
     >
       {hasAny ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -174,7 +212,11 @@ function PackagesSection({ environment }: { environment: Environment }) {
                 <div className="text-muted-foreground font-mono text-xs">{manager}</div>
                 <div className="flex flex-wrap gap-1.5">
                   {items.map((item) => (
-                    <Badge key={item} variant="secondary" className="max-w-full font-mono text-xs font-normal">
+                    <Badge
+                      key={item}
+                      variant="secondary"
+                      className="max-w-full font-mono text-xs font-normal"
+                    >
                       <span className="truncate">{item}</span>
                     </Badge>
                   ))}
@@ -194,7 +236,7 @@ function PackagesSection({ environment }: { environment: Environment }) {
 export function EnvironmentDetailPage() {
   const { environmentId } = useParams();
   const query = useQuery({
-    queryKey: ["environments", environmentId],
+    queryKey: ['environments', environmentId],
     queryFn: () => getEnvironment(environmentId!),
     enabled: environmentId !== undefined,
   });
@@ -218,14 +260,18 @@ export function EnvironmentDetailPage() {
             <RefreshButton isFetching={query.isFetching} onClick={() => void query.refetch()}>
               刷新
             </RefreshButton>
-            {environment.state === "active" ? <UpdateEnvironmentDialog environment={environment} /> : null}
-            {environment.state === "active" ? <ArchiveEnvironmentDialog environment={environment} /> : null}
+            {environment.state === 'active' ? (
+              <UpdateEnvironmentDialog environment={environment} />
+            ) : null}
+            {environment.state === 'active' ? (
+              <ArchiveEnvironmentDialog environment={environment} />
+            ) : null}
             <DeleteEnvironmentDialog environment={environment} />
           </>
         }
       />
 
-      {environment.state === "archived" ? (
+      {environment.state === 'archived' ? (
         <Alert>
           <Container />
           <AlertTitle>已归档</AlertTitle>

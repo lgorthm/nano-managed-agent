@@ -1,4 +1,4 @@
-import { parseSkillFrontmatter } from "@nano/shared";
+import { parseSkillFrontmatter } from '@nano/shared';
 
 /** 与 GLM 服务端一致的上传上限(见 references/api/create-skill.md) */
 export const SKILL_UPLOAD_LIMITS = {
@@ -30,30 +30,40 @@ type CollectResult = { ok: true; data: CollectedSkillFiles } | { ok: false; erro
 export async function collectSkillFiles(fileList: Iterable<File>): Promise<CollectResult> {
   const entries: PickedSkillFile[] = [];
   for (const file of fileList) {
-    const path = (file.webkitRelativePath || file.name).replace(/\\/g, "/");
-    if (path.split("/").some((segment) => segment === ".git")) continue;
+    const path = (file.webkitRelativePath || file.name).replace(/\\/g, '/');
+    if (path.split('/').some((segment) => segment === '.git')) continue;
     entries.push({ path, file });
   }
-  if (entries.length === 0) return { ok: false, error: "未选择任何文件" };
+  if (entries.length === 0) return { ok: false, error: '未选择任何文件' };
 
-  const roots = new Set(entries.map((entry) => entry.path.split("/")[0]));
+  const roots = new Set(entries.map((entry) => entry.path.split('/')[0]));
   const root = roots.size === 1 ? [...roots][0] : undefined;
-  const skillMd = root === undefined ? undefined : entries.find((entry) => entry.path === `${root}/SKILL.md`);
+  const skillMd =
+    root === undefined ? undefined : entries.find((entry) => entry.path === `${root}/SKILL.md`);
   if (!skillMd) {
-    return { ok: false, error: "所选文件必须在同一个顶层目录下,且该目录里有 SKILL.md(请选择整个 Skill 目录)" };
+    return {
+      ok: false,
+      error: '所选文件必须在同一个顶层目录下,且该目录里有 SKILL.md(请选择整个 Skill 目录)',
+    };
   }
 
   if (entries.length > SKILL_UPLOAD_LIMITS.maxFiles) {
-    return { ok: false, error: `文件数超过上限(${SKILL_UPLOAD_LIMITS.maxFiles} 个)` };
+    return {
+      ok: false,
+      error: `文件数超过上限(${SKILL_UPLOAD_LIMITS.maxFiles} 个)`,
+    };
   }
 
   const totalBytes = entries.reduce((sum, entry) => sum + entry.file.size, 0);
   if (totalBytes > SKILL_UPLOAD_LIMITS.maxTotalBytes) {
-    return { ok: false, error: "目录总大小超过 20 MiB 上限" };
+    return { ok: false, error: '目录总大小超过 20 MiB 上限' };
   }
 
   const frontmatter = parseSkillFrontmatter(new Uint8Array(await skillMd.file.arrayBuffer()));
   if (!frontmatter.ok) return { ok: false, error: `SKILL.md: ${frontmatter.error.message}` };
 
-  return { ok: true, data: { files: entries, frontmatter: frontmatter.data, totalBytes } };
+  return {
+    ok: true,
+    data: { files: entries, frontmatter: frontmatter.data, totalBytes },
+  };
 }

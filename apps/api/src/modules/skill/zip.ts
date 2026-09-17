@@ -1,4 +1,4 @@
-import { zipSync } from "fflate";
+import { zipSync } from 'fflate';
 
 /**
  * 规范树 → ZIP 字节流(docs/skills/api/download-skill-zip.md)。

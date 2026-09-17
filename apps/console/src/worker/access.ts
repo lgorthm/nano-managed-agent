@@ -1,5 +1,5 @@
-import { createRemoteJWKSet, jwtVerify } from "jose";
-import type { Env } from "./env";
+import { createRemoteJWKSet, jwtVerify } from 'jose';
+import type { Env } from './env';
 
 /**
  * 校验请求携带的 Cloudflare Access JWT(Cf-Access-Jwt-Assertion 头)。
@@ -11,23 +11,20 @@ import type { Env } from "./env";
  */
 /** 容忍配置写法偏差:自动补 https:// 协议头、去尾部斜杠(JWT 的 iss 带协议头,裸域名必然校验失败) */
 export function normalizeTeamDomain(raw: string): string {
-  const trimmed = raw.trim().replace(/\/+$/, "");
+  const trimmed = raw.trim().replace(/\/+$/, '');
   return /^https?:\/\//.test(trimmed) ? trimmed : `https://${trimmed}`;
 }
 
-export async function assertAccess(
-  request: Request,
-  env: Env,
-): Promise<Response | null> {
-  if (env.ACCESS_DEV_BYPASS === "1") return null;
+export async function assertAccess(request: Request, env: Env): Promise<Response | null> {
+  if (env.ACCESS_DEV_BYPASS === '1') return null;
 
   const teamDomainRaw = env.CF_ACCESS_TEAM_DOMAIN;
   const aud = env.CF_ACCESS_AUD;
-  if (!teamDomainRaw || !aud || teamDomainRaw.startsWith("TODO") || aud.startsWith("TODO")) {
+  if (!teamDomainRaw || !aud || teamDomainRaw.startsWith('TODO') || aud.startsWith('TODO')) {
     return Response.json(
       {
         error: {
-          type: "config_error",
+          type: 'config_error',
           message:
             "CF_ACCESS_TEAM_DOMAIN / CF_ACCESS_AUD not configured: set the Zero Trust application's Team Domain and AUD Tag in wrangler.jsonc vars, see docs/console.md",
         },
@@ -37,10 +34,15 @@ export async function assertAccess(
   }
   const teamDomain = normalizeTeamDomain(teamDomainRaw);
 
-  const token = request.headers.get("Cf-Access-Jwt-Assertion");
+  const token = request.headers.get('Cf-Access-Jwt-Assertion');
   if (!token) {
     return Response.json(
-      { error: { type: "unauthorized", message: "Missing Cloudflare Access JWT (not signed in via Access)" } },
+      {
+        error: {
+          type: 'unauthorized',
+          message: 'Missing Cloudflare Access JWT (not signed in via Access)',
+        },
+      },
       { status: 401 },
     );
   }
@@ -54,7 +56,7 @@ export async function assertAccess(
     return Response.json(
       {
         error: {
-          type: "unauthorized",
+          type: 'unauthorized',
           message: `Cloudflare Access JWT validation failed (team=${teamDomain}, aud=${aud.slice(0, 8)}…): ${reason}`,
         },
       },

@@ -13,7 +13,7 @@ import {
   listSkillVersionsPage,
   newSkillId,
   newSkillVersionId,
-} from "@nano/db";
+} from '@nano/db';
 import type {
   CanonicalSkillTree,
   Page,
@@ -23,34 +23,39 @@ import type {
   SkillTreeError,
   SkillVersionDeletedResponse,
   SkillVersionResponse,
-} from "@nano/shared";
+} from '@nano/shared';
 import {
   MAX_DISPLAY_TITLE_LENGTH,
-  SKILL_VERSION_PATTERN,
   normalizeSkillTree,
   parseSkillFrontmatter,
-} from "@nano/shared";
-import type { Env } from "../../env";
+  SKILL_VERSION_PATTERN,
+} from '@nano/shared';
+import type { Env } from '../../env';
 import {
   conflictError,
   invalidRequestError,
   notFoundError,
   requestTooLargeError,
-} from "../../lib/errors";
-import { cursorNumberField, cursorStringField, encodeCursor, type ListParams } from "../../lib/pagination";
-import { serializeSkill, serializeSkillVersion } from "./serialize";
-import { buildSkillZip } from "./zip";
+} from '../../lib/errors';
+import {
+  cursorNumberField,
+  cursorStringField,
+  encodeCursor,
+  type ListParams,
+} from '../../lib/pagination';
+import { serializeSkill, serializeSkillVersion } from './serialize';
+import { buildSkillZip } from './zip';
 
 /** skills 列表游标的 kind 前缀,防止与其他列表端点的游标混用 */
-const SKILLS_CURSOR_KIND = "skills";
+const SKILLS_CURSOR_KIND = 'skills';
 
 /** skill 版本列表游标的 kind 前缀 */
-const SKILL_VERSIONS_CURSOR_KIND = "skill-versions";
+const SKILL_VERSIONS_CURSOR_KIND = 'skill-versions';
 
 /** 规范树错误 → API 错误:尺寸类转 413,形态类转 400 */
 function throwTreeError({ code, message, param }: SkillTreeError): never {
   const details = param === undefined ? undefined : { param };
-  if (code === "file_too_large" || code === "total_too_large") {
+  if (code === 'file_too_large' || code === 'total_too_large') {
     throw requestTooLargeError(message, details);
   }
   throw invalidRequestError(message, details);
@@ -65,7 +70,9 @@ async function buildVersionMeta(files: RawSkillFile[]): Promise<{
   if (!treeResult.ok) throwTreeError(treeResult.error);
   const frontmatter = parseSkillFrontmatter(treeResult.tree.skillMd.bytes);
   if (!frontmatter.ok) {
-    throw invalidRequestError(`SKILL.md is invalid: ${frontmatter.error.message}`, { param: "SKILL.md" });
+    throw invalidRequestError(`SKILL.md is invalid: ${frontmatter.error.message}`, {
+      param: 'SKILL.md',
+    });
   }
   const directory = treeResult.tree.strippedRoot ?? frontmatter.data.name;
   return { tree: treeResult.tree, meta: { ...frontmatter.data, directory } };
@@ -78,7 +85,7 @@ async function buildVersionMeta(files: RawSkillFile[]): Promise<{
 export function parseSkillVersionParam(raw: string): number {
   if (!SKILL_VERSION_PATTERN.test(raw)) {
     throw invalidRequestError(`Invalid version "${raw}": must be a decimal version number.`, {
-      param: "version",
+      param: 'version',
     });
   }
   return Number(raw);
@@ -92,7 +99,9 @@ function allowedTextFields(
   const result: Record<string, string> = {};
   for (const [name, value] of Object.entries(textFields)) {
     if (!allowed.includes(name)) {
-      throw invalidRequestError(`Unknown multipart text field "${name}".`, { param: name });
+      throw invalidRequestError(`Unknown multipart text field "${name}".`, {
+        param: name,
+      });
     }
     result[name] = value;
   }
@@ -106,13 +115,12 @@ export const skillService = {
     env: Env,
     input: { textFields: Record<string, string>; files: RawSkillFile[] },
   ): Promise<SkillResponse> {
-    const textFields = allowedTextFields(input.textFields, ["display_title"]);
-    const displayTitle = textFields["display_title"];
+    const textFields = allowedTextFields(input.textFields, ['display_title']);
+    const displayTitle = textFields.display_title;
     if (displayTitle !== undefined && displayTitle.length > MAX_DISPLAY_TITLE_LENGTH) {
-      throw invalidRequestError(
-        `display_title exceeds ${MAX_DISPLAY_TITLE_LENGTH} characters.`,
-        { param: "display_title" },
-      );
+      throw invalidRequestError(`display_title exceeds ${MAX_DISPLAY_TITLE_LENGTH} characters.`, {
+        param: 'display_title',
+      });
     }
     const { tree, meta } = await buildVersionMeta(input.files);
     const db = getDb(env);
@@ -129,10 +137,10 @@ export const skillService = {
     });
     return {
       id: skillId,
-      type: "skill",
+      type: 'skill',
       display_title: displayTitle ?? null,
-      source: "custom",
-      latest_version: "1",
+      source: 'custom',
+      latest_version: '1',
       created_at: now.toISOString(),
       updated_at: now.toISOString(),
     };
@@ -150,14 +158,14 @@ export const skillService = {
   /** 分页列出 Skill(含空壳),按 (created_at, id) 排序,支持 source 过滤 */
   async listSkills(
     env: Env,
-    params: ListParams & { source?: "custom" | "zai" },
+    params: ListParams & { source?: 'custom' | 'zai' },
   ): Promise<Page<SkillResponse>> {
     const cursor =
       params.cursor === null
         ? null
         : {
-            createdAt: cursorNumberField(params.cursor, "createdAt"),
-            id: cursorStringField(params.cursor, "id"),
+            createdAt: cursorNumberField(params.cursor, 'createdAt'),
+            id: cursorStringField(params.cursor, 'id'),
           };
     const { rows, nextCursor } = await listSkillsPage(getDb(env), {
       source: params.source,
@@ -168,7 +176,11 @@ export const skillService = {
     return {
       data: rows.map(serializeSkill),
       next_page: nextCursor
-        ? encodeCursor({ kind: SKILLS_CURSOR_KIND, createdAt: nextCursor.createdAt, id: nextCursor.id })
+        ? encodeCursor({
+            kind: SKILLS_CURSOR_KIND,
+            createdAt: nextCursor.createdAt,
+            id: nextCursor.id,
+          })
         : null,
     };
   },
@@ -206,7 +218,7 @@ export const skillService = {
     }
     return {
       id: versionId,
-      type: "skill_version",
+      type: 'skill_version',
       skill_id: skillId,
       version: String(skill.nextVersion),
       name: meta.name,
@@ -227,7 +239,7 @@ export const skillService = {
     if (!skill) {
       throw notFoundError(`Skill "${skillId}" not found.`);
     }
-    const cursor = params.cursor === null ? null : cursorNumberField(params.cursor, "version");
+    const cursor = params.cursor === null ? null : cursorNumberField(params.cursor, 'version');
     const { rows, nextCursor } = await listSkillVersionsPage(db, skillId, {
       limit: params.limit,
       order: params.order,
@@ -238,7 +250,10 @@ export const skillService = {
       next_page:
         nextCursor === null
           ? null
-          : encodeCursor({ kind: SKILL_VERSIONS_CURSOR_KIND, version: nextCursor }),
+          : encodeCursor({
+              kind: SKILL_VERSIONS_CURSOR_KIND,
+              version: nextCursor,
+            }),
     };
   },
 
@@ -256,7 +271,12 @@ export const skillService = {
     env: Env,
     skillId: string,
     version: number,
-  ): Promise<{ bytes: Uint8Array; directory: string; version: string; etag: string }> {
+  ): Promise<{
+    bytes: Uint8Array;
+    directory: string;
+    version: string;
+    etag: string;
+  }> {
     const db = getDb(env);
     const versionRow = await findSkillVersion(db, skillId, version);
     if (!versionRow) {
@@ -268,7 +288,12 @@ export const skillService = {
       files.map((file) => ({ path: file.path, bytes: file.content })),
       versionRow.createdAt,
     );
-    return { bytes, directory: versionRow.directory, version: String(version), etag: versionRow.contentSha256 };
+    return {
+      bytes,
+      directory: versionRow.directory,
+      version: String(version),
+      etag: versionRow.contentSha256,
+    };
   },
 
   /**
@@ -291,8 +316,12 @@ export const skillService = {
         { skill_id: skillId, version: String(version) },
       );
     }
-    await deleteSkillVersionAndRetarget(db, { skillId, version, now: new Date() });
-    return { id: versionRow.id, type: "skill_version_deleted" };
+    await deleteSkillVersionAndRetarget(db, {
+      skillId,
+      version,
+      now: new Date(),
+    });
+    return { id: versionRow.id, type: 'skill_version_deleted' };
   },
 
   /** 级联删除 Skill 及全部版本与文件;被任意版本引用时拒绝(400) */
@@ -309,6 +338,6 @@ export const skillService = {
       );
     }
     await deleteSkillCascade(db, skillId);
-    return { id: skillId, type: "skill_deleted" };
+    return { id: skillId, type: 'skill_deleted' };
   },
 };

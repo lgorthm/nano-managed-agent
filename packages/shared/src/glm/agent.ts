@@ -1,11 +1,11 @@
 /**
  * Agent 资源类型。见 references/agent-setup.md 与 references/api/{list,create,update}-agent.md。
  */
-import type { Metadata } from "./common";
+import type { Metadata } from './common';
 
-export type GlmModelId = "glm-5.3" | "glm-5.3-flash";
+export type GlmModelId = 'glm-5.3' | 'glm-5.3-flash';
 
-export type ModelEffort = "low" | "high" | "max";
+export type ModelEffort = 'low' | 'high' | 'max';
 
 /** 模型配置:接受 ID 字符串或对象形态 */
 export type ModelInput =
@@ -15,23 +15,23 @@ export type ModelInput =
       /** 省略或 null 时取该模型默认档位(glm-5.3:max / glm-5.3-flash:high) */
       effort?: ModelEffort | null;
       /** 当前仅支持 standard */
-      speed?: "standard" | null;
+      speed?: 'standard' | null;
     };
 
 /** 响应中的模型配置,服务端补齐后的完整形态 */
 export interface ModelResponse {
   id: string;
   effort?: ModelEffort;
-  speed: "standard";
+  speed: 'standard';
 }
 
-export type PermissionPolicyType = "always_allow" | "always_ask";
+export type PermissionPolicyType = 'always_allow' | 'always_ask';
 
 export interface PermissionPolicy {
   type: PermissionPolicyType;
 }
 
-export type BuiltinToolName = "read" | "write" | "edit" | "bash" | "grep" | "find" | "ls";
+export type BuiltinToolName = 'read' | 'write' | 'edit' | 'bash' | 'grep' | 'find' | 'ls';
 
 export interface ToolDefaultConfigInput {
   /** 省略或 null 时为 true */
@@ -71,7 +71,7 @@ export interface McpToolConfigResponse {
 }
 
 export interface CustomToolInputSchema {
-  type: "object";
+  type: 'object';
   properties?: Record<string, unknown>;
   required?: string[];
   [key: string]: unknown;
@@ -79,19 +79,19 @@ export interface CustomToolInputSchema {
 
 export type ToolsetInput =
   | {
-      type: "agent_toolset_20260601";
+      type: 'agent_toolset_20260601';
       default_config?: ToolDefaultConfigInput | null;
       configs?: BuiltinToolConfigInput[];
     }
   | {
-      type: "mcp_toolset";
+      type: 'mcp_toolset';
       /** 必须精确匹配 mcp_servers 中唯一一个 Server 的 name */
       mcp_server_name: string;
       default_config?: ToolDefaultConfigInput | null;
       configs?: McpToolConfigInput[];
     }
   | {
-      type: "custom";
+      type: 'custom';
       name: string;
       description: string;
       input_schema: CustomToolInputSchema;
@@ -99,18 +99,18 @@ export type ToolsetInput =
 
 export type ToolsetResponse =
   | {
-      type: "agent_toolset_20260601";
+      type: 'agent_toolset_20260601';
       default_config: ToolDefaultConfigResponse;
       configs: BuiltinToolConfigResponse[];
     }
   | {
-      type: "mcp_toolset";
+      type: 'mcp_toolset';
       mcp_server_name: string;
       default_config: ToolDefaultConfigResponse;
       configs: McpToolConfigResponse[];
     }
   | {
-      type: "custom";
+      type: 'custom';
       name: string;
       description: string;
       input_schema: CustomToolInputSchema;
@@ -118,21 +118,21 @@ export type ToolsetResponse =
 
 export interface SkillReference {
   /** custom:当前所有者创建;zai:平台内置 */
-  type: "custom" | "zai";
+  type: 'custom' | 'zai';
   skill_id: string;
   version: string;
 }
 
 /** 远程 MCP Server 声明,当前仅支持 url 型 */
 export interface McpServer {
-  type: "url";
+  type: 'url';
   name: string;
   url: string;
 }
 
 export interface Agent {
   id: string;
-  type: "agent";
+  type: 'agent';
   name: string;
   description: string | null;
   model: ModelResponse;

@@ -1,5 +1,5 @@
-import type { SkillRow, SkillVersionRow } from "@nano/db";
-import type { SkillResponse, SkillVersionResponse } from "@nano/shared";
+import type { SkillRow, SkillVersionRow } from '@nano/db';
+import type { SkillResponse, SkillVersionResponse } from '@nano/shared';
 
 /**
  * Skill 行到 API JSON 的唯一序列化出口:
@@ -9,9 +9,9 @@ import type { SkillResponse, SkillVersionResponse } from "@nano/shared";
 export function serializeSkill(row: SkillRow): SkillResponse {
   return {
     id: row.id,
-    type: "skill",
+    type: 'skill',
     display_title: row.displayTitle,
-    source: row.source as SkillResponse["source"],
+    source: row.source as SkillResponse['source'],
     latest_version: row.latestVersionSeq === null ? null : String(row.latestVersionSeq),
     created_at: row.createdAt.toISOString(),
     updated_at: row.updatedAt.toISOString(),
@@ -21,7 +21,7 @@ export function serializeSkill(row: SkillRow): SkillResponse {
 export function serializeSkillVersion(row: SkillVersionRow): SkillVersionResponse {
   return {
     id: row.id,
-    type: "skill_version",
+    type: 'skill_version',
     skill_id: row.skillId,
     version: String(row.version),
     name: row.name,

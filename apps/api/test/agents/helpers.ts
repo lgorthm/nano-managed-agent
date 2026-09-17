@@ -1,11 +1,11 @@
-import { env, exports } from "cloudflare:workers";
-import { API_KEY, authed } from "../helpers";
+import { env, exports } from 'cloudflare:workers';
+import { API_KEY, authed } from '../helpers';
 
 export { API_KEY, authed };
 
-const migrationFiles = import.meta.glob("../../migrations/*.sql", {
-  query: "?raw",
-  import: "default",
+const migrationFiles = import.meta.glob('../../migrations/*.sql', {
+  query: '?raw',
+  import: 'default',
   eager: true,
 }) as Record<string, string>;
 
@@ -14,15 +14,19 @@ let applied = false;
 /** 对测试 D1 按文件名顺序应用全部迁移,幂等 */
 export async function applyMigrations(): Promise<void> {
   if (applied) return;
-  await env.DB.exec("CREATE TABLE IF NOT EXISTS _applied_migrations (name TEXT PRIMARY KEY)");
+  await env.DB.exec('CREATE TABLE IF NOT EXISTS _applied_migrations (name TEXT PRIMARY KEY)');
   const entries = Object.entries(migrationFiles).sort(([a], [b]) => a.localeCompare(b));
   for (const [path, sql] of entries) {
-    const name = path.split("/").pop();
+    const name = path.split('/').pop();
     if (!name) continue;
-    const done = await env.DB.prepare("SELECT 1 FROM _applied_migrations WHERE name = ?").bind(name).first();
+    const done = await env.DB.prepare('SELECT 1 FROM _applied_migrations WHERE name = ?')
+      .bind(name)
+      .first();
     if (done) continue;
-    const statements = sql.split("--> statement-breakpoint").map((statement) => env.DB.prepare(statement));
-    statements.push(env.DB.prepare("INSERT INTO _applied_migrations (name) VALUES (?)").bind(name));
+    const statements = sql
+      .split('--> statement-breakpoint')
+      .map((statement) => env.DB.prepare(statement));
+    statements.push(env.DB.prepare('INSERT INTO _applied_migrations (name) VALUES (?)').bind(name));
     await env.DB.batch(statements);
   }
   applied = true;
@@ -55,16 +59,20 @@ export interface AgentJson {
 /** 错误信封的断言形状 */
 export interface ErrorEnvelope {
   type: string;
-  error: { type: string; message: string; details?: { issues?: Array<{ path: string; message: string }> } };
+  error: {
+    type: string;
+    message: string;
+    details?: { issues?: Array<{ path: string; message: string }> };
+  };
   request_id: string;
 }
 
 /** POST /v1/agents,默认带认证 */
 export function postAgent(body: unknown, headers: Record<string, string> = {}): Promise<Response> {
-  return exports.default.fetch("http://example.com/v1/agents", {
-    method: "POST",
-    headers: { "content-type": "application/json", ...authed(headers) },
-    body: typeof body === "string" ? body : JSON.stringify(body),
+  return exports.default.fetch('http://example.com/v1/agents', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', ...authed(headers) },
+    body: typeof body === 'string' ? body : JSON.stringify(body),
   });
 }
 
@@ -76,30 +84,46 @@ export function getAgent(id: string, headers: Record<string, string> = {}): Prom
 }
 
 /** GET /v1/agents?{query},默认带认证 */
-export function listAgents(query = "", headers: Record<string, string> = {}): Promise<Response> {
-  return exports.default.fetch(`http://example.com/v1/agents${query}`, { headers: authed(headers) });
-}
-
-/** POST /v1/agents/{agentId},默认带认证 */
-export function updateAgent(id: string, body: unknown, headers: Record<string, string> = {}): Promise<Response> {
-  return exports.default.fetch(`http://example.com/v1/agents/${encodeURIComponent(id)}`, {
-    method: "POST",
-    headers: { "content-type": "application/json", ...authed(headers) },
-    body: typeof body === "string" ? body : JSON.stringify(body),
-  });
-}
-
-/** GET /v1/agents/{agentId}/versions?{query},默认带认证 */
-export function listAgentVersions(id: string, query = "", headers: Record<string, string> = {}): Promise<Response> {
-  return exports.default.fetch(`http://example.com/v1/agents/${encodeURIComponent(id)}/versions${query}`, {
+export function listAgents(query = '', headers: Record<string, string> = {}): Promise<Response> {
+  return exports.default.fetch(`http://example.com/v1/agents${query}`, {
     headers: authed(headers),
   });
 }
 
+/** POST /v1/agents/{agentId},默认带认证 */
+export function updateAgent(
+  id: string,
+  body: unknown,
+  headers: Record<string, string> = {},
+): Promise<Response> {
+  return exports.default.fetch(`http://example.com/v1/agents/${encodeURIComponent(id)}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', ...authed(headers) },
+    body: typeof body === 'string' ? body : JSON.stringify(body),
+  });
+}
+
+/** GET /v1/agents/{agentId}/versions?{query},默认带认证 */
+export function listAgentVersions(
+  id: string,
+  query = '',
+  headers: Record<string, string> = {},
+): Promise<Response> {
+  return exports.default.fetch(
+    `http://example.com/v1/agents/${encodeURIComponent(id)}/versions${query}`,
+    {
+      headers: authed(headers),
+    },
+  );
+}
+
 /** POST /v1/agents/{agentId}/archive,默认带认证 */
-export function archiveAgentViaApi(id: string, headers: Record<string, string> = {}): Promise<Response> {
+export function archiveAgentViaApi(
+  id: string,
+  headers: Record<string, string> = {},
+): Promise<Response> {
   return exports.default.fetch(`http://example.com/v1/agents/${encodeURIComponent(id)}/archive`, {
-    method: "POST",
+    method: 'POST',
     headers: authed(headers),
   });
 }
@@ -112,30 +136,30 @@ export interface PageJson<T> {
 
 /** 测试夹具:绕过接口直改库,把 Agent 置为已归档 */
 export async function archiveAgentInDb(agentId: string): Promise<void> {
-  await env.DB.prepare("UPDATE agents SET archived_at = ? WHERE id = ?")
+  await env.DB.prepare('UPDATE agents SET archived_at = ? WHERE id = ?')
     .bind(Date.now(), agentId)
     .run();
 }
 
 /** 测试夹具:绕过接口直改库,把 current_version 推高一位并补一行占位版本,模拟"期间已被他人改过" */
 export async function bumpAgentVersionInDb(agentId: string): Promise<number> {
-  const row = await env.DB.prepare("SELECT current_version FROM agents WHERE id = ?")
+  const row = await env.DB.prepare('SELECT current_version FROM agents WHERE id = ?')
     .bind(agentId)
     .first<{ current_version: number }>();
   const nextVersion = (row?.current_version ?? 0) + 1;
   const now = Date.now();
   await env.DB.batch([
     env.DB.prepare(
-      "INSERT INTO agent_versions (agent_id, version, name, model_id, model_effort, model_speed, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-    ).bind(agentId, nextVersion, "raced-write", "glm-5.3", "max", "standard", now, now),
-    env.DB.prepare("UPDATE agents SET current_version = ? WHERE id = ?").bind(nextVersion, agentId),
+      'INSERT INTO agent_versions (agent_id, version, name, model_id, model_effort, model_speed, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    ).bind(agentId, nextVersion, 'raced-write', 'glm-5.3', 'max', 'standard', now, now),
+    env.DB.prepare('UPDATE agents SET current_version = ? WHERE id = ?').bind(nextVersion, agentId),
   ]);
   return nextVersion;
 }
 
 /** 创建一个最小 Agent 并返回其响应(测试数据工厂) */
 export async function createDefaultAgent(body?: Record<string, unknown>): Promise<AgentJson> {
-  const res = await postAgent(body ?? { name: "test-agent", model: "glm-5.3" });
+  const res = await postAgent(body ?? { name: 'test-agent', model: 'glm-5.3' });
   if (res.status !== 201) {
     throw new Error(`fixture create failed: ${res.status} ${await res.text()}`);
   }

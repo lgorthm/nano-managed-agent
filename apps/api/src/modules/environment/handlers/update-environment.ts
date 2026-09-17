@@ -1,8 +1,8 @@
-import type { Context } from "hono";
-import { EnvironmentUpdateRequestSchema } from "@nano/shared";
-import type { AppEnv } from "../../../env";
-import { parseAndValidateOptionalBody } from "../../../lib/body";
-import { environmentService } from "../service";
+import { EnvironmentUpdateRequestSchema } from '@nano/shared';
+import type { Context } from 'hono';
+import type { AppEnv } from '../../../env';
+import { parseAndValidateOptionalBody } from '../../../lib/body';
+import { environmentService } from '../service';
 
 /** POST /v1/environments/{environmentId} — 更新;空请求体是合法空补丁 */
 export async function updateEnvironment(c: Context<AppEnv>) {
@@ -10,7 +10,7 @@ export async function updateEnvironment(c: Context<AppEnv>) {
   const input = await parseAndValidateOptionalBody(c, EnvironmentUpdateRequestSchema);
   const environment = await environmentService.updateEnvironment(
     c.env,
-    c.req.param("environmentId") ?? "",
+    c.req.param('environmentId') ?? '',
     input,
   );
   return c.json(environment, 200);

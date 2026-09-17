@@ -1,20 +1,27 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { ToolsetResponse } from "@nano/shared/glm";
-import { Archive } from "lucide-react";
-import { useParams } from "react-router";
-import { archiveAgent, getAgent, listAgentVersions } from "@/api/agents";
-import { BackLink } from "@/components/back-link";
-import { ArchiveAgentDialog } from "@/components/archive-agent-dialog";
-import { EmptyState } from "@/components/empty-state";
-import { PageHeader } from "@/components/page-header";
-import { QueryError } from "@/components/query-error";
-import { KeyValueRow, SectionCard } from "@/components/section-card";
-import { StatusBadge } from "@/components/status-badges";
-import { TableSkeleton } from "@/components/table-skeleton";
-import { UpdateAgentDialog } from "@/components/update-agent-dialog";
-import { Badge } from "@/components/ui/badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { formatTime } from "@/lib/format";
+import type { ToolsetResponse } from '@nano/shared/glm';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Archive } from 'lucide-react';
+import { useParams } from 'react-router';
+import { archiveAgent, getAgent, listAgentVersions } from '@/api/agents';
+import { ArchiveAgentDialog } from '@/components/archive-agent-dialog';
+import { BackLink } from '@/components/back-link';
+import { EmptyState } from '@/components/empty-state';
+import { PageHeader } from '@/components/page-header';
+import { QueryError } from '@/components/query-error';
+import { KeyValueRow, SectionCard } from '@/components/section-card';
+import { StatusBadge } from '@/components/status-badges';
+import { TableSkeleton } from '@/components/table-skeleton';
+import { Badge } from '@/components/ui/badge';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { UpdateAgentDialog } from '@/components/update-agent-dialog';
+import { formatTime } from '@/lib/format';
 
 function ToolsetList({ toolsets }: { toolsets: ToolsetResponse[] }) {
   if (toolsets.length === 0) return <span className="text-muted-foreground text-sm">无</span>;
@@ -23,9 +30,9 @@ function ToolsetList({ toolsets }: { toolsets: ToolsetResponse[] }) {
       {toolsets.map((tool, i) => (
         <li key={i} className="flex items-center gap-2">
           <Badge variant="outline" className="font-mono text-xs font-normal">
-            {tool.type === "mcp_toolset" ? `mcp:${tool.mcp_server_name}` : tool.type}
+            {tool.type === 'mcp_toolset' ? `mcp:${tool.mcp_server_name}` : tool.type}
           </Badge>
-          {tool.type !== "custom" && tool.default_config.enabled ? null : (
+          {tool.type !== 'custom' && tool.default_config.enabled ? null : (
             <span className="text-muted-foreground text-xs">disabled</span>
           )}
         </li>
@@ -38,20 +45,20 @@ export function AgentDetailPage() {
   const { agentId } = useParams();
   const queryClient = useQueryClient();
   const agentQuery = useQuery({
-    queryKey: ["agents", agentId],
+    queryKey: ['agents', agentId],
     queryFn: () => getAgent(agentId!),
     enabled: agentId !== undefined,
   });
   const versionsQuery = useQuery({
-    queryKey: ["agents", agentId, "versions"],
-    queryFn: () => listAgentVersions(agentId!, { order: "desc" }),
+    queryKey: ['agents', agentId, 'versions'],
+    queryFn: () => listAgentVersions(agentId!, { order: 'desc' }),
     enabled: agentId !== undefined,
   });
 
   const archiveMutation = useMutation({
     mutationFn: () => archiveAgent(agentId!),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["agents"] });
+      void queryClient.invalidateQueries({ queryKey: ['agents'] });
     },
   });
 
@@ -93,7 +100,7 @@ export function AgentDetailPage() {
             </KeyValueRow>
             <KeyValueRow label="模型">
               <span className="font-mono text-xs">
-                {agent.model.id} · {agent.model.effort ?? "default"} · {agent.model.speed}
+                {agent.model.id} · {agent.model.effort ?? 'default'} · {agent.model.speed}
               </span>
             </KeyValueRow>
             <KeyValueRow label="当前版本">
@@ -122,7 +129,15 @@ export function AgentDetailPage() {
           <ToolsetList toolsets={agent.tools} />
         </SectionCard>
 
-        <SectionCard title="版本历史" className="md:col-span-2" action={<Badge variant="outline" className="font-mono text-xs font-normal tabular-nums">{versionsQuery.data?.data.length ?? "…"} 个版本</Badge>}>
+        <SectionCard
+          title="版本历史"
+          className="md:col-span-2"
+          action={
+            <Badge variant="outline" className="font-mono text-xs font-normal tabular-nums">
+              {versionsQuery.data?.data.length ?? '…'} 个版本
+            </Badge>
+          }
+        >
           {versionsQuery.isPending ? (
             <TableSkeleton rows={2} />
           ) : versionsQuery.isError ? (

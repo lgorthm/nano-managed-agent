@@ -6,22 +6,22 @@
  * 三期扩展点:compaction(thread_context_compacted 截断历史),经在下方
  * switch 加分支实现,签名不动。
  */
-import type { ContentBlock, PersistedEventJson } from "./events";
+import type { ContentBlock, PersistedEventJson } from './events';
 
 /** chat completions 的内容部分(GLM / OpenAI 兼容形态;纯文本时折叠为 string) */
-export type ChatTextPart = { type: "text"; text: string };
-export type ChatImagePart = { type: "image_url"; image_url: { url: string } };
+export type ChatTextPart = { type: 'text'; text: string };
+export type ChatImagePart = { type: 'image_url'; image_url: { url: string } };
 export type ChatPart = ChatTextPart | ChatImagePart;
 
 /** assistant 轮携带的工具调用(arguments 为 JSON 字符串,同上游 wire 形态) */
 export interface ChatToolCall {
   id: string;
-  type: "function";
+  type: 'function';
   function: { name: string; arguments: string };
 }
 
 export interface ChatMessage {
-  role: "system" | "user" | "assistant" | "tool";
+  role: 'system' | 'user' | 'assistant' | 'tool';
   content: string | ChatPart[] | null;
   /** 仅 assistant 轮:本轮发起的工具调用 */
   tool_calls?: ChatToolCall[];
@@ -43,28 +43,30 @@ function documentPlaceholder(fileId: string): string {
 /** 事件载荷的 content 块 → chat 内容:全文本折叠为 string,含图片则用 parts 数组 */
 function contentToChatContent(blocks: ContentBlock[]): string | ChatPart[] {
   const parts: ChatPart[] = [];
-  let textRun = "";
+  let textRun = '';
   for (const block of blocks) {
-    if (block.type === "text") {
-      textRun += (textRun === "" ? "" : "\n") + block.text;
-    } else if (block.type === "image") {
-      if (textRun !== "") {
-        parts.push({ type: "text", text: textRun });
-        textRun = "";
+    if (block.type === 'text') {
+      textRun += (textRun === '' ? '' : '\n') + block.text;
+    } else if (block.type === 'image') {
+      if (textRun !== '') {
+        parts.push({ type: 'text', text: textRun });
+        textRun = '';
       }
       parts.push({
-        type: "image_url",
-        image_url: { url: `data:${block.source.media_type};base64,${block.source.data}` },
+        type: 'image_url',
+        image_url: {
+          url: `data:${block.source.media_type};base64,${block.source.data}`,
+        },
       });
-    } else if (block.source.type === "text") {
-      const titled = block.title !== null && block.title !== undefined ? `${block.title}\n` : "";
-      textRun += (textRun === "" ? "" : "\n") + titled + block.source.data;
+    } else if (block.source.type === 'text') {
+      const titled = block.title !== null && block.title !== undefined ? `${block.title}\n` : '';
+      textRun += (textRun === '' ? '' : '\n') + titled + block.source.data;
     } else {
-      textRun += (textRun === "" ? "" : "\n") + documentPlaceholder(block.source.file_id);
+      textRun += (textRun === '' ? '' : '\n') + documentPlaceholder(block.source.file_id);
     }
   }
   if (parts.length === 0) return textRun;
-  if (textRun !== "") parts.push({ type: "text", text: textRun });
+  if (textRun !== '') parts.push({ type: 'text', text: textRun });
   return parts;
 }
 
@@ -78,12 +80,12 @@ function eventContent(event: PersistedEventJson): ContentBlock[] | null {
 /** tool_result 的载荷:content 块拼为纯文本回喂(工具结果不携带图片) */
 function eventTextContent(event: PersistedEventJson): string | null {
   const content = event.content;
-  if (typeof content === "string") return content;
+  if (typeof content === 'string') return content;
   const blocks = eventContent(event);
   if (blocks === null) return null;
   return blocks
-    .map((block) => (block.type === "text" ? block.text : JSON.stringify(block)))
-    .join("\n");
+    .map((block) => (block.type === 'text' ? block.text : JSON.stringify(block)))
+    .join('\n');
 }
 
 /**
@@ -97,38 +99,45 @@ function eventTextContent(event: PersistedEventJson): string | null {
  */
 export function assembleChatMessages(input: TurnContextInput): ChatMessage[] {
   const messages: ChatMessage[] = [];
-  if (input.system !== null && input.system !== "") {
-    messages.push({ role: "system", content: input.system });
+  if (input.system !== null && input.system !== '') {
+    messages.push({ role: 'system', content: input.system });
   }
   let pendingToolCalls: ChatToolCall[] = [];
   const flushToolCalls = (): void => {
     if (pendingToolCalls.length === 0) return;
-    messages.push({ role: "assistant", content: null, tool_calls: pendingToolCalls });
+    messages.push({
+      role: 'assistant',
+      content: null,
+      tool_calls: pendingToolCalls,
+    });
     pendingToolCalls = [];
   };
   for (const event of input.events) {
-    if (event.type === "agent.tool_use") {
-      const name = typeof event.name === "string" ? event.name : "unknown";
+    if (event.type === 'agent.tool_use') {
+      const name = typeof event.name === 'string' ? event.name : 'unknown';
       pendingToolCalls.push({
         id: event.id,
-        type: "function",
+        type: 'function',
         function: { name, arguments: JSON.stringify(event.input ?? {}) },
       });
       continue;
     }
     flushToolCalls();
-    if (event.type === "agent.tool_result") {
-      const toolUseId = typeof event.tool_use_id === "string" ? event.tool_use_id : "";
-      const text = eventTextContent(event) ?? "";
-      messages.push({ role: "tool", tool_call_id: toolUseId, content: text });
+    if (event.type === 'agent.tool_result') {
+      const toolUseId = typeof event.tool_use_id === 'string' ? event.tool_use_id : '';
+      const text = eventTextContent(event) ?? '';
+      messages.push({ role: 'tool', tool_call_id: toolUseId, content: text });
       continue;
     }
-    if (event.type !== "user.message" && event.type !== "agent.message") continue;
+    if (event.type !== 'user.message' && event.type !== 'agent.message') continue;
     const blocks = eventContent(event);
     if (blocks === null || blocks.length === 0) continue;
     const content = contentToChatContent(blocks);
-    if (content === "") continue;
-    messages.push({ role: event.type === "user.message" ? "user" : "assistant", content });
+    if (content === '') continue;
+    messages.push({
+      role: event.type === 'user.message' ? 'user' : 'assistant',
+      content,
+    });
   }
   flushToolCalls();
   return messages;

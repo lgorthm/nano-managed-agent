@@ -4,7 +4,7 @@
  * /v1/models 以静态目录为基线,配置了凭据时在此之上合并线上目录;上游失败
  * 静默降级为仅静态目录(模型列表不构成可用性依赖)。
  */
-import type { Env } from "../../env";
+import type { Env } from '../../env';
 
 const MODELS_CACHE_TTL_MS = 5 * 60 * 1000;
 
@@ -23,17 +23,18 @@ export async function fetchDynamicModelNames(
 ): Promise<string[] | null> {
   const now = Date.now();
   if (cache !== null && cache.expiresAt > now) return cache.value;
-  if (env.CLOUDFLARE_ACCOUNT_ID === undefined || env.CLOUDFLARE_API_TOKEN === undefined) return null;
+  if (env.CLOUDFLARE_ACCOUNT_ID === undefined || env.CLOUDFLARE_API_TOKEN === undefined)
+    return null;
   try {
     const response = await fetchImpl(
-      `https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/ai/models/search?task=${encodeURIComponent("Text Generation")}&per_page=100`,
+      `https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/ai/models/search?task=${encodeURIComponent('Text Generation')}&per_page=100`,
       { headers: { authorization: `Bearer ${env.CLOUDFLARE_API_TOKEN}` } },
     );
     if (!response.ok) return null;
     const payload = (await response.json()) as { result?: ModelsSearchEntry[] };
     const names = (payload.result ?? [])
       .map((entry) => entry.name)
-      .filter((name): name is string => typeof name === "string" && name !== "");
+      .filter((name): name is string => typeof name === 'string' && name !== '');
     cache = { value: names, expiresAt: now + MODELS_CACHE_TTL_MS };
     return names;
   } catch {

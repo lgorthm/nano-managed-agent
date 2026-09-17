@@ -1,20 +1,20 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Agent, GlmModelId, ModelEffort } from "@nano/shared/glm";
-import { Bot, Plus } from "lucide-react";
-import { Link } from "react-router";
-import { createAgent, listAgents } from "@/api/agents";
-import { groupedModelOptions, useModelOptions } from "@/api/models";
-import { DataPager } from "@/components/data-pager";
-import { useCursorPage } from "@/hooks/use-cursor-page";
-import { TableCard } from "@/components/table-card";
-import { QueryError } from "@/components/query-error";
-import { EmptyState } from "@/components/empty-state";
-import { PageHeader } from "@/components/page-header";
-import { RefreshButton } from "@/components/refresh-button";
-import { StatusBadge } from "@/components/status-badges";
-import { TableSkeleton } from "@/components/table-skeleton";
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
+import type { Agent, GlmModelId, ModelEffort } from '@nano/shared/glm';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Bot, Plus } from 'lucide-react';
+import { useState } from 'react';
+import { Link } from 'react-router';
+import { createAgent, listAgents } from '@/api/agents';
+import { groupedModelOptions, useModelOptions } from '@/api/models';
+import { DataPager } from '@/components/data-pager';
+import { EmptyState } from '@/components/empty-state';
+import { PageHeader } from '@/components/page-header';
+import { QueryError } from '@/components/query-error';
+import { RefreshButton } from '@/components/refresh-button';
+import { StatusBadge } from '@/components/status-badges';
+import { TableCard } from '@/components/table-card';
+import { TableSkeleton } from '@/components/table-skeleton';
+import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog,
   DialogContent,
@@ -23,9 +23,9 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import {
   Select,
   SelectContent,
@@ -34,18 +34,31 @@ import {
   SelectLabel,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Textarea } from "@/components/ui/textarea";
-import { formatTime, formatTimeShort } from "@/lib/format";
-import { useState } from "react";
+} from '@/components/ui/select';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { Textarea } from '@/components/ui/textarea';
+import { useCursorPage } from '@/hooks/use-cursor-page';
+import { formatTime, formatTimeShort } from '@/lib/format';
 
-function CreateAgentDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+function CreateAgentDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
   const { options: modelOptions, isLoading: modelsLoading } = useModelOptions();
-  const [name, setName] = useState("");
-  const [model, setModel] = useState("glm-5.3");
-  const [effort, setEffort] = useState<ModelEffort>("max");
-  const [system, setSystem] = useState("");
+  const [name, setName] = useState('');
+  const [model, setModel] = useState('glm-5.3');
+  const [effort, setEffort] = useState<ModelEffort>('max');
+  const [system, setSystem] = useState('');
   const [withToolset, setWithToolset] = useState(true);
   const queryClient = useQueryClient();
 
@@ -57,13 +70,13 @@ function CreateAgentDialog({ open, onOpenChange }: { open: boolean; onOpenChange
         // 此处收窄——provider=glm 时上游自然拒绝目录外值
         model: { id: model as GlmModelId, effort },
         system: system.trim() || null,
-        tools: withToolset ? [{ type: "agent_toolset_20260601" }] : [],
+        tools: withToolset ? [{ type: 'agent_toolset_20260601' }] : [],
       }),
     onSuccess: () => {
       onOpenChange(false);
-      setName("");
-      setSystem("");
-      void queryClient.invalidateQueries({ queryKey: ["agents"] });
+      setName('');
+      setSystem('');
+      void queryClient.invalidateQueries({ queryKey: ['agents'] });
     },
   });
 
@@ -82,7 +95,12 @@ function CreateAgentDialog({ open, onOpenChange }: { open: boolean; onOpenChange
         <div className="grid gap-4">
           <div className="grid gap-2">
             <Label htmlFor="agent-name">名称</Label>
-            <Input id="agent-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="support-agent" />
+            <Input
+              id="agent-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="support-agent"
+            />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="grid gap-2">
@@ -156,7 +174,7 @@ function CreateAgentDialog({ open, onOpenChange }: { open: boolean; onOpenChange
         ) : null}
         <DialogFooter>
           <Button disabled={!name.trim() || mutation.isPending} onClick={() => mutation.mutate()}>
-            {mutation.isPending ? "创建中…" : "创建"}
+            {mutation.isPending ? '创建中…' : '创建'}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -169,8 +187,12 @@ const PAGE_SIZE = 20;
 export function AgentListPage() {
   const pager = useCursorPage();
   const query = useQuery({
-    queryKey: ["agents", pager.cursor],
-    queryFn: () => listAgents({ limit: PAGE_SIZE, ...(pager.cursor ? { page: pager.cursor } : {}) }),
+    queryKey: ['agents', pager.cursor],
+    queryFn: () =>
+      listAgents({
+        limit: PAGE_SIZE,
+        ...(pager.cursor ? { page: pager.cursor } : {}),
+      }),
     placeholderData: keepPreviousData,
   });
   const [createOpen, setCreateOpen] = useState(false);
@@ -238,10 +260,12 @@ export function AgentListPage() {
                   <TableCell className="hidden md:table-cell">
                     <span className="text-muted-foreground font-mono text-xs">
                       {agent.model.id}
-                      {agent.model.effort ? ` · ${agent.model.effort}` : ""}
+                      {agent.model.effort ? ` · ${agent.model.effort}` : ''}
                     </span>
                   </TableCell>
-                  <TableCell className="hidden font-mono text-xs tabular-nums md:table-cell">v{agent.version}</TableCell>
+                  <TableCell className="hidden font-mono text-xs tabular-nums md:table-cell">
+                    v{agent.version}
+                  </TableCell>
                   <TableCell>
                     {agent.archived_at ? (
                       <StatusBadge tint="tint-neutral">archived</StatusBadge>
@@ -250,8 +274,12 @@ export function AgentListPage() {
                     )}
                   </TableCell>
                   <TableCell className="text-right text-muted-foreground">
-                    <span className="text-xs tabular-nums sm:hidden">{formatTimeShort(agent.updated_at)}</span>
-                    <span className="hidden text-sm tabular-nums sm:inline">{formatTime(agent.updated_at)}</span>
+                    <span className="text-xs tabular-nums sm:hidden">
+                      {formatTimeShort(agent.updated_at)}
+                    </span>
+                    <span className="hidden text-sm tabular-nums sm:inline">
+                      {formatTime(agent.updated_at)}
+                    </span>
                   </TableCell>
                 </TableRow>
               ))}

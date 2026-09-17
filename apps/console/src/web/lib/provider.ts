@@ -1,16 +1,16 @@
-import { useSyncExternalStore } from "react";
+import { useSyncExternalStore } from 'react';
 
 /**
  * 后端选择:console 同时支持 GLM 与 nano 两套 Managed Agents API,
  * 由 sidebar 底部的 Select 切换。模块级 store 同步供 client.ts 取代理前缀,
  * React 侧经 useProvider 订阅;选择持久化在 localStorage,缺省 nano。
  */
-export type ApiProvider = "glm" | "nano";
+export type ApiProvider = 'glm' | 'nano';
 
-const STORAGE_KEY = "nano-console:provider";
-const DEFAULT_PROVIDER: ApiProvider = "nano";
+const STORAGE_KEY = 'nano-console:provider';
+const DEFAULT_PROVIDER: ApiProvider = 'nano';
 
-const PROVIDERS: readonly ApiProvider[] = ["glm", "nano"];
+const PROVIDERS: readonly ApiProvider[] = ['glm', 'nano'];
 
 let current: ApiProvider = readStored();
 const listeners = new Set<() => void>();

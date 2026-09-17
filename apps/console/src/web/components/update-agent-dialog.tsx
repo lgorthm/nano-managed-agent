@@ -1,12 +1,12 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { defaultModelEffort } from "@nano/shared";
-import type { Agent, AgentUpdateInput, GlmModelId, ModelEffort } from "@nano/shared/glm";
-import { Pencil } from "lucide-react";
-import { useState } from "react";
-import { updateAgent } from "@/api/agents";
-import { groupedModelOptions, useModelOptions, type ModelOption } from "@/api/models";
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
+import { defaultModelEffort } from '@nano/shared';
+import type { Agent, AgentUpdateInput, GlmModelId, ModelEffort } from '@nano/shared/glm';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { Pencil } from 'lucide-react';
+import { useState } from 'react';
+import { updateAgent } from '@/api/agents';
+import { groupedModelOptions, type ModelOption, useModelOptions } from '@/api/models';
+import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog,
   DialogContent,
@@ -14,9 +14,9 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import {
   Select,
   SelectContent,
@@ -25,13 +25,20 @@ import {
   SelectLabel,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
+} from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
 
 /** 编辑时当前模型若不在目录里(如动态模型尚未拉取),补进选项保证 Select 能回显 */
 function withCurrentModel(options: ModelOption[], currentId: string): ModelOption[] {
   if (options.some((option) => option.id === currentId)) return options;
-  return [...options, { id: currentId, label: currentId, defaultEffort: defaultModelEffort(currentId) }];
+  return [
+    ...options,
+    {
+      id: currentId,
+      label: currentId,
+      defaultEffort: defaultModelEffort(currentId),
+    },
+  ];
 }
 
 /**
@@ -45,12 +52,16 @@ export function UpdateAgentDialog({ agent }: { agent: Agent }) {
   const { options: modelOptions, isLoading: modelsLoading } = useModelOptions();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState(agent.name);
-  const [description, setDescription] = useState(agent.description ?? "");
+  const [description, setDescription] = useState(agent.description ?? '');
   const [model, setModel] = useState(agent.model.id);
-  const [effort, setEffort] = useState<ModelEffort>(agent.model.effort ?? defaultModelEffort(agent.model.id));
-  const [system, setSystem] = useState(agent.system ?? "");
-  const hasBuiltinToolset = agent.tools.some((toolset) => toolset.type === "agent_toolset_20260601");
-  const hasOtherToolsets = agent.tools.some((toolset) => toolset.type !== "agent_toolset_20260601");
+  const [effort, setEffort] = useState<ModelEffort>(
+    agent.model.effort ?? defaultModelEffort(agent.model.id),
+  );
+  const [system, setSystem] = useState(agent.system ?? '');
+  const hasBuiltinToolset = agent.tools.some(
+    (toolset) => toolset.type === 'agent_toolset_20260601',
+  );
+  const hasOtherToolsets = agent.tools.some((toolset) => toolset.type !== 'agent_toolset_20260601');
   const [withToolset, setWithToolset] = useState(hasBuiltinToolset);
   const queryClient = useQueryClient();
 
@@ -58,16 +69,16 @@ export function UpdateAgentDialog({ agent }: { agent: Agent }) {
     mutationFn: (patch: AgentUpdateInput) => updateAgent(agent.id, patch),
     onSuccess: () => {
       setOpen(false);
-      void queryClient.invalidateQueries({ queryKey: ["agents"] });
+      void queryClient.invalidateQueries({ queryKey: ['agents'] });
     },
   });
 
   function openDialog() {
     setName(agent.name);
-    setDescription(agent.description ?? "");
+    setDescription(agent.description ?? '');
     setModel(agent.model.id);
     setEffort(agent.model.effort ?? defaultModelEffort(agent.model.id));
-    setSystem(agent.system ?? "");
+    setSystem(agent.system ?? '');
     setWithToolset(hasBuiltinToolset);
     mutation.reset();
     setOpen(true);
@@ -76,10 +87,10 @@ export function UpdateAgentDialog({ agent }: { agent: Agent }) {
   const effortInitial = agent.model.effort ?? defaultModelEffort(agent.model.id);
   const dirty =
     name !== agent.name ||
-    description !== (agent.description ?? "") ||
+    description !== (agent.description ?? '') ||
     model !== agent.model.id ||
     effort !== effortInitial ||
-    system !== (agent.system ?? "") ||
+    system !== (agent.system ?? '') ||
     (!hasOtherToolsets && withToolset !== hasBuiltinToolset);
 
   function submit() {
@@ -92,7 +103,7 @@ export function UpdateAgentDialog({ agent }: { agent: Agent }) {
       description: description.trim() || null,
     };
     if (!hasOtherToolsets && withToolset !== hasBuiltinToolset) {
-      patch.tools = withToolset ? [{ type: "agent_toolset_20260601" }] : [];
+      patch.tools = withToolset ? [{ type: 'agent_toolset_20260601' }] : [];
     }
     mutation.mutate(patch);
   }
@@ -182,7 +193,9 @@ export function UpdateAgentDialog({ agent }: { agent: Agent }) {
               placeholder="You are a helpful coding agent."
             />
           </div>
-          <label className={`flex items-center gap-2 text-sm ${hasOtherToolsets ? "opacity-60" : ""}`}>
+          <label
+            className={`flex items-center gap-2 text-sm ${hasOtherToolsets ? 'opacity-60' : ''}`}
+          >
             <Checkbox
               checked={withToolset}
               disabled={hasOtherToolsets}
@@ -190,7 +203,9 @@ export function UpdateAgentDialog({ agent }: { agent: Agent }) {
             />
             启用内置工具集 agent_toolset_20260601
             {hasOtherToolsets ? (
-              <span className="text-muted-foreground text-xs">(含 API 配置的工具集,此处不可改)</span>
+              <span className="text-muted-foreground text-xs">
+                (含 API 配置的工具集,此处不可改)
+              </span>
             ) : null}
           </label>
         </div>
@@ -198,11 +213,20 @@ export function UpdateAgentDialog({ agent }: { agent: Agent }) {
           <p className="text-destructive text-sm">{(mutation.error as Error).message}</p>
         ) : null}
         <DialogFooter>
-          <Button variant="outline" size="sm" disabled={mutation.isPending} onClick={() => setOpen(false)}>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={mutation.isPending}
+            onClick={() => setOpen(false)}
+          >
             取消
           </Button>
-          <Button size="sm" disabled={!name.trim() || !dirty || mutation.isPending} onClick={submit}>
-            {mutation.isPending ? "保存中…" : "保存"}
+          <Button
+            size="sm"
+            disabled={!name.trim() || !dirty || mutation.isPending}
+            onClick={submit}
+          >
+            {mutation.isPending ? '保存中…' : '保存'}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -1,29 +1,29 @@
-import type { Env } from "./env";
-import { GLM_API_BASE, ZAI_BETA_HEADER, ZAI_VERSION_HEADER } from "@nano/shared/glm";
+import { GLM_API_BASE, ZAI_BETA_HEADER, ZAI_VERSION_HEADER } from '@nano/shared/glm';
+import type { Env } from './env';
 
-export const GLM_PROXY_PREFIX = "/glm";
-export const NANO_PROXY_PREFIX = "/nano";
+export const GLM_PROXY_PREFIX = '/glm';
+export const NANO_PROXY_PREFIX = '/nano';
 
 /** 浏览器侧固守 GLM 路径形状,资源段固定出现在该前缀之后;nano 分支据此改写路径 */
-const GLM_RESOURCE_PREFIX = "/agent/managed/v1";
+const GLM_RESOURCE_PREFIX = '/agent/managed/v1';
 
 /** 不应透传给上游的请求头(本站 Cookie、Access 痕迹与逐跳头) */
 const SKIPPED_REQUEST_HEADERS = new Set([
-  "host",
-  "cookie",
-  "cf-access-jwt-assertion",
-  "accept-encoding",
-  "content-length",
-  "connection",
+  'host',
+  'cookie',
+  'cf-access-jwt-assertion',
+  'accept-encoding',
+  'content-length',
+  'connection',
 ]);
 
 /** 不应回传给浏览器的响应头 */
 const SKIPPED_RESPONSE_HEADERS = new Set([
-  "set-cookie",
-  "transfer-encoding",
-  "content-encoding",
-  "content-length",
-  "connection",
+  'set-cookie',
+  'transfer-encoding',
+  'content-encoding',
+  'content-length',
+  'connection',
 ]);
 
 // /glm/<rest> → https://agent-api.bigmodel.cn/api/<rest>
@@ -50,16 +50,16 @@ export function buildUpstreamRequest(
   const headers = new Headers();
   request.headers.forEach((value, key) => {
     const k = key.toLowerCase();
-    if (SKIPPED_REQUEST_HEADERS.has(k) || k.startsWith("cf-") || k.startsWith("x-forwarded-")) {
+    if (SKIPPED_REQUEST_HEADERS.has(k) || k.startsWith('cf-') || k.startsWith('x-forwarded-')) {
       return;
     }
     headers.set(key, value);
   });
-  headers.set("Authorization", `Bearer ${apiKey}`);
+  headers.set('Authorization', `Bearer ${apiKey}`);
   if (zaiProtocol) {
     // zai 协议头仅 GLM 需要;nano 的版本由 /v1 路径承载,不认识这些头
-    headers.set("zai-version", ZAI_VERSION_HEADER);
-    headers.set("zai-beta", ZAI_BETA_HEADER);
+    headers.set('zai-version', ZAI_VERSION_HEADER);
+    headers.set('zai-beta', ZAI_BETA_HEADER);
   }
 
   // 用原始 body 流构造(GET/HEAD 的 body 为 null),multipart 上传与 SSE 均天然透传
@@ -67,7 +67,7 @@ export function buildUpstreamRequest(
     method: request.method,
     headers,
     body: request.body,
-    redirect: "manual",
+    redirect: 'manual',
   });
 }
 
@@ -110,10 +110,10 @@ interface NanoFilePage {
 function buildNanoFileListUrl(url: URL, nanoApiBase: string): URL {
   const upstream = buildNanoUpstreamUrl(url, nanoApiBase);
   const params = upstream.searchParams;
-  const cursor = params.get("after_id");
-  params.delete("after_id");
-  params.delete("before_id");
-  if (cursor !== null) params.set("page", cursor);
+  const cursor = params.get('after_id');
+  params.delete('after_id');
+  params.delete('before_id');
+  if (cursor !== null) params.set('page', cursor);
   return upstream;
 }
 
@@ -137,7 +137,7 @@ async function adaptFileListResponse(upstream: Response): Promise<Response> {
   }
 
   const headers = new Headers(passthrough.headers);
-  headers.set("content-type", "application/json");
+  headers.set('content-type', 'application/json');
   return new Response(
     JSON.stringify({
       data: page.data,
@@ -161,8 +161,7 @@ export async function proxyToNano(
 ): Promise<Response> {
   const url = new URL(request.url);
   const isFileList =
-    request.method === "GET" &&
-    url.pathname === `${NANO_PROXY_PREFIX}${GLM_RESOURCE_PREFIX}/files`;
+    request.method === 'GET' && url.pathname === `${NANO_PROXY_PREFIX}${GLM_RESOURCE_PREFIX}/files`;
   const upstreamUrl = isFileList
     ? buildNanoFileListUrl(url, env.NANO_API_BASE)
     : buildNanoUpstreamUrl(url, env.NANO_API_BASE);

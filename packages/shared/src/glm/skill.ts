@@ -4,9 +4,9 @@
  * {create-skill-version,list-skill-versions,get-skill-version}.md、
  * {download-skill-zip,delete-skill,delete-skill-version}.md。
  */
-import type { ListQuery } from "./common";
+import type { ListQuery } from './common';
 
-export type SkillSource = "custom" | "zai";
+export type SkillSource = 'custom' | 'zai';
 
 /** 上传目录内的单个文件;路径即 multipart 字段名 */
 export interface SkillFileInput {
@@ -24,7 +24,7 @@ export interface SkillCreateInput {
 
 export interface Skill {
   id: string;
-  type: "skill";
+  type: 'skill';
   /** 可选展示名;null 时界面回退到最新版本的 frontmatter name */
   display_title: string | null;
   source: SkillSource;
@@ -36,7 +36,7 @@ export interface Skill {
 
 export interface SkillVersion {
   id: string;
-  type: "skill_version";
+  type: 'skill_version';
   skill_id: string;
   /** 十进制数字字符串("1"、"2"…),单调递增 */
   version: string;
@@ -62,10 +62,10 @@ export interface SkillListQuery extends ListQuery {
 
 export interface SkillDeleted {
   id: string;
-  type: "skill_deleted";
+  type: 'skill_deleted';
 }
 
 export interface SkillVersionDeleted {
   id: string;
-  type: "skill_version_deleted";
+  type: 'skill_version_deleted';
 }

@@ -5,20 +5,16 @@
  * 与 Agent 更新语义(merge.ts)同款规则,但作用对象是版本快照而非补丁请求。
  * 输出即落库形态(agent_config 列)与 wire 回显形态(session.agent),读取时零加工。
  */
-import type {
-  AgentToolsetInput,
-  McpServer,
-  ModelInput,
-  SkillReference,
-} from "../agent/schemas";
-import type { NormalizedAgentConfig } from "../agent/normalize";
-import { normalizeModel, normalizeToolset } from "../agent/normalize";
+
+import type { NormalizedAgentConfig } from '../agent/normalize';
+import { normalizeModel, normalizeToolset } from '../agent/normalize';
+import type { AgentToolsetInput, McpServer, ModelInput, SkillReference } from '../agent/schemas';
 
 /**
  * 会话持有的 Agent 配置快照:NormalizedAgentConfig 去掉 metadata——
  * wire 的 session.agent 不回显 metadata,会话自身的 metadata 是另一个字段。
  */
-export type SessionAgentConfig = Omit<NormalizedAgentConfig, "metadata">;
+export type SessionAgentConfig = Omit<NormalizedAgentConfig, 'metadata'>;
 
 /** agent_with_overrides 的覆盖字段;全部"省略继承 / null 清空" */
 export interface SessionAgentOverrides {
@@ -56,10 +52,15 @@ export function resolveSessionAgent(
     name: base.name,
     description: base.description,
     model: overrides.model === undefined ? base.model : normalizeModel(overrides.model),
-    system: overrides.system === undefined ? base.system : overrides.system ?? null,
+    system: overrides.system === undefined ? base.system : (overrides.system ?? null),
     tools:
-      overrides.tools === undefined ? base.tools : overrides.tools === null ? [] : overrides.tools.map(normalizeToolset),
-    skills: overrides.skills === undefined ? base.skills : overrides.skills ?? [],
-    mcp_servers: overrides.mcp_servers === undefined ? base.mcp_servers : overrides.mcp_servers ?? [],
+      overrides.tools === undefined
+        ? base.tools
+        : overrides.tools === null
+          ? []
+          : overrides.tools.map(normalizeToolset),
+    skills: overrides.skills === undefined ? base.skills : (overrides.skills ?? []),
+    mcp_servers:
+      overrides.mcp_servers === undefined ? base.mcp_servers : (overrides.mcp_servers ?? []),
   };
 }

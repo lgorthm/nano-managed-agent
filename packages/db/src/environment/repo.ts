@@ -2,10 +2,11 @@
  * Environment 资源的仓储函数:全部 SQL 的唯一出处。
  * 单表无版本,写入路径都是单条语句,没有跨表一致性要求(对照 Agent 的两表 batch)。
  */
-import { and, asc, desc, eq, gt, lt, or } from "drizzle-orm";
-import type { NormalizedEnvironmentConfig } from "@nano/shared";
-import type { Db } from "../client";
-import { environments } from "../schema";
+
+import type { NormalizedEnvironmentConfig } from '@nano/shared';
+import { and, asc, desc, eq, gt, lt, or } from 'drizzle-orm';
+import type { Db } from '../client';
+import { environments } from '../schema';
 
 export type EnvironmentRow = typeof environments.$inferSelect;
 
@@ -29,15 +30,22 @@ export async function createEnvironment(
     description,
     config,
     metadata,
-    state: "active",
+    state: 'active',
     createdAt: now,
     updatedAt: now,
   });
 }
 
 /** 按 id 取 Environment 行;查不到返回 null */
-export async function findEnvironment(db: Db, environmentId: string): Promise<EnvironmentRow | null> {
-  const rows = await db.select().from(environments).where(eq(environments.id, environmentId)).limit(1);
+export async function findEnvironment(
+  db: Db,
+  environmentId: string,
+): Promise<EnvironmentRow | null> {
+  const rows = await db
+    .select()
+    .from(environments)
+    .where(eq(environments.id, environmentId))
+    .limit(1);
   return rows[0] ?? null;
 }
 
@@ -53,13 +61,20 @@ export interface EnvironmentsPageCursor {
  */
 export async function listEnvironmentsPage(
   db: Db,
-  params: { limit: number; order: "asc" | "desc"; cursor: EnvironmentsPageCursor | null },
-): Promise<{ rows: EnvironmentRow[]; nextCursor: EnvironmentsPageCursor | null }> {
+  params: {
+    limit: number;
+    order: 'asc' | 'desc';
+    cursor: EnvironmentsPageCursor | null;
+  },
+): Promise<{
+  rows: EnvironmentRow[];
+  nextCursor: EnvironmentsPageCursor | null;
+}> {
   const conditions = [
     params.cursor
       ? (() => {
           const at = new Date(params.cursor!.createdAt);
-          return params.order === "desc"
+          return params.order === 'desc'
             ? or(
                 lt(environments.createdAt, at),
                 and(eq(environments.createdAt, at), lt(environments.id, params.cursor!.id)),
@@ -77,16 +92,15 @@ export async function listEnvironmentsPage(
     .from(environments)
     .where(conditions.length > 0 ? and(...conditions) : undefined)
     .orderBy(
-      params.order === "desc" ? desc(environments.createdAt) : asc(environments.createdAt),
-      params.order === "desc" ? desc(environments.id) : asc(environments.id),
+      params.order === 'desc' ? desc(environments.createdAt) : asc(environments.createdAt),
+      params.order === 'desc' ? desc(environments.id) : asc(environments.id),
     )
     .limit(params.limit + 1);
 
   const hasMore = rows.length > params.limit;
   const pageRows = hasMore ? rows.slice(0, params.limit) : rows;
   const last = pageRows[pageRows.length - 1];
-  const nextCursor =
-    hasMore && last ? { createdAt: last.createdAt.getTime(), id: last.id } : null;
+  const nextCursor = hasMore && last ? { createdAt: last.createdAt.getTime(), id: last.id } : null;
   return { rows: pageRows, nextCursor };
 }
 
@@ -110,7 +124,9 @@ export async function updateEnvironment(
       metadata: values.metadata,
       updatedAt: now,
     })
-    .where(and(eq(environments.id, environmentId), eq(environments.state, "active")))) as unknown as {
+    .where(
+      and(eq(environments.id, environmentId), eq(environments.state, 'active')),
+    )) as unknown as {
     meta?: { changes?: number };
   };
   return (result.meta?.changes ?? 0) > 0;
@@ -120,8 +136,8 @@ export async function updateEnvironment(
 export async function archiveEnvironment(db: Db, environmentId: string, now: Date): Promise<void> {
   await db
     .update(environments)
-    .set({ state: "archived", archivedAt: now })
-    .where(and(eq(environments.id, environmentId), eq(environments.state, "active")));
+    .set({ state: 'archived', archivedAt: now })
+    .where(and(eq(environments.id, environmentId), eq(environments.state, 'active')));
 }
 
 /** 按 id 硬删除;不做引用计数(与 GLM 一致);受影响 0 行返回 false,由上层转成 404 */

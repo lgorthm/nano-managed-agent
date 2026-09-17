@@ -1,6 +1,6 @@
-import type { Context } from "hono";
-import type { AppEnv } from "../env";
-import { invalidRequestError } from "./errors";
+import type { Context } from 'hono';
+import type { AppEnv } from '../env';
+import { invalidRequestError } from './errors';
 
 /**
  * 解析 JSON 请求体;坏 JSON 统一转为 invalid_request_error。
@@ -10,7 +10,7 @@ export async function parseJsonBody(c: Context<AppEnv>): Promise<unknown> {
   try {
     return await c.req.json();
   } catch {
-    throw invalidRequestError("Request body is not valid JSON.");
+    throw invalidRequestError('Request body is not valid JSON.');
   }
 }
 
@@ -18,7 +18,15 @@ export async function parseJsonBody(c: Context<AppEnv>): Promise<unknown> {
 interface Validator<T> {
   safeParse(data: unknown):
     | { success: true; data: T }
-    | { success: false; error: { issues: ReadonlyArray<{ path: ReadonlyArray<PropertyKey>; message: string }> } };
+    | {
+        success: false;
+        error: {
+          issues: ReadonlyArray<{
+            path: ReadonlyArray<PropertyKey>;
+            message: string;
+          }>;
+        };
+      };
 }
 
 /** 用 schema 校验已解析的 JSON;失败时 details 携带逐字段的问题路径与消息 */
@@ -26,16 +34,19 @@ function validateBody<T>(raw: unknown, schema: Validator<T>): T {
   const result = schema.safeParse(raw);
   if (!result.success) {
     const issues = result.error.issues.map((issue) => ({
-      path: issue.path.map(String).join(".") || "(root)",
+      path: issue.path.map(String).join('.') || '(root)',
       message: issue.message,
     }));
-    throw invalidRequestError("Request validation failed.", { issues });
+    throw invalidRequestError('Request validation failed.', { issues });
   }
   return result.data;
 }
 
 /** 解析并校验 JSON 请求体 */
-export async function parseAndValidateBody<T>(c: Context<AppEnv>, schema: Validator<T>): Promise<T> {
+export async function parseAndValidateBody<T>(
+  c: Context<AppEnv>,
+  schema: Validator<T>,
+): Promise<T> {
   return validateBody(await parseJsonBody(c), schema);
 }
 
@@ -48,12 +59,12 @@ export async function parseAndValidateOptionalBody<T>(
   schema: Validator<T>,
 ): Promise<T> {
   const text = await c.req.text();
-  if (text.trim() === "") return validateBody({}, schema);
+  if (text.trim() === '') return validateBody({}, schema);
   let raw: unknown;
   try {
     raw = JSON.parse(text);
   } catch {
-    throw invalidRequestError("Request body is not valid JSON.");
+    throw invalidRequestError('Request body is not valid JSON.');
   }
   return validateBody(raw, schema);
 }

@@ -1,5 +1,5 @@
-import type { SortOrder } from "@nano/shared";
-import { invalidRequestError } from "./errors";
+import type { SortOrder } from '@nano/shared';
+import { invalidRequestError } from './errors';
 
 /** 分页约定见 docs/agent/api/README.md:limit 默认 20,大于 100 时截断为 100 */
 export const DEFAULT_PAGE_LIMIT = 20;
@@ -16,12 +16,12 @@ export interface ListParams {
 }
 
 function toBase64Url(input: string): string {
-  return btoa(input).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  return btoa(input).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
 function fromBase64Url(input: string): string {
-  const base64 = input.replace(/-/g, "+").replace(/_/g, "/");
-  return atob(base64 + "=".repeat((4 - (base64.length % 4)) % 4));
+  const base64 = input.replace(/-/g, '+').replace(/_/g, '/');
+  return atob(base64 + '='.repeat((4 - (base64.length % 4)) % 4));
 }
 
 /** 编码 opaque 游标:base64url(JSON) */
@@ -35,14 +35,10 @@ export function decodeCursor(kind: string, raw: string): CursorPayload {
   try {
     payload = JSON.parse(fromBase64Url(raw));
   } catch {
-    throw invalidRequestError("Invalid page cursor.");
+    throw invalidRequestError('Invalid page cursor.');
   }
-  if (
-    typeof payload !== "object" ||
-    payload === null ||
-    (payload as CursorPayload).kind !== kind
-  ) {
-    throw invalidRequestError("Invalid page cursor.");
+  if (typeof payload !== 'object' || payload === null || (payload as CursorPayload).kind !== kind) {
+    throw invalidRequestError('Invalid page cursor.');
   }
   return payload as CursorPayload;
 }
@@ -50,7 +46,8 @@ export function decodeCursor(kind: string, raw: string): CursorPayload {
 /** 读取游标中必填的数字字段;缺失或类型不符返回 400 */
 export function cursorNumberField(payload: CursorPayload, name: string): number {
   const value = payload[name];
-  const num = typeof value === "number" ? value : typeof value === "string" ? Number(value) : Number.NaN;
+  const num =
+    typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : Number.NaN;
   if (!Number.isFinite(num)) {
     throw invalidRequestError(`Invalid page cursor: missing numeric field "${name}".`);
   }
@@ -60,7 +57,7 @@ export function cursorNumberField(payload: CursorPayload, name: string): number 
 /** 读取游标中必填的字符串字段;缺失返回 400 */
 export function cursorStringField(payload: CursorPayload, name: string): string {
   const value = payload[name];
-  if (typeof value !== "string" || value === "") {
+  if (typeof value !== 'string' || value === '') {
     throw invalidRequestError(`Invalid page cursor: missing string field "${name}".`);
   }
   return value;
@@ -83,30 +80,30 @@ export function parseListParams(
   defaults: ListParamsDefaults = {},
 ): ListParams {
   const defaultLimit = defaults.limit ?? DEFAULT_PAGE_LIMIT;
-  const defaultOrder = defaults.order ?? "desc";
-  const rawLimit = getQuery("limit");
+  const defaultOrder = defaults.order ?? 'desc';
+  const rawLimit = getQuery('limit');
   let limit = defaultLimit;
   if (rawLimit !== undefined) {
     if (!/^\d+$/.test(rawLimit)) {
-      throw invalidRequestError("Query parameter limit must be a positive integer.");
+      throw invalidRequestError('Query parameter limit must be a positive integer.');
     }
     const parsed = Number(rawLimit);
     if (parsed < 1) {
-      throw invalidRequestError("Query parameter limit must be at least 1.");
+      throw invalidRequestError('Query parameter limit must be at least 1.');
     }
     limit = Math.min(parsed, MAX_PAGE_LIMIT);
   }
 
-  const rawOrder = getQuery("order");
+  const rawOrder = getQuery('order');
   let order: SortOrder = defaultOrder;
   if (rawOrder !== undefined) {
-    if (rawOrder !== "asc" && rawOrder !== "desc") {
-      throw invalidRequestError("Query parameter order must be asc or desc.");
+    if (rawOrder !== 'asc' && rawOrder !== 'desc') {
+      throw invalidRequestError('Query parameter order must be asc or desc.');
     }
     order = rawOrder;
   }
 
-  const rawPage = getQuery("page");
+  const rawPage = getQuery('page');
   const cursor = rawPage === undefined ? null : decodeCursor(cursorKind, rawPage);
 
   return { limit, order, cursor };

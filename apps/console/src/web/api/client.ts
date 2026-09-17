@@ -1,5 +1,5 @@
-import type { GlmErrorBody, Page } from "@nano/shared/glm";
-import { getProvider } from "@/lib/provider";
+import type { Page } from '@nano/shared/glm';
+import { getProvider } from '@/lib/provider';
 
 /**
  * 浏览器侧后端 client:统一打同域代理(/glm 或 /nano,由 sidebar 底部 Select 切换),
@@ -7,7 +7,7 @@ import { getProvider } from "@/lib/provider";
  * worker 校验 JWT 后注入对应后端的 API Key。
  */
 function proxyBase(): string {
-  return getProvider() === "nano" ? "/nano" : "/glm";
+  return getProvider() === 'nano' ? '/nano' : '/glm';
 }
 
 export class GlmApiError extends Error {
@@ -18,7 +18,7 @@ export class GlmApiError extends Error {
     readonly requestId?: string,
   ) {
     super(message);
-    this.name = "GlmApiError";
+    this.name = 'GlmApiError';
   }
 }
 
@@ -30,11 +30,12 @@ export function qs(params: object = {}): string {
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
     if (value === undefined || value === null) continue;
-    if (Array.isArray(value)) value.forEach((v) => search.append(key, String(v)));
-    else search.set(key, String(value));
+    if (Array.isArray(value)) {
+      for (const v of value) search.append(key, String(v));
+    } else search.set(key, String(value));
   }
   const s = search.toString();
-  return s ? `?${s}` : "";
+  return s ? `?${s}` : '';
 }
 
 /** 非 2xx 响应统一解析 GLM 错误信封后抛出;解析失败(如 Access 拦截页)保留兜底信息 */
@@ -60,10 +61,10 @@ export async function glmFetch<T>(path: string, init?: RequestInit): Promise<T> 
   const res = await fetch(`${proxyBase()}${path}`, {
     ...init,
     headers: {
-      accept: "application/json",
+      accept: 'application/json',
       // FormData 的 multipart boundary 由浏览器生成,不能手动指定 content-type
       ...(init?.body != null && !(init.body instanceof FormData)
-        ? { "content-type": "application/json" }
+        ? { 'content-type': 'application/json' }
         : {}),
       ...init?.headers,
     },
@@ -76,7 +77,10 @@ export async function glmFetch<T>(path: string, init?: RequestInit): Promise<T> 
 
 /** 同 glmFetch 的错误处理,但返回原始 Response——ZIP 下载等二进制响应用 */
 export async function glmFetchRaw(path: string, init?: RequestInit): Promise<Response> {
-  const res = await fetch(`${proxyBase()}${path}`, { ...init, headers: init?.headers });
+  const res = await fetch(`${proxyBase()}${path}`, {
+    ...init,
+    headers: init?.headers,
+  });
   await throwIfError(res);
   return res;
 }
@@ -89,7 +93,7 @@ export function glmFetchPage<T>(path: string, params: object = {}): Promise<Page
 export function filenameFromDisposition(header: string | null): string | null {
   if (!header) return null;
   const extended = /filename\*=(?:UTF-8'')?([^;]+)/i.exec(header);
-  if (extended) return decodeURIComponent(extended[1]?.replace(/^"|"$/g, "").trim() ?? "");
+  if (extended) return decodeURIComponent(extended[1]?.replace(/^"|"$/g, '').trim() ?? '');
   const plain = /filename=("?)([^";]+)\1/i.exec(header);
   return plain ? (plain[2] ?? null) : null;
 }
@@ -111,40 +115,40 @@ export async function subscribeGlmStream(
 ): Promise<void> {
   const res = await fetch(`${proxyBase()}${path}`, {
     signal,
-    headers: { accept: "text/event-stream" },
+    headers: { accept: 'text/event-stream' },
   });
   if (!res.ok || !res.body) {
-    throw new GlmApiError(res.status, "stream_error", `事件流连接失败(HTTP ${res.status})`);
+    throw new GlmApiError(res.status, 'stream_error', `事件流连接失败(HTTP ${res.status})`);
   }
 
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
-  let buffer = "";
+  let buffer = '';
 
   for (;;) {
     const { done, value } = await reader.read();
     if (done) break;
     buffer += decoder.decode(value, { stream: true });
 
-    let sep = buffer.indexOf("\n\n");
+    let sep = buffer.indexOf('\n\n');
     while (sep !== -1) {
       const chunk = buffer.slice(0, sep);
       buffer = buffer.slice(sep + 2);
       emitMessage(chunk, onMessage);
-      sep = buffer.indexOf("\n\n");
+      sep = buffer.indexOf('\n\n');
     }
   }
 }
 
 function emitMessage(chunk: string, onMessage: (msg: SseMessage) => void): void {
-  const msg: SseMessage = { data: "" };
-  for (const line of chunk.split("\n")) {
-    const colon = line.indexOf(":");
+  const msg: SseMessage = { data: '' };
+  for (const line of chunk.split('\n')) {
+    const colon = line.indexOf(':');
     const field = colon === -1 ? line : line.slice(0, colon);
-    const value = colon === -1 ? "" : line.slice(colon + 1).replace(/^ /, "");
-    if (field === "data") msg.data = msg.data ? `${msg.data}\n${value}` : value;
-    else if (field === "event") msg.event = value;
-    else if (field === "id") msg.id = value;
+    const value = colon === -1 ? '' : line.slice(colon + 1).replace(/^ /, '');
+    if (field === 'data') msg.data = msg.data ? `${msg.data}\n${value}` : value;
+    else if (field === 'event') msg.event = value;
+    else if (field === 'id') msg.id = value;
   }
   if (msg.data || msg.event) onMessage(msg);
 }

@@ -1,21 +1,28 @@
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import type { Deployment } from "@nano/shared/glm";
-import { CalendarClock } from "lucide-react";
-import { useState } from "react";
-import { Link } from "react-router";
-import { listDeployments } from "@/api/deployments";
-import { CreateDeploymentDialog } from "@/components/deployment-form-dialog";
-import { DataPager } from "@/components/data-pager";
-import { useCursorPage } from "@/hooks/use-cursor-page";
-import { TableCard } from "@/components/table-card";
-import { EmptyState } from "@/components/empty-state";
-import { PageHeader } from "@/components/page-header";
-import { QueryError } from "@/components/query-error";
-import { RefreshButton } from "@/components/refresh-button";
-import { DeploymentStatusBadge } from "@/components/status-badges";
-import { TableSkeleton } from "@/components/table-skeleton";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { formatTime, formatTimeShort } from "@/lib/format";
+import type { Deployment } from '@nano/shared/glm';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { CalendarClock } from 'lucide-react';
+import { useState } from 'react';
+import { Link } from 'react-router';
+import { listDeployments } from '@/api/deployments';
+import { DataPager } from '@/components/data-pager';
+import { CreateDeploymentDialog } from '@/components/deployment-form-dialog';
+import { EmptyState } from '@/components/empty-state';
+import { PageHeader } from '@/components/page-header';
+import { QueryError } from '@/components/query-error';
+import { RefreshButton } from '@/components/refresh-button';
+import { DeploymentStatusBadge } from '@/components/status-badges';
+import { TableCard } from '@/components/table-card';
+import { TableSkeleton } from '@/components/table-skeleton';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { useCursorPage } from '@/hooks/use-cursor-page';
+import { formatTime, formatTimeShort } from '@/lib/format';
 
 const PAGE_SIZE = 20;
 
@@ -23,8 +30,12 @@ export function DeploymentListPage() {
   const pager = useCursorPage();
   const [createOpen, setCreateOpen] = useState(false);
   const query = useQuery({
-    queryKey: ["deployments", pager.cursor],
-    queryFn: () => listDeployments({ limit: PAGE_SIZE, ...(pager.cursor ? { page: pager.cursor } : {}) }),
+    queryKey: ['deployments', pager.cursor],
+    queryFn: () =>
+      listDeployments({
+        limit: PAGE_SIZE,
+        ...(pager.cursor ? { page: pager.cursor } : {}),
+      }),
     placeholderData: keepPreviousData,
   });
   const deployments = query.data?.data ?? [];
@@ -84,7 +95,11 @@ export function DeploymentListPage() {
                     </div>
                   </TableCell>
                   <TableCell className="hidden font-mono text-xs md:table-cell">
-                    {deployment.schedule ? deployment.schedule.expression : <span className="text-muted-foreground">仅手动</span>}
+                    {deployment.schedule ? (
+                      deployment.schedule.expression
+                    ) : (
+                      <span className="text-muted-foreground">仅手动</span>
+                    )}
                   </TableCell>
                   <TableCell>
                     <DeploymentStatusBadge status={deployment.status} />
@@ -93,8 +108,12 @@ export function DeploymentListPage() {
                     {formatTime(deployment.schedule?.last_run_at)}
                   </TableCell>
                   <TableCell className="text-right text-muted-foreground">
-                    <span className="text-xs tabular-nums sm:hidden">{formatTimeShort(deployment.updated_at)}</span>
-                    <span className="hidden text-sm tabular-nums sm:inline">{formatTime(deployment.updated_at)}</span>
+                    <span className="text-xs tabular-nums sm:hidden">
+                      {formatTimeShort(deployment.updated_at)}
+                    </span>
+                    <span className="hidden text-sm tabular-nums sm:inline">
+                      {formatTime(deployment.updated_at)}
+                    </span>
                   </TableCell>
                 </TableRow>
               ))}

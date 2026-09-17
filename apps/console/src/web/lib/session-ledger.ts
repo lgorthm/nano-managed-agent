@@ -10,13 +10,13 @@
  */
 
 /** 三泳道:输入(用户侧)/模型(agent 输出与请求)/工具(调用与结果) */
-export type LedgerLane = "input" | "model" | "tool";
+export type LedgerLane = 'input' | 'model' | 'tool';
 
 /** 台账记录的展示类别(闭合集合,渲染层按此选图标与配色) */
-export type LedgerKind = "user" | "system" | "message" | "thinking" | "tool" | "span" | "error";
+export type LedgerKind = 'user' | 'system' | 'message' | 'thinking' | 'tool' | 'span' | 'error';
 
 /** 时间线水平投影模式:sequence 每条记录等宽顺排;duration 按真实耗时并压缩空闲间隙 */
-export type TimelineMode = "sequence" | "duration";
+export type TimelineMode = 'sequence' | 'duration';
 
 /** 台账中的一条记录:一个事件,或 tool_use↔tool_result / span start↔end 配对合成的区间 */
 export interface LedgerRecord {
@@ -47,81 +47,81 @@ export interface LedgerRecord {
 
 /** 事件类型 → 类别与泳道;不在表内且非 span.* 的事件不产出记录(session.* 元事件等) */
 const KIND_OF_TYPE: Record<string, { kind: LedgerKind; lane: LedgerLane }> = {
-  "user.message": { kind: "user", lane: "input" },
-  "user.interrupt": { kind: "user", lane: "input" },
-  "user.tool_confirmation": { kind: "user", lane: "input" },
-  "user.define_outcome": { kind: "user", lane: "input" },
-  "system.message": { kind: "system", lane: "input" },
-  "agent.thread_context_compacted": { kind: "system", lane: "input" },
-  "agent.thread_message_received": { kind: "system", lane: "model" },
-  "agent.thread_message_sent": { kind: "system", lane: "model" },
-  "agent.message": { kind: "message", lane: "model" },
-  "agent.thinking": { kind: "thinking", lane: "model" },
-  "agent.tool_use": { kind: "tool", lane: "tool" },
-  "agent.mcp_tool_use": { kind: "tool", lane: "tool" },
-  "agent.custom_tool_use": { kind: "tool", lane: "tool" },
-  "agent.tool_result": { kind: "tool", lane: "tool" },
-  "agent.mcp_tool_result": { kind: "tool", lane: "tool" },
-  "user.tool_result": { kind: "tool", lane: "tool" },
-  "user.custom_tool_result": { kind: "tool", lane: "tool" },
-  "session.error": { kind: "error", lane: "model" },
+  'user.message': { kind: 'user', lane: 'input' },
+  'user.interrupt': { kind: 'user', lane: 'input' },
+  'user.tool_confirmation': { kind: 'user', lane: 'input' },
+  'user.define_outcome': { kind: 'user', lane: 'input' },
+  'system.message': { kind: 'system', lane: 'input' },
+  'agent.thread_context_compacted': { kind: 'system', lane: 'input' },
+  'agent.thread_message_received': { kind: 'system', lane: 'model' },
+  'agent.thread_message_sent': { kind: 'system', lane: 'model' },
+  'agent.message': { kind: 'message', lane: 'model' },
+  'agent.thinking': { kind: 'thinking', lane: 'model' },
+  'agent.tool_use': { kind: 'tool', lane: 'tool' },
+  'agent.mcp_tool_use': { kind: 'tool', lane: 'tool' },
+  'agent.custom_tool_use': { kind: 'tool', lane: 'tool' },
+  'agent.tool_result': { kind: 'tool', lane: 'tool' },
+  'agent.mcp_tool_result': { kind: 'tool', lane: 'tool' },
+  'user.tool_result': { kind: 'tool', lane: 'tool' },
+  'user.custom_tool_result': { kind: 'tool', lane: 'tool' },
+  'session.error': { kind: 'error', lane: 'model' },
 };
 
 const TYPE_LABELS: Record<string, string> = {
-  "user.message": "用户消息",
-  "user.interrupt": "打断",
-  "user.tool_confirmation": "工具确认",
-  "user.define_outcome": "定义结果",
-  "user.tool_result": "工具结果(用户)",
-  "user.custom_tool_result": "自定义工具结果",
-  "system.message": "系统消息",
-  "agent.thread_context_compacted": "上下文压缩",
-  "agent.thread_message_received": "线程消息(收)",
-  "agent.thread_message_sent": "线程消息(发)",
-  "agent.message": "Agent 消息",
-  "agent.thinking": "思考",
-  "agent.tool_use": "工具调用",
-  "agent.tool_result": "工具结果",
-  "agent.mcp_tool_use": "MCP 工具调用",
-  "agent.mcp_tool_result": "MCP 工具结果",
-  "agent.custom_tool_use": "自定义工具调用",
-  "span.model_request_start": "模型请求",
-  "span.model_request_end": "模型请求结束",
-  "span.outcome_evaluation_start": "结果评估",
-  "span.outcome_evaluation_end": "结果评估结束",
-  "session.error": "会话错误",
+  'user.message': '用户消息',
+  'user.interrupt': '打断',
+  'user.tool_confirmation': '工具确认',
+  'user.define_outcome': '定义结果',
+  'user.tool_result': '工具结果(用户)',
+  'user.custom_tool_result': '自定义工具结果',
+  'system.message': '系统消息',
+  'agent.thread_context_compacted': '上下文压缩',
+  'agent.thread_message_received': '线程消息(收)',
+  'agent.thread_message_sent': '线程消息(发)',
+  'agent.message': 'Agent 消息',
+  'agent.thinking': '思考',
+  'agent.tool_use': '工具调用',
+  'agent.tool_result': '工具结果',
+  'agent.mcp_tool_use': 'MCP 工具调用',
+  'agent.mcp_tool_result': 'MCP 工具结果',
+  'agent.custom_tool_use': '自定义工具调用',
+  'span.model_request_start': '模型请求',
+  'span.model_request_end': '模型请求结束',
+  'span.outcome_evaluation_start': '结果评估',
+  'span.outcome_evaluation_end': '结果评估结束',
+  'session.error': '会话错误',
 };
 
 /** 开启新 turn 的用户输入类型(工具确认是审批回复,归入当前循环) */
-const TURN_OPENING_TYPES = new Set(["user.message", "user.interrupt", "user.define_outcome"]);
+const TURN_OPENING_TYPES = new Set(['user.message', 'user.interrupt', 'user.define_outcome']);
 
 /** 开启新 step 的模型输出类型 */
-const STEP_OPENING_TYPES = new Set(["agent.message", "agent.thinking"]);
+const STEP_OPENING_TYPES = new Set(['agent.message', 'agent.thinking']);
 
-const TOOL_USE_TYPES = new Set(["agent.tool_use", "agent.mcp_tool_use", "agent.custom_tool_use"]);
+const TOOL_USE_TYPES = new Set(['agent.tool_use', 'agent.mcp_tool_use', 'agent.custom_tool_use']);
 const TOOL_RESULT_TYPES = new Set([
-  "agent.tool_result",
-  "agent.mcp_tool_result",
-  "user.tool_result",
-  "user.custom_tool_result",
+  'agent.tool_result',
+  'agent.mcp_tool_result',
+  'user.tool_result',
+  'user.custom_tool_result',
 ]);
 const SPAN_END_OF: Record<string, string> = {
-  "span.model_request_start": "span.model_request_end",
-  "span.outcome_evaluation_start": "span.outcome_evaluation_end",
+  'span.model_request_start': 'span.model_request_end',
+  'span.outcome_evaluation_start': 'span.outcome_evaluation_end',
 };
 
 /** 摘要文本最大长度:超出部分截断加省略号,避免对超长载荷做完整序列化 */
 const SUMMARY_MAX_CHARS = 120;
 
 function epochOf(iso: unknown): number | null {
-  if (typeof iso !== "string") return null;
+  if (typeof iso !== 'string') return null;
   const t = new Date(iso).getTime();
   return Number.isNaN(t) ? null : t;
 }
 
 /** 压缩空白并截断的单行文本 */
 function snippet(text: string, max = SUMMARY_MAX_CHARS): string | undefined {
-  const t = text.trim().replace(/\s+/g, " ");
+  const t = text.trim().replace(/\s+/g, ' ');
   if (t.length === 0) return undefined;
   return t.length > max ? `${t.slice(0, max)}…` : t;
 }
@@ -131,11 +131,11 @@ function previewJson(value: unknown, max = SUMMARY_MAX_CHARS): string | undefine
   if (value === undefined || value === null) return undefined;
   let text: string;
   try {
-    text = typeof value === "string" ? value : JSON.stringify(value);
+    text = typeof value === 'string' ? value : JSON.stringify(value);
   } catch {
     return undefined;
   }
-  if (typeof text !== "string" || text.length === 0) return undefined;
+  if (typeof text !== 'string' || text.length === 0) return undefined;
   return snippet(text, max);
 }
 
@@ -144,20 +144,25 @@ function textDetail(record: Record<string, unknown>): string | undefined {
   const content = record.content;
   if (Array.isArray(content)) {
     for (const block of content) {
-      if (typeof block === "object" && block !== null && typeof (block as { text?: unknown }).text === "string") {
+      if (
+        typeof block === 'object' &&
+        block !== null &&
+        typeof (block as { text?: unknown }).text === 'string'
+      ) {
         const s = snippet((block as { text: string }).text);
         if (s) return s;
       }
     }
     return undefined;
   }
-  return snippet(typeof record.text === "string" ? record.text : "") ?? snippet(
-    typeof record.message === "string" ? record.message : "",
+  return (
+    snippet(typeof record.text === 'string' ? record.text : '') ??
+    snippet(typeof record.message === 'string' ? record.message : '')
   );
 }
 
 export function formatSpanDuration(ms: number): string {
-  if (ms <= 0) return "0 毫秒";
+  if (ms <= 0) return '0 毫秒';
   if (ms < 1000) return `${ms} 毫秒`;
   if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
   return `${Math.floor(ms / 60_000)}m ${Math.round((ms % 60_000) / 1000)}s`;
@@ -170,7 +175,10 @@ export function formatSpanDuration(ms: number): string {
  */
 export function buildLedger(events: Array<Record<string, unknown>>): LedgerRecord[] {
   // tool_use 事件 id → result 的落地时间与错误标记(§2:tool_use 的 id 即 tool_use_id)
-  const resultByUseId = new Map<string, { at: number | null; isError: boolean; raw: Record<string, unknown> }>();
+  const resultByUseId = new Map<
+    string,
+    { at: number | null; isError: boolean; raw: Record<string, unknown> }
+  >();
   for (const event of events) {
     if (!TOOL_RESULT_TYPES.has(String(event.type))) continue;
     resultByUseId.set(String(event.tool_use_id), {
@@ -187,7 +195,7 @@ export function buildLedger(events: Array<Record<string, unknown>>): LedgerRecor
   let pendingSpanStart: { type: string; record: LedgerRecord } | null = null;
 
   events.forEach((event, index) => {
-    const type = typeof event.type === "string" ? event.type : "event";
+    const type = typeof event.type === 'string' ? event.type : 'event';
     const label = TYPE_LABELS[type] ?? type;
 
     // turn/step 计数先于记录产出:开 turn 的输入自身属于新 turn
@@ -200,10 +208,10 @@ export function buildLedger(events: Array<Record<string, unknown>>): LedgerRecor
     const currentTurn = Math.max(turn, 1);
 
     const at = epochOf(event.processed_at);
-    const key = typeof event.id === "string" ? event.id : `${type}-${index}`;
+    const key = typeof event.id === 'string' ? event.id : `${type}-${index}`;
     const base = {
       key,
-      eventId: typeof event.id === "string" ? event.id : null,
+      eventId: typeof event.id === 'string' ? event.id : null,
       label,
       turn: currentTurn,
       raw: event,
@@ -213,18 +221,18 @@ export function buildLedger(events: Array<Record<string, unknown>>): LedgerRecor
     if (TOOL_USE_TYPES.has(type)) {
       pairedUseIds.add(key);
       const result = resultByUseId.get(key);
-      const name = typeof event.name === "string" ? event.name : "tool";
+      const name = typeof event.name === 'string' ? event.name : 'tool';
       const inputPreview = previewJson(event.input);
       const resultPreview = result ? textDetail(result.raw) : undefined;
       const summary = resultPreview
-        ? `${name} · ${inputPreview ?? ""} → ${resultPreview}`.replace(" ·  ", " · ")
+        ? `${name} · ${inputPreview ?? ''} → ${resultPreview}`.replace(' ·  ', ' · ')
         : inputPreview
           ? `${name} · ${inputPreview}`
           : name;
       records.push({
         ...base,
-        lane: "tool",
-        kind: "tool",
+        lane: 'tool',
+        kind: 'tool',
         summary,
         endAt: result?.at ?? null,
         durationMs: result?.at != null && at !== null ? Math.max(0, result.at - at) : null,
@@ -236,11 +244,11 @@ export function buildLedger(events: Array<Record<string, unknown>>): LedgerRecor
     }
     if (TOOL_RESULT_TYPES.has(type)) {
       // 已并入配对区间记录的 result 不再单独出块
-      if (typeof event.tool_use_id === "string" && pairedUseIds.has(event.tool_use_id)) return;
+      if (typeof event.tool_use_id === 'string' && pairedUseIds.has(event.tool_use_id)) return;
       records.push({
         ...base,
-        lane: "tool",
-        kind: "tool",
+        lane: 'tool',
+        kind: 'tool',
         summary: textDetail(event) ?? label,
         endAt: at,
         durationMs: at !== null ? 0 : null,
@@ -253,8 +261,8 @@ export function buildLedger(events: Array<Record<string, unknown>>): LedgerRecor
       // span 起始:立即产出「进行中」区间记录,保证台账顺序与事件顺序一致;配对结束时回填
       records.push({
         ...base,
-        lane: "model",
-        kind: "span",
+        lane: 'model',
+        kind: 'span',
         summary: label,
         endAt: null,
         durationMs: null,
@@ -265,8 +273,9 @@ export function buildLedger(events: Array<Record<string, unknown>>): LedgerRecor
       pendingSpanStart = { type, record: records[records.length - 1]! };
       return;
     }
-    if (type.startsWith("span.")) {
-      const pending = pendingSpanStart && SPAN_END_OF[pendingSpanStart.type] === type ? pendingSpanStart : null;
+    if (type.startsWith('span.')) {
+      const pending =
+        pendingSpanStart && SPAN_END_OF[pendingSpanStart.type] === type ? pendingSpanStart : null;
       pendingSpanStart = null;
       if (pending) {
         // 回填结束时刻与耗时(记录身份保持为起始事件)
@@ -280,19 +289,20 @@ export function buildLedger(events: Array<Record<string, unknown>>): LedgerRecor
       // 孤立 end / ongoing 心跳:退化为瞬时记录
     }
 
-    const mapped = type.startsWith("span.")
-      ? { kind: "span" as const, lane: "model" as const }
+    const mapped = type.startsWith('span.')
+      ? { kind: 'span' as const, lane: 'model' as const }
       : KIND_OF_TYPE[type];
     if (!mapped) return;
     // message/thinking/error 继承当前 step(折叠用);user/system/span 行不属于任何 step
-    const inheritStep = mapped.kind === "message" || mapped.kind === "thinking" || mapped.kind === "error";
+    const inheritStep =
+      mapped.kind === 'message' || mapped.kind === 'thinking' || mapped.kind === 'error';
     records.push({
       ...base,
       ...mapped,
       summary: textDetail(event) ?? label,
       endAt: at,
       durationMs: at !== null ? 0 : null,
-      isError: type === "session.error",
+      isError: type === 'session.error',
       step: inheritStep ? step : 0,
     });
   });
@@ -364,11 +374,14 @@ function spanOf(record: LedgerRecord): TimelineSpan {
  *   (按 start 排序,coveredUntil 累计被移除的 idle,每条块平移各自累计偏移)。
  * 无可定位记录时返回 null。
  */
-export function deriveTimelineSpans(records: LedgerRecord[], mode: TimelineMode): TimelineModel | null {
+export function deriveTimelineSpans(
+  records: LedgerRecord[],
+  mode: TimelineMode,
+): TimelineModel | null {
   const positioned = records.filter((record) => record.startedAt !== null);
   if (positioned.length === 0) return null;
 
-  if (mode === "sequence") {
+  if (mode === 'sequence') {
     const spans: TimelineSpan[] = [];
     const turnBoundaries: TimelineTurnBoundary[] = [];
     const seenTurns = new Set<number>();
@@ -387,7 +400,9 @@ export function deriveTimelineSpans(records: LedgerRecord[], mode: TimelineMode)
   const removedIdleBySpan = new Map<TimelineSpan, number>();
   let removedIdle = 0;
   let coveredUntil: number | null = null;
-  for (const span of [...raw].sort((left, right) => left.start - right.start || left.end - right.end)) {
+  for (const span of [...raw].sort(
+    (left, right) => left.start - right.start || left.end - right.end,
+  )) {
     if (coveredUntil !== null && span.start > coveredUntil) {
       removedIdle += span.start - coveredUntil;
     }
@@ -434,8 +449,8 @@ export function timelineFocusKeys(model: TimelineModel, range: TimelineRange): S
 export function recordMatchesSearch(record: LedgerRecord, keyword: string): boolean {
   const query = keyword.trim().toLowerCase();
   if (!query) return true;
-  if (record.kind === "span") return false;
-  const type = typeof record.raw.type === "string" ? record.raw.type : "";
+  if (record.kind === 'span') return false;
+  const type = typeof record.raw.type === 'string' ? record.raw.type : '';
   return (
     type.toLowerCase().includes(query) ||
     (record.eventId?.toLowerCase().includes(query) ?? false) ||
@@ -449,13 +464,13 @@ export function recordMatchesSearch(record: LedgerRecord, keyword: string): bool
  */
 export function filterRecords(
   records: LedgerRecord[],
-  lane: LedgerLane | "all",
+  lane: LedgerLane | 'all',
   keyword: string,
 ): LedgerRecord[] {
   return records.filter(
     (record) =>
-      record.kind !== "span" &&
-      (lane === "all" || record.lane === lane) &&
+      record.kind !== 'span' &&
+      (lane === 'all' || record.lane === lane) &&
       recordMatchesSearch(record, keyword),
   );
 }
@@ -467,7 +482,12 @@ export interface LedgerRow {
   /** 内容行对应的记录;摘要行为 null */
   record: LedgerRecord | null;
   /** 折叠摘要行的展开目标与文案 */
-  collapsed?: { kind: "turn" | "step"; turn: number; step: number; text: string };
+  collapsed?: {
+    kind: 'turn' | 'step';
+    turn: number;
+    step: number;
+    text: string;
+  };
   turnStart: boolean;
   turnEnd: boolean;
 }
@@ -490,7 +510,7 @@ export function collapsibleTurns(records: LedgerRecord[]): Set<number> {
 export function collapsibleSteps(records: LedgerRecord[]): Set<string> {
   const counts = new Map<string, number>();
   for (const record of records) {
-    if (record.step > 0 && record.kind === "tool") {
+    if (record.step > 0 && record.kind === 'tool') {
       const key = stepKey(record.turn, record.step);
       counts.set(key, (counts.get(key) ?? 0) + 1);
     }
@@ -501,12 +521,12 @@ export function collapsibleSteps(records: LedgerRecord[]): Set<string> {
 function turnSummaryText(turnRecords: LedgerRecord[]): string {
   const rest = turnRecords.length - 1;
   const steps = new Set(turnRecords.filter((r) => r.step > 0).map((r) => r.step)).size;
-  const tools = turnRecords.filter((r) => r.kind === "tool").length;
+  const tools = turnRecords.filter((r) => r.kind === 'tool').length;
   const parts: string[] = [];
   if (steps > 0) parts.push(`${steps} 步`);
   parts.push(`${rest} 条记录`);
   if (tools > 0) parts.push(`${tools} 次工具调用`);
-  return `… ${parts.join(" · ")}`;
+  return `… ${parts.join(' · ')}`;
 }
 
 function stepSummaryText(toolRecords: LedgerRecord[]): string {
@@ -514,8 +534,8 @@ function stepSummaryText(toolRecords: LedgerRecord[]): string {
   for (const record of toolRecords) {
     if (record.toolName && !names.includes(record.toolName)) names.push(record.toolName);
   }
-  const shown = names.length > 4 ? `${names.slice(0, 4).join("、")} 等` : names.join("、");
-  return `… ${toolRecords.length} 次调用${shown ? `: ${shown}` : ""}`;
+  const shown = names.length > 4 ? `${names.slice(0, 4).join('、')} 等` : names.join('、');
+  return `… ${toolRecords.length} 次调用${shown ? `: ${shown}` : ''}`;
 }
 
 /**
@@ -539,12 +559,23 @@ export function collapseRecords(
     const turnRecords = records.slice(index, next);
     const turnHead = turnRecords[0];
     if (collapsedTurns.has(turn) && turnRecords.length >= 3 && turnHead) {
-      rows.push({ key: turnHead.key, height: 30, record: turnHead, turnStart: true, turnEnd: false });
+      rows.push({
+        key: turnHead.key,
+        height: 30,
+        record: turnHead,
+        turnStart: true,
+        turnEnd: false,
+      });
       rows.push({
         key: `turn:${turn}\0summary`,
         height: 20,
         record: null,
-        collapsed: { kind: "turn", turn, step: 0, text: turnSummaryText(turnRecords) },
+        collapsed: {
+          kind: 'turn',
+          turn,
+          step: 0,
+          text: turnSummaryText(turnRecords),
+        },
         turnStart: false,
         turnEnd: true,
       });
@@ -560,14 +591,14 @@ export function collapseRecords(
       const isTurnEnd = position === lastRow;
       // step 折叠:模型输出行后的连续工具行折为一条摘要行
       if (
-        record.kind === "tool" &&
+        record.kind === 'tool' &&
         record.step > 0 &&
         collapsedSteps.has(stepKey(record.turn, record.step))
       ) {
         let toolEnd = position;
         while (
           toolEnd < turnRecords.length &&
-          turnRecords[toolEnd]?.kind === "tool" &&
+          turnRecords[toolEnd]?.kind === 'tool' &&
           turnRecords[toolEnd]?.step === record.step
         ) {
           toolEnd += 1;
@@ -577,14 +608,25 @@ export function collapseRecords(
           key: `step:${stepKey(record.turn, record.step)}\0summary`,
           height: 20,
           record: null,
-          collapsed: { kind: "step", turn: record.turn, step: record.step, text: stepSummaryText(toolRecords) },
+          collapsed: {
+            kind: 'step',
+            turn: record.turn,
+            step: record.step,
+            text: stepSummaryText(toolRecords),
+          },
           turnStart: false,
           turnEnd: toolEnd - 1 === lastRow,
         });
         position = toolEnd;
         continue;
       }
-      rows.push({ key: record.key, height: 30, record, turnStart: position === 0, turnEnd: isTurnEnd });
+      rows.push({
+        key: record.key,
+        height: 30,
+        record,
+        turnStart: position === 0,
+        turnEnd: isTurnEnd,
+      });
       position += 1;
     }
     index = next;
