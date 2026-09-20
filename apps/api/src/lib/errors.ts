@@ -1,6 +1,7 @@
 import type { ApiErrorBody, ErrorResponse, ErrorType } from '@nano/shared';
 import { log, withRequestId } from '@nano/shared/log';
 import type { Context } from 'hono';
+import { routePath } from 'hono/route';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import type { AppEnv } from '../env';
 
@@ -77,22 +78,27 @@ export function honoOnError(err: unknown, c: Context<AppEnv>) {
   const requestId = c.get('requestId');
   const isApiError = err instanceof ApiError;
   const status = isApiError ? err.status : 500;
+  // route 同成功完成行的约定:路由模板为空或 '*'(404/中间件层短路)时不携带
+  const route = routePath(c);
   const fields = {
     method: c.req.method,
     path: c.req.path,
+    ...(route !== '' && route !== '*' ? { route } : {}),
     status,
     ...(isApiError ? { errorType: err.errorType } : {}),
     err,
   };
   // onError 在 Hono 顶层 catch 执行,已离开中间件的 ALS 帧:显式重进入后再记。
-  // 级别:未预期错误与 5xx → error;鉴权/限流类 → warn;其余业务 4xx → info
+  // 级别:未预期错误与 5xx → error;鉴权/限流类 → warn;其余业务 4xx → info。
+  // msg 拼上 method/path/status,与成功完成行同一约定(Workers Logs 列表只展示 msg)
+  const summary = `${c.req.method} ${c.req.path} ${status}`;
   withRequestId(requestId, () => {
     if (!isApiError || status >= 500) {
-      log.error(isApiError ? 'request failed' : 'unhandled error', fields);
+      log.error(isApiError ? `request failed: ${summary}` : `unhandled error: ${summary}`, fields);
     } else if (status === 401 || status === 403 || status === 429) {
-      log.warn('request failed', fields);
+      log.warn(`request failed: ${summary}`, fields);
     } else {
-      log.info('request failed', fields);
+      log.info(`request failed: ${summary}`, fields);
     }
   });
   const response = c.json(toErrorResponse(err, requestId), status);

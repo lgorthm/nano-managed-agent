@@ -12,6 +12,7 @@
  * 协议按 OpenAI 兼容形状实现:delta.reasoning_content → thinking,
  * delta.content → message,usage 随 stream_options.include_usage 在末块返回。
  */
+import { tracing } from 'cloudflare:workers';
 import type { ChatMessage, ChatToolDefinition, UsagePayload } from '@nano/shared';
 import { log } from '@nano/shared/log';
 
@@ -63,8 +64,9 @@ const RETRY_DELAYS_MS = [200, 500];
 const RETRYABLE_STATUSES = new Set([429, 500, 502, 503, 504]);
 
 /** 重试观测:上游抖动若不可见,只表现为延迟升高而无处归因;每次重试最多一条 warn */
-function logRetry(reason: string, attempt: number): void {
+function logRetry(reason: string, attempt: number, model: string): void {
   log.warn('model upstream retry', {
+    model,
     reason,
     backoffMs: RETRY_DELAYS_MS[attempt],
     attempt: attempt + 1,
@@ -72,14 +74,14 @@ function logRetry(reason: string, attempt: number): void {
   });
 }
 
-async function fetchWithRetry(url: string, init: RequestInit): Promise<Response> {
+async function fetchWithRetry(url: string, init: RequestInit, model: string): Promise<Response> {
   let lastError: unknown;
   for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
     try {
       const response = await fetch(url, init);
       if (RETRYABLE_STATUSES.has(response.status) && attempt < RETRY_DELAYS_MS.length) {
         await response.body?.cancel().catch(() => undefined); // 丢弃错误体再重试
-        logRetry(`HTTP ${response.status}`, attempt);
+        logRetry(`HTTP ${response.status}`, attempt, model);
         await new Promise((resolve) => setTimeout(resolve, RETRY_DELAYS_MS[attempt]));
         continue;
       }
@@ -88,7 +90,7 @@ async function fetchWithRetry(url: string, init: RequestInit): Promise<Response>
       if (init.signal?.aborted) throw new ModelAbortedError();
       lastError = err;
       if (attempt < RETRY_DELAYS_MS.length) {
-        logRetry(err instanceof Error ? err.message : String(err), attempt);
+        logRetry(err instanceof Error ? err.message : String(err), attempt, model);
         await new Promise((resolve) => setTimeout(resolve, RETRY_DELAYS_MS[attempt]));
       }
     }
@@ -160,24 +162,52 @@ export async function streamChatCompletion(
   callbacks: StreamCallbacks,
   tools?: ChatToolDefinition[],
 ): Promise<ModelCallResult> {
-  const response = await fetchWithRetry(`${config.baseUrl}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      authorization: `Bearer ${config.apiKey}`,
-      'content-type': 'application/json',
-      // @cf 模型请求必带(官方要求);同时让请求进入指定网关的日志看板
-      'cf-aig-gateway-id': config.gatewayId,
-    },
-    body: JSON.stringify({
+  const startedAt = Date.now();
+  // 每次模型调用包一个 model.chat span:瀑布图里成为有名段;完成行把 token
+  // 用量与耗时带进 Workers Logs——此前这些只在 span 属性里(要进 Traces 视图才
+  // 看得到)。span 名固定低基数,模型名进属性
+  return tracing.enterSpan('model.chat', async (span) => {
+    span.setAttribute('gen_ai.request.model', config.model);
+    const result = await streamChatCompletionInner(config, messages, callbacks, tools);
+    log.info('model call completed', {
       model: config.model,
-      messages,
-      stream: true,
-      stream_options: { include_usage: true },
-      // 空 tools 数组部分上游会报错;无可用工具时整个字段省略
-      ...(tools !== undefined && tools.length > 0 ? { tools } : {}),
-    }),
-    signal: callbacks.signal,
+      inputTokens: result.usage.input_tokens,
+      outputTokens: result.usage.output_tokens,
+      cacheReadInputTokens: result.usage.cache_read_input_tokens,
+      durationMs: Date.now() - startedAt,
+    });
+    return result;
   });
+}
+
+async function streamChatCompletionInner(
+  config: ChatModelConfig,
+  messages: ChatMessage[],
+  callbacks: StreamCallbacks,
+  tools?: ChatToolDefinition[],
+): Promise<ModelCallResult> {
+  const response = await fetchWithRetry(
+    `${config.baseUrl}/chat/completions`,
+    {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${config.apiKey}`,
+        'content-type': 'application/json',
+        // @cf 模型请求必带(官方要求);同时让请求进入指定网关的日志看板
+        'cf-aig-gateway-id': config.gatewayId,
+      },
+      body: JSON.stringify({
+        model: config.model,
+        messages,
+        stream: true,
+        stream_options: { include_usage: true },
+        // 空 tools 数组部分上游会报错;无可用工具时整个字段省略
+        ...(tools !== undefined && tools.length > 0 ? { tools } : {}),
+      }),
+      signal: callbacks.signal,
+    },
+    config.model,
+  );
   if (!response.ok || response.body === null) {
     throw new ModelHttpError(response.status, await response.text().catch(() => ''));
   }
