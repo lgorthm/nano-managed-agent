@@ -1,3 +1,4 @@
+import { log } from '@nano/shared/log';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 import type { Env } from './env';
 
@@ -15,12 +16,27 @@ export function normalizeTeamDomain(raw: string): string {
   return /^https?:\/\//.test(trimmed) ? trimmed : `https://${trimmed}`;
 }
 
+/** dev 旁路告警只打一次/isolate:每请求一条会淹没本地终端 */
+let devBypassWarned = false;
+
 export async function assertAccess(request: Request, env: Env): Promise<Response | null> {
-  if (env.ACCESS_DEV_BYPASS === '1') return null;
+  if (env.ACCESS_DEV_BYPASS === '1') {
+    if (!devBypassWarned) {
+      devBypassWarned = true;
+      log.warn(
+        'access check bypassed via ACCESS_DEV_BYPASS=1 (dev only; must never be set in production)',
+      );
+    }
+    return null;
+  }
 
   const teamDomainRaw = env.CF_ACCESS_TEAM_DOMAIN;
   const aud = env.CF_ACCESS_AUD;
   if (!teamDomainRaw || !aud || teamDomainRaw.startsWith('TODO') || aud.startsWith('TODO')) {
+    log.error('access config invalid', {
+      teamDomainSet: teamDomainRaw.length > 0,
+      audSet: aud.length > 0,
+    });
     return Response.json(
       {
         error: {
@@ -36,6 +52,11 @@ export async function assertAccess(request: Request, env: Env): Promise<Response
 
   const token = request.headers.get('Cf-Access-Jwt-Assertion');
   if (!token) {
+    // 安全事件留痕(只记方法与路径,不记任何凭据材料)
+    log.warn('access denied: missing Cf-Access-Jwt-Assertion header', {
+      method: request.method,
+      path: new URL(request.url).pathname,
+    });
     return Response.json(
       {
         error: {
@@ -53,6 +74,12 @@ export async function assertAccess(request: Request, env: Env): Promise<Response
     return null;
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
+    // jose 的错误信息不含 token 本身,可安全入日志
+    log.warn('access denied: JWT validation failed', {
+      method: request.method,
+      path: new URL(request.url).pathname,
+      reason,
+    });
     return Response.json(
       {
         error: {

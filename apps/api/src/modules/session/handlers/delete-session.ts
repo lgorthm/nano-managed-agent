@@ -1,3 +1,4 @@
+import { log, withRequestId } from '@nano/shared/log';
 import type { Context } from 'hono';
 import type { AppEnv } from '../../../env';
 import { sessionDoStub } from '../../../runtime/session-do-stub';
@@ -12,10 +13,16 @@ import { sessionService } from '../service';
 export async function deleteSession(c: Context<AppEnv>) {
   const sessionId = c.req.param('sessionId') ?? '';
   const deleted = await sessionService.deleteSession(c.env, sessionId);
+  const requestId = c.get('requestId');
   c.executionCtx.waitUntil(
-    sessionDoStub(c.env, sessionId)
-      .wipe()
-      .catch((err) => console.error('session storage wipe failed:', err)),
+    // waitUntil 在响应后执行:显式重进入 ALS,失败日志仍携带本请求的 request_id
+    withRequestId(requestId, () =>
+      sessionDoStub(c.env, sessionId)
+        .wipe()
+        .catch((err: unknown) => {
+          log.error('session storage wipe failed', { sessionId, err });
+        }),
+    ),
   );
   return c.json(deleted, 200);
 }

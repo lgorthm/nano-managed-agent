@@ -33,6 +33,7 @@ import {
   type StopReason,
   validateToolInvocation,
 } from '@nano/shared';
+import { log } from '@nano/shared/log';
 import type { Env } from '../../env';
 import { newEventId, newTurnId } from '../ids';
 import { ModelHttpError } from '../model-client';
@@ -59,6 +60,13 @@ export type DoResult<T> = { ok: true; value: T } | { ok: false; status: number; 
 
 function doFailure<T>(status: number, message: string): DoResult<T> {
   return { ok: false, status, message };
+}
+
+/** 日志正文截断:Workers Logs 单条上限 256KB,错误体留几百字节足够定位 */
+function truncateForLog(text: string, limit = 512): string {
+  return text.length <= limit
+    ? text
+    : `${text.slice(0, limit)}…[truncated ${text.length - limit} chars]`;
 }
 
 interface Subscriber {
@@ -114,7 +122,7 @@ export class SessionDo extends DurableObject<Env> {
     }
     // 构造唤醒 = 强制逐出后的恢复入口之一(§6,等价 onStart);无孤儿 turn 行时是廉价空查
     void this.recoverOrphanTurnIfAny().catch((err) => {
-      console.error('session turn recovery on wake failed:', err);
+      log.error('session turn recovery on wake failed', { sessionId: this.sessionId(), err });
     });
   }
 
@@ -162,6 +170,13 @@ export class SessionDo extends DurableObject<Env> {
   private exec(sql: string, ...params: Array<string | number | null>): number {
     const cursor = this.ctx.storage.sql.exec(sql, ...params);
     return cursor.rowsWritten;
+  }
+
+  /** DO 内日志的会话定位字段:fire-and-forget / alarm 执行不挂在用户请求上,
+   *  Workers Logs 里必须自带 sessionId 才能把日志关联回会话(请求同步段的
+   *  request_id 由平台 traces 自动关联,无需在此携带) */
+  private sessionId(): string {
+    return this.ctx.id.name ?? 'unnamed';
   }
 
   private setState(key: string, value: string): void {
@@ -284,7 +299,7 @@ export class SessionDo extends DurableObject<Env> {
     if (hasConfirmation && this.allConfirmationsDecided()) {
       // 全部待审批都有裁决 → 回 running 续跑(§4.3);排队消息由续跑的 turn 一并消费
       void this.executeConfirmedTurn().catch((err) => {
-        console.error('confirmed turn resume failed:', err);
+        log.error('confirmed turn resume failed', { sessionId: this.sessionId(), err });
         this.appendEvent('session.error', {
           message: 'The confirmed turn failed to resume.',
         });
@@ -398,6 +413,12 @@ export class SessionDo extends DurableObject<Env> {
   /** 建立订阅:只推连接后的新事件(不回放);重连协议 = 列表补历史 + 按 id 去重 */
   async subscribe(deltas: DeltaEventType[]): Promise<DoResult<ReadableStream>> {
     if (this.subscribers.length >= MAX_SUBSCRIBERS) {
+      // 触碰上限通常意味着客户端重连风暴或断开未退订,值得留痕
+      log.warn('sse subscriber limit reached', {
+        sessionId: this.sessionId(),
+        subscribers: this.subscribers.length,
+        max: MAX_SUBSCRIBERS,
+      });
       return doFailure(429, 'Too many event stream subscribers for this session.');
     }
     const { readable, writable } = new IdentityTransformStream();
@@ -475,7 +496,7 @@ export class SessionDo extends DurableObject<Env> {
   /** 删除联动:销毁沙箱 → 广播 session.deleted → 断开订阅 → 清空全部存储 */
   async wipe(): Promise<void> {
     await this.destroySandbox().catch((err) => {
-      console.error('sandbox destroy on wipe failed:', err);
+      log.error('sandbox destroy on wipe failed', { sessionId: this.sessionId(), err });
     });
     this.deleted = true;
     this.turnActive = false;
@@ -509,7 +530,7 @@ export class SessionDo extends DurableObject<Env> {
     try {
       await getSandbox(this.env.SANDBOX, sessionId).destroy();
     } catch (err) {
-      console.error('sandbox destroy failed:', err);
+      log.error('sandbox destroy failed', { sessionId: this.sessionId(), err });
     }
   }
 
@@ -547,7 +568,17 @@ export class SessionDo extends DurableObject<Env> {
   }
 
   private turnFailed(turnId: string, token: number, err: unknown): void {
-    console.error('session turn failed:', err);
+    // 模型上游非 2xx:响应体是最关键的排障信息(quota / 参数错误等),
+    // Error 序列化不输出自定义字段,须显式携带;截断防超 Workers Logs 单条上限
+    if (err instanceof ModelHttpError) {
+      log.error('session turn failed', {
+        sessionId: this.sessionId(),
+        turnId,
+        modelUpstream: { status: err.status, body: truncateForLog(err.body) },
+      });
+    } else {
+      log.error('session turn failed', { sessionId: this.sessionId(), turnId, err });
+    }
     if (token !== this.currentExecutionToken) return; // 被取代的执行(逐出模拟/双重恢复)失败:静默
     this.turnActive = false;
     if (this.deleted) return;
@@ -624,8 +655,14 @@ export class SessionDo extends DurableObject<Env> {
       if (typeof row.payload !== 'string') continue;
       try {
         events.push(JSON.parse(row.payload) as PersistedEventJson);
-      } catch {
-        // 日志行损坏不应炸掉整个 turn:跳过该行(单写者下正常不可达)
+      } catch (err) {
+        // 日志行损坏不应炸掉整个 turn:跳过该行(单写者下正常不可达),
+        // 但上下文悄悄缺失必须留痕,否则模型行为异常无从归因
+        log.warn('skipping corrupted event row', {
+          sessionId: this.sessionId(),
+          payload: truncateForLog(String(row.payload), 120),
+          err,
+        });
       }
     }
     return events;
@@ -960,6 +997,14 @@ export class SessionDo extends DurableObject<Env> {
       break;
     }
     if (turnId === null) return;
+    if (snapshot === null) {
+      // 快照损坏(防御分支):从 iteration 0 重生成;数据损坏类事件值得留痕,
+      // 它指示存储层出了问题,而不是常态业务分支
+      log.error('turn snapshot corrupted; regenerating from iteration 0', {
+        sessionId: this.sessionId(),
+        turnId,
+      });
+    }
 
     this.turnActive = true;
     this.keepAlive();
@@ -1016,7 +1061,7 @@ export class SessionDo extends DurableObject<Env> {
         now: new Date(),
       });
     } catch (err) {
-      console.error('session d1 writeback failed:', err);
+      log.error('session d1 writeback failed', { sessionId: this.sessionId(), err });
     }
   }
 }

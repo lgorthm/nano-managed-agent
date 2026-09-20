@@ -28,6 +28,8 @@ declare global {
       TURN_KEEPALIVE_INTERVAL_MS?: string;
       /** 测试注入:置 "1" 时工具执行走 mock 实现(沙箱进不了 vitest) */
       TOOL_SANDBOX_MOCK?: string;
+      /** 置 "0" 时关闭每请求的完成行日志(成本开关;默认开启) */
+      LOG_REQUEST_COMPLETION?: string;
     }
   }
 }

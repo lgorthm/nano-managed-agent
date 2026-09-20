@@ -22,6 +22,7 @@ import {
   replaceSessionOutput,
 } from '@nano/db';
 import { fileObjectKey, MAX_FILE_BYTES, MAX_FILENAME_LENGTH, mimeTypeFromPath } from '@nano/shared';
+import { log } from '@nano/shared/log';
 import type { Env } from '../../env';
 
 /** 沙箱 outputs 目录的一个文件;path 是 /mnt/session/outputs 下的相对路径 */
@@ -76,20 +77,28 @@ export async function harvestSessionOutputs(
     const previous = existing.get(file.path);
     existing.delete(file.path);
     if (!validRelativePath(file.path)) {
-      console.error(`session output path rejected (not a safe relative path): ${file.path}`);
+      log.warn('session output path rejected (not a safe relative path)', {
+        sessionId,
+        path: file.path,
+      });
       continue;
     }
     if (file.bytes.byteLength > MAX_FILE_BYTES) {
-      // 超限产出不编目:沙箱内仍可用,只是不进 File 资源(与上传上限同口径)
-      console.error(
-        `session output exceeds ${MAX_FILE_BYTES} bytes, skipping catalog: ${file.path}`,
-      );
+      // 超限产出不编目:沙箱内仍可用,只是不进 File 资源(与上传上限同口径);
+      // warn 而非 error:这是模型产出的预期输入域问题,不是系统故障
+      log.warn('session output exceeds limit, skipping catalog', {
+        sessionId,
+        path: file.path,
+        limitBytes: MAX_FILE_BYTES,
+      });
       continue;
     }
     if (file.path.length > MAX_FILENAME_LENGTH) {
-      console.error(
-        `session output filename exceeds ${MAX_FILENAME_LENGTH} chars, skipping catalog: ${file.path}`,
-      );
+      log.warn('session output filename exceeds limit, skipping catalog', {
+        sessionId,
+        path: file.path,
+        limitChars: MAX_FILENAME_LENGTH,
+      });
       continue;
     }
     const contentSha256 = await sha256Hex(file.bytes);

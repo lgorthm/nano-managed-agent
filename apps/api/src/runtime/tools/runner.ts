@@ -15,6 +15,7 @@ import {
   fileObjectKey,
   type NormalizedEnvironmentPackages,
 } from '@nano/shared';
+import { log } from '@nano/shared/log';
 import type { Env } from '../../env';
 import { type HarvestedOutput, harvestSessionOutputs } from './catalog';
 
@@ -54,7 +55,7 @@ export interface ToolSessionContext {
 }
 
 export interface ToolRunner {
-  /** 冷启掩体(§4.5):与模型调用并行预热情性沙箱,失败静默 */
+  /** 冷启掩体(§4.5):与模型调用并行预热情性沙箱,失败仅告警(惰性启动会重试) */
   warmup(): Promise<void>;
   /** 执行一次工具调用;实现保证不抛(一切失败以 isError 结果喂回模型) */
   run(invocation: ToolInvocation): Promise<ToolOutcome>;
@@ -172,7 +173,12 @@ export class SandboxToolRunner implements ToolRunner {
     try {
       await this.ensureMaterialized();
     } catch (err) {
-      console.error('sandbox warmup failed (lazy start will retry):', err);
+      // warn 而非 error:预热是尽力而为的掩体,真正失败会在 run() 里再记
+      // error——同一根因不应产出两条 error 级日志
+      log.warn('sandbox warmup failed (lazy start will retry)', {
+        sessionId: this.ctx.sessionId,
+        err,
+      });
     }
   }
 
@@ -355,7 +361,11 @@ export class SandboxToolRunner implements ToolRunner {
         }
       }
     } catch (err) {
-      console.error(`tool ${invocation.name} failed:`, err);
+      log.error('tool invocation failed', {
+        sessionId: this.ctx.sessionId,
+        tool: invocation.name,
+        err,
+      });
       return {
         content: `Tool execution failed: ${err instanceof Error ? err.message : String(err)}`,
         isError: true,
@@ -380,7 +390,7 @@ export class SandboxToolRunner implements ToolRunner {
       }
       await harvestSessionOutputs(this.env, this.ctx.sessionId, files);
     } catch (err) {
-      console.error('sandbox outputs harvest failed:', err);
+      log.error('sandbox outputs harvest failed', { sessionId: this.ctx.sessionId, err });
     }
   }
 
@@ -389,7 +399,7 @@ export class SandboxToolRunner implements ToolRunner {
       await this.sbx().destroy();
     } catch (err) {
       // 销毁是终态联动的尽力而为(沙箱可能从未创建或已自然消亡)
-      console.error('sandbox destroy failed:', err);
+      log.error('sandbox destroy failed', { sessionId: this.ctx.sessionId, err });
     }
   }
 }
