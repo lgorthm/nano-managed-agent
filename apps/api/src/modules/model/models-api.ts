@@ -4,6 +4,8 @@
  * /v1/models 以静态目录为基线,配置了凭据时在此之上合并线上目录;上游失败
  * 静默降级为仅静态目录(模型列表不构成可用性依赖)。
  */
+
+import { log } from '@nano/shared/log';
 import type { Env } from '../../env';
 
 const MODELS_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -30,15 +32,26 @@ export async function fetchDynamicModelNames(
       `https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/ai/models/search?task=${encodeURIComponent('Text Generation')}&per_page=100`,
       { headers: { authorization: `Bearer ${env.CLOUDFLARE_API_TOKEN}` } },
     );
-    if (!response.ok) return null;
+    if (!response.ok) {
+      log.warn(
+        'dynamic models catalog fetch returned non-OK status; falling back to static catalog',
+        {
+          status: response.status,
+        },
+      );
+      return null;
+    }
     const payload = (await response.json()) as { result?: ModelsSearchEntry[] };
     const names = (payload.result ?? [])
       .map((entry) => entry.name)
       .filter((name): name is string => typeof name === 'string' && name !== '');
     cache = { value: names, expiresAt: now + MODELS_CACHE_TTL_MS };
     return names;
-  } catch {
-    return null; // 网络/解析失败:降级,不打断列表接口
+  } catch (err) {
+    // 网络/解析失败:降级不打断列表接口,但留痕(TTL 缓存兜底,不会刷屏);
+    // 否则「模型列表为什么少了线上模型」完全不可诊断
+    log.warn('dynamic models catalog fetch failed; falling back to static catalog', { err });
+    return null;
   }
 }
 

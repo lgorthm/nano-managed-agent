@@ -49,6 +49,7 @@ import {
   resolveSessionAgent,
   toSessionAgentConfig,
 } from '@nano/shared';
+import { log } from '@nano/shared/log';
 import type { Env } from '../../env';
 import { conflictError, invalidRequestError, notFoundError } from '../../lib/errors';
 import {
@@ -362,7 +363,7 @@ export const sessionService = {
           .appendControlEvent('session.updated')
           .then(unwrapDoResult)
           .catch((err) => {
-            console.error('session.updated append failed:', err);
+            log.error('session.updated append failed', { sessionId, err });
           });
       }
     }
@@ -406,7 +407,7 @@ export const sessionService = {
     await sessionDoStub(env, sessionId)
       .destroySandbox()
       .catch((err) => {
-        console.error('sandbox destroy on archive failed:', err);
+        log.error('sandbox destroy on archive failed', { sessionId, err });
       });
 
     const archivedRow = await loadSessionWithResources(db, sessionId);
@@ -439,8 +440,9 @@ export const sessionService = {
       throw conflictError('Session is running; interrupt the session before deleting.');
     }
     for (const fileId of outputFileIds) {
-      await env.FILES.delete(fileObjectKey(fileId)).catch((err) => {
-        console.error(`orphan R2 object after session delete: ${fileObjectKey(fileId)}`, err);
+      const key = fileObjectKey(fileId);
+      await env.FILES.delete(key).catch((err) => {
+        log.error('orphan R2 object after session delete', { sessionId, key, err });
       });
     }
     return { id: sessionId, type: 'session_deleted' };

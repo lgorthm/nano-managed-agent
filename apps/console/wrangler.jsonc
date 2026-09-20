@@ -5,6 +5,19 @@
   "compatibility_date": "2025-09-01",
   "compatibility_flags": ["nodejs_compat"],
 
+  // Workers Logs / Observability:
+  // logs 开启后 console 输出与未捕获异常会自动写入账号级的 Workers Logs,
+  // 在 Dashboard 该 Worker 详情的 Logs 标签页查询,也可 `wrangler tail` 实时查看;
+  // traces 开启后平台自动打点(fetch/DO/Service Binding),trace 上下文自动跨
+  // Service Binding 传播(→ nano-api 同一条 trace);应用侧 request_id 经
+  // span 属性 app.request_id 桥进 trace。
+  // head_sampling_rate = 1 表示 100% 采样(默认);线上流量大时可调低(如 0.1)控制成本
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1,
+    "traces": { "enabled": true }
+  },
+
   // SPA 静态资源:directory 由 @cloudflare/vite-plugin 在构建时自动指向
   // vite 产物(dist/client),不要手动设置;not_found_handling 负责 SPA 路由回退,
   // 导航请求未命中资源时由平台直接返回 index.html,不会进入 worker。

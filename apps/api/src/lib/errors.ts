@@ -1,4 +1,5 @@
 import type { ApiErrorBody, ErrorResponse, ErrorType } from '@nano/shared';
+import { log, withRequestId } from '@nano/shared/log';
 import type { Context } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import type { AppEnv } from '../env';
@@ -71,11 +72,30 @@ export function toErrorResponse(err: unknown, requestId: string): ErrorResponse 
   };
 }
 
-/** 装配到 Hono 的 onError 处理器:统一渲染错误信封 */
+/** 装配到 Hono 的 onError 处理器:统一渲染错误信封 + 错误完成行(每请求恰一条完成行,与中间件的成功行互补) */
 export function honoOnError(err: unknown, c: Context<AppEnv>) {
-  if (!(err instanceof ApiError)) {
-    console.error('unhandled error:', err);
-  }
-  const status = err instanceof ApiError ? err.status : 500;
-  return c.json(toErrorResponse(err, c.get('requestId')), status);
+  const requestId = c.get('requestId');
+  const isApiError = err instanceof ApiError;
+  const status = isApiError ? err.status : 500;
+  const fields = {
+    method: c.req.method,
+    path: c.req.path,
+    status,
+    ...(isApiError ? { errorType: err.errorType } : {}),
+    err,
+  };
+  // onError 在 Hono 顶层 catch 执行,已离开中间件的 ALS 帧:显式重进入后再记。
+  // 级别:未预期错误与 5xx → error;鉴权/限流类 → warn;其余业务 4xx → info
+  withRequestId(requestId, () => {
+    if (!isApiError || status >= 500) {
+      log.error(isApiError ? 'request failed' : 'unhandled error', fields);
+    } else if (status === 401 || status === 403 || status === 429) {
+      log.warn('request failed', fields);
+    } else {
+      log.info('request failed', fields);
+    }
+  });
+  const response = c.json(toErrorResponse(err, requestId), status);
+  response.headers.set('x-request-id', requestId);
+  return response;
 }

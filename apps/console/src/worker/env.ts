@@ -17,6 +17,8 @@ declare global {
       NANO_API_KEY: string;
       /** 仅限本地 .dev.vars:"1" 时跳过 Access JWT 校验;生产严禁配置 */
       ACCESS_DEV_BYPASS: string;
+      /** 置 "0" 时关闭每请求的完成行日志(成本开关;默认开启) */
+      LOG_REQUEST_COMPLETION?: string;
     }
   }
 }

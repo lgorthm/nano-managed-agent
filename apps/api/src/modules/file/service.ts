@@ -26,6 +26,7 @@ import {
   type Page,
   validateFilename,
 } from '@nano/shared';
+import { log } from '@nano/shared/log';
 import type { Env } from '../../env';
 import {
   ApiError,
@@ -81,7 +82,7 @@ export const fileService = {
         createdAt: now,
       });
     } catch (err) {
-      console.error('file metadata insert failed:', err);
+      log.error('file metadata insert failed', { err });
       await env.FILES.delete(key).catch(() => {});
       throw new ApiError('api_error', 'Failed to persist the uploaded file.');
     }
@@ -178,7 +179,7 @@ export const fileService = {
     }
     const object = await env.FILES.get(fileObjectKey(fileId));
     if (!object) {
-      console.error(`file content missing for metadata row: ${fileId}`);
+      log.error('file content missing for metadata row', { fileId });
       throw new ApiError('api_error', 'File content is unavailable.');
     }
     return {
@@ -217,7 +218,7 @@ export const fileService = {
       await env.FILES.delete(fileObjectKey(fileId));
     } catch (err) {
       // 元数据已删,孤儿对象不影响正确性(下载先查元数据);清理留作运维脚本
-      console.error(`orphan R2 object after delete: ${fileObjectKey(fileId)}`, err);
+      log.error('orphan R2 object after delete', { key: fileObjectKey(fileId), err });
     }
     return { id: fileId, type: 'file_deleted' };
   },

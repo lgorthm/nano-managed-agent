@@ -13,6 +13,7 @@
  * delta.content → message,usage 随 stream_options.include_usage 在末块返回。
  */
 import type { ChatMessage, ChatToolDefinition, UsagePayload } from '@nano/shared';
+import { log } from '@nano/shared/log';
 
 /** 模型调用配置:baseUrl/apiKey/gatewayId 来自 env,model 是目录解析的 wire 名称 */
 export interface ChatModelConfig {
@@ -61,6 +62,16 @@ export interface ModelCallResult {
 const RETRY_DELAYS_MS = [200, 500];
 const RETRYABLE_STATUSES = new Set([429, 500, 502, 503, 504]);
 
+/** 重试观测:上游抖动若不可见,只表现为延迟升高而无处归因;每次重试最多一条 warn */
+function logRetry(reason: string, attempt: number): void {
+  log.warn('model upstream retry', {
+    reason,
+    backoffMs: RETRY_DELAYS_MS[attempt],
+    attempt: attempt + 1,
+    attempts: RETRY_DELAYS_MS.length,
+  });
+}
+
 async function fetchWithRetry(url: string, init: RequestInit): Promise<Response> {
   let lastError: unknown;
   for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
@@ -68,6 +79,7 @@ async function fetchWithRetry(url: string, init: RequestInit): Promise<Response>
       const response = await fetch(url, init);
       if (RETRYABLE_STATUSES.has(response.status) && attempt < RETRY_DELAYS_MS.length) {
         await response.body?.cancel().catch(() => undefined); // 丢弃错误体再重试
+        logRetry(`HTTP ${response.status}`, attempt);
         await new Promise((resolve) => setTimeout(resolve, RETRY_DELAYS_MS[attempt]));
         continue;
       }
@@ -76,6 +88,7 @@ async function fetchWithRetry(url: string, init: RequestInit): Promise<Response>
       if (init.signal?.aborted) throw new ModelAbortedError();
       lastError = err;
       if (attempt < RETRY_DELAYS_MS.length) {
+        logRetry(err instanceof Error ? err.message : String(err), attempt);
         await new Promise((resolve) => setTimeout(resolve, RETRY_DELAYS_MS[attempt]));
       }
     }

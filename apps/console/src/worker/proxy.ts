@@ -1,4 +1,5 @@
 import { GLM_API_BASE, ZAI_BETA_HEADER, ZAI_VERSION_HEADER } from '@nano/shared/glm';
+import { currentRequestId, log } from '@nano/shared/log';
 import type { Env } from './env';
 
 export const GLM_PROXY_PREFIX = '/glm';
@@ -85,16 +86,34 @@ function passthroughResponse(upstream: Response): Response {
   });
 }
 
+/** 上游不可达/传输失败:裸抛只会变成无上下文的平台 exception,收敛成可读的 502 信封 */
+export function upstreamFailureResponse(): Response {
+  return Response.json(
+    { error: { type: 'api_error', message: 'Upstream request failed.' } },
+    { status: 502 },
+  );
+}
+
 /** fetch 可注入:测试用它替换成 stub,避免依赖网络 mock 基建 */
 export async function proxyToGlm(
   request: Request,
   env: Env,
   fetchImpl: typeof fetch = fetch,
 ): Promise<Response> {
-  const upstream = await fetchImpl(
-    buildUpstreamRequest(request, buildUpstreamUrl(new URL(request.url)), env.GLM_API_KEY),
-  );
-  return passthroughResponse(upstream);
+  const url = new URL(request.url);
+  try {
+    const upstream = await fetchImpl(
+      buildUpstreamRequest(request, buildUpstreamUrl(url), env.GLM_API_KEY),
+    );
+    return passthroughResponse(upstream);
+  } catch (err) {
+    log.error('glm proxy upstream fetch failed', {
+      method: request.method,
+      path: url.pathname,
+      err,
+    });
+    return upstreamFailureResponse();
+  }
 }
 
 /** nano files 列表响应:{ data, next_page },需适配成 GLM 的 ManagedFilePage 形状 */
@@ -131,8 +150,9 @@ async function adaptFileListResponse(upstream: Response): Promise<Response> {
   let page: NanoFilePage;
   try {
     page = (await passthrough.json()) as NanoFilePage;
-  } catch {
+  } catch (err) {
     // nano 对 200 不会返回非 JSON;万一发生,按空页兜底,避免浏览器侧崩在解析上
+    log.warn('nano files list returned 200 with unparseable body; serving empty page', { err });
     page = { data: [], next_page: null };
   }
 
@@ -166,12 +186,26 @@ export async function proxyToNano(
     ? buildNanoFileListUrl(url, env.NANO_API_BASE)
     : buildNanoUpstreamUrl(url, env.NANO_API_BASE);
   const upstreamRequest = buildUpstreamRequest(request, upstreamUrl, env.NANO_API_KEY, false);
+  // request_id 随转发头传给 nano-api(其入口校验后沿用):浏览器 → console →
+  // nano 三段日志共享同一 id;trace 层面的关联另由平台自动传播,两者正交。
+  const requestId = currentRequestId();
+  if (requestId !== null) upstreamRequest.headers.set('x-request-id', requestId);
   // 生产经 Service Binding(wrangler.jsonc services → nano-api)直连 Worker:
   // 同账号 Worker 间的普通 fetch 会被 Cloudflare 拒绝(404 "error code: 1042"),
   // 绑定的 fetch 忽略 URL 主机、按绑定路由,上面的绝对 URL 只提供路径与查询串。
   // 本地 vite dev 不建立绑定,回退普通 fetch,仍按 NANO_API_BASE 连本地 api。
-  const upstream = env.NANO_API_SERVICE
-    ? await env.NANO_API_SERVICE.fetch(upstreamRequest)
-    : await fetchImpl(upstreamRequest);
-  return isFileList ? adaptFileListResponse(upstream) : passthroughResponse(upstream);
+  try {
+    const upstream = env.NANO_API_SERVICE
+      ? await env.NANO_API_SERVICE.fetch(upstreamRequest)
+      : await fetchImpl(upstreamRequest);
+    return isFileList ? adaptFileListResponse(upstream) : passthroughResponse(upstream);
+  } catch (err) {
+    log.error('nano proxy upstream fetch failed', {
+      method: request.method,
+      path: url.pathname,
+      upstream: env.NANO_API_BASE,
+      err,
+    });
+    return upstreamFailureResponse();
+  }
 }

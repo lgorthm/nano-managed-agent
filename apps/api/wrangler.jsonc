@@ -5,6 +5,19 @@
   "compatibility_date": "2025-09-01",
   "compatibility_flags": ["nodejs_compat"],
 
+  // Workers Logs / Observability:
+  // logs 开启后 console 输出与未捕获异常会自动写入账号级的 Workers Logs,
+  // 在 Dashboard 该 Worker 详情的 Logs 标签页查询,也可 `wrangler tail` 实时查看;
+  // traces 开启后平台自动打点(fetch/DO/D1/R2/Service Binding),且 trace 上下文
+  // 自动跨 Service Binding 与 DO 传播——跨 Worker/DO 的链路无需代码关联,
+  // 应用侧的 request_id 经 span 属性 app.request_id 桥进 trace。
+  // head_sampling_rate = 1 表示 100% 采样(默认);线上流量大时可调低(如 0.1)控制成本
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1,
+    "traces": { "enabled": true }
+  },
+
   // D1 元数据库。骨架阶段 database_id 为占位:
   // 运行 `wrangler d1 create nano-api-db` 后把返回的 database_id 填进来
   "d1_databases": [
