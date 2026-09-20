@@ -7,7 +7,7 @@
  * 与控制面的边界(§8):存在性/归档门禁在 service 侧查 D1 先行裁决;
  * D1 的 sessions.status 与 usage 三列是本类状态机的投影,迁移即时回写。
  */
-import { DurableObject } from 'cloudflare:workers';
+import { DurableObject, tracing } from 'cloudflare:workers';
 import { getSandbox } from '@cloudflare/sandbox';
 import {
   findSession,
@@ -561,10 +561,30 @@ export class SessionDo extends DurableObject<Env> {
     this.turnStartedAt = Date.now();
     this.keepAlive();
     const token = ++this.currentExecutionToken;
+    log.info('session turn started: message', { sessionId: this.sessionId(), turnId });
     // fire-and-forget:RPC 响应不等 turn 完成;keepAlive 兜住执行期的空闲逐出(§5)
-    void runTurn(this, turnId, { iteration: 0, snapshot }).catch((err) =>
+    void this.runTurnSpanned(turnId, 'message', { iteration: 0, snapshot }).catch((err) =>
       this.turnFailed(turnId, token, err),
     );
+  }
+
+  /**
+   * turn 执行统一挂 session.turn span:traces 瀑布里每段会话执行成为一个有名
+   * 整体(属性带 sessionId/turnId/trigger),Workers Logs 里对应的生命周期行
+   * (「session.turn OK」)也因此有了业务语义——不再只剩 d1_all 这类平台打点。
+   * span 名保持固定(低基数),具体 id 进属性
+   */
+  private runTurnSpanned(
+    turnId: string,
+    trigger: 'message' | 'confirmation' | 'recovery',
+    resume?: TurnResume,
+  ): Promise<void> {
+    return tracing.enterSpan('session.turn', async (span) => {
+      span.setAttribute('app.session_id', this.sessionId());
+      span.setAttribute('app.turn_id', turnId);
+      span.setAttribute('app.turn_trigger', trigger);
+      return runTurn(this, turnId, resume);
+    });
   }
 
   private turnFailed(turnId: string, token: number, err: unknown): void {
@@ -804,6 +824,10 @@ export class SessionDo extends DurableObject<Env> {
       });
     }
     if (decided.length === 0) return;
+    log.info('session turn resumed: confirmation', {
+      sessionId: this.sessionId(),
+      confirmedTools: decided.length,
+    });
 
     // 权限文档:「所有待审批事件都被处理后,会话回到 running;被允许的工具执行」。
     // 逐出恢复重入时 status 已是 running(session_state 恢复),不重复外发迁移事件;
@@ -879,7 +903,7 @@ export class SessionDo extends DurableObject<Env> {
       JSON.stringify(snapshot),
       Date.now(),
     );
-    void runTurn(this, turnId, { iteration: 0, snapshot }).catch((err) =>
+    void this.runTurnSpanned(turnId, 'confirmation', { iteration: 0, snapshot }).catch((err) =>
       this.turnFailed(turnId, token, err),
     );
   }
@@ -919,6 +943,16 @@ export class SessionDo extends DurableObject<Env> {
     if (deletedRows === 0) return;
     this.turnActive = false;
     this.interruptFlag = false;
+    // turn 完成行:业务终局与 token 用量。此前 DO 只有错误路径有日志,成功的
+    // turn 在 Workers Logs 里完全不可见(只能去翻事件日志)
+    log.info(`session turn finished: ${stopReason.type}`, {
+      sessionId: this.sessionId(),
+      turnId,
+      stopReason: stopReason.type,
+      inputTokens: usage.input_tokens,
+      outputTokens: usage.output_tokens,
+      cacheReadInputTokens: usage.cache_read_input_tokens,
+    });
     if (this.deleted) return;
 
     this.status = 'idle';
@@ -1008,6 +1042,8 @@ export class SessionDo extends DurableObject<Env> {
 
     this.turnActive = true;
     this.keepAlive();
+    // 恢复意味着曾发生强制逐出(§6):异常但可自愈,warn 级留痕供观测平台告警
+    log.warn('session turn recovered: eviction', { sessionId: this.sessionId(), turnId });
     if (this.status !== 'running') {
       // 逐出时状态机事实应为 running;防御性归一,保证续跑期间的门禁语义
       this.status = 'running';
@@ -1024,7 +1060,9 @@ export class SessionDo extends DurableObject<Env> {
     );
     const resume: TurnResume | undefined = snapshot !== null ? { iteration, snapshot } : undefined;
     const token = ++this.currentExecutionToken;
-    void runTurn(this, turnId, resume).catch((err) => this.turnFailed(turnId, token, err));
+    void this.runTurnSpanned(turnId, 'recovery', resume).catch((err) =>
+      this.turnFailed(turnId, token, err),
+    );
   }
 
   /**

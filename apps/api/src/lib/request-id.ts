@@ -1,6 +1,7 @@
 import { tracing } from 'cloudflare:workers';
 import { log, resolveRequestId, withRequestId } from '@nano/shared/log';
 import { createMiddleware } from 'hono/factory';
+import { routePath } from 'hono/route';
 import type { AppEnv } from '../env';
 
 /**
@@ -28,11 +29,21 @@ export const requestId = createMiddleware<AppEnv>(async (c, next) => {
     await withRequestId(id, async () => {
       await next();
       c.res.headers.set('x-request-id', id);
+      // 路由模板(如 /v1/sessions/:id)在 next() 之后才可得知(路由已匹配完毕)。
+      // url.path 带具体资源 id 是高基数维度;route 是低基数的「端点」维度,
+      // 按端点聚合/过滤靠它。span 属性与日志字段各补一份
+      const route = routePath(c);
+      const hasRoute = route !== '' && route !== '*';
+      if (hasRoute) span.setAttribute('http.route', route);
       if (c.env.LOG_REQUEST_COMPLETION !== '0') {
-        // 完成行必须在 ALS 作用域内记,自动携带 requestId 字段
-        log.info('request completed', {
+        // 完成行必须在 ALS 作用域内记,自动携带 requestId 字段。
+        // msg 直接拼上 method/path/status:Workers Logs 列表只展示 msg,
+        // 只写 'request completed' 的话列表里根本看不出这条请求是什么;
+        // 结构化字段保持不变,字段级过滤(path=/status= 等)能力不受影响
+        log.info(`request completed: ${method} ${path} ${c.res.status}`, {
           method,
           path,
+          ...(hasRoute ? { route } : {}),
           status: c.res.status,
           durationMs: Date.now() - startedAt,
         });

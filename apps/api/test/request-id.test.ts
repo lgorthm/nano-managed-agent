@@ -23,10 +23,12 @@ describe('request_id 装配', () => {
     const res = await exports.default.fetch('http://example.com/');
     const id = res.headers.get('x-request-id');
     expect(id).toMatch(/^req_[0-9a-f-]{36}$/);
-    expect(lines().find((line) => line.msg === 'request completed')).toMatchObject({
+    // msg 拼上 method/path/status:Workers Logs 列表只展示 msg,空泛文案看不出请求是什么
+    expect(lines().find((line) => line.msg === 'request completed: GET / 200')).toMatchObject({
       requestId: id,
       method: 'GET',
       path: '/',
+      route: '/',
       status: 200,
     });
   });
@@ -53,7 +55,7 @@ describe('request_id 装配', () => {
     const id = res.headers.get('x-request-id');
     expect(res.status).toBe(401);
     expect(id).toMatch(/^req_[0-9a-f-]{36}$/);
-    expect(lines().find((line) => line.msg === 'request failed')).toMatchObject({
+    expect(lines().find((line) => line.msg === 'request failed: GET /v1 401')).toMatchObject({
       requestId: id,
       status: 401,
       errorType: 'authentication_error',

@@ -8,6 +8,7 @@
  * 清零,因此物化协议必须自带幂等标记(容器内的 /tmp 标记文件随新容器消失,
  * 天然触发再物化;DO 实例内的内存标记避免热容器上的重复物化)。
  */
+import { tracing } from 'cloudflare:workers';
 import { getSandbox, type Sandbox } from '@cloudflare/sandbox';
 import {
   BUILTIN_TOOL_INPUT_SCHEMAS,
@@ -265,7 +266,26 @@ export class SandboxToolRunner implements ToolRunner {
     }
   }
 
+  /**
+   * 对外入口:统一挂 tool.invoke span + 完成行(耗时是沙箱排障的关键维度)。
+   * span 名固定(低基数),工具名进属性;具体执行在 runTool,失败日志也在那里
+   */
   async run(invocation: ToolInvocation): Promise<ToolOutcome> {
+    const startedAt = Date.now();
+    return tracing.enterSpan('tool.invoke', async (span) => {
+      span.setAttribute('app.tool_name', invocation.name);
+      const outcome = await this.runTool(invocation);
+      log.info(`tool invocation completed: ${invocation.name}`, {
+        sessionId: this.ctx.sessionId,
+        tool: invocation.name,
+        isError: outcome.isError,
+        durationMs: Date.now() - startedAt,
+      });
+      return outcome;
+    });
+  }
+
+  private async runTool(invocation: ToolInvocation): Promise<ToolOutcome> {
     try {
       await this.ensureMaterialized();
       const schema = BUILTIN_TOOL_INPUT_SCHEMAS[invocation.name as BuiltinToolName];
