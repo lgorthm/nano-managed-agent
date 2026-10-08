@@ -6,6 +6,7 @@ import {
   collapsibleTurns,
   deriveTimelineSpans,
   filterRecords,
+  formatSpanDuration,
   type LedgerRecord,
   stepKey,
   timelineFocusKeys,
@@ -207,6 +208,86 @@ describe('buildLedger', () => {
     expect(records).toHaveLength(1);
     expect(records[0]?.startedAt).toBeNull();
     expect(records[0]?.durationMs).toBeNull();
+  });
+
+  it('字符串 content 可用于系统消息和工具结果的摘要', () => {
+    resetSeq();
+    const records = buildLedger([
+      ev('system.message', { processed_at: at(0), content: '  沙箱已恢复。\n继续执行。  ' }),
+      ev('agent.tool_use', { processed_at: at(10), name: 'bash', input: { command: 'pwd' } }),
+      ev('agent.tool_result', {
+        processed_at: at(20),
+        tool_use_id: 'sevt_2',
+        content: '/workspace/project',
+      }),
+    ]);
+    expect(records[0]?.summary).toBe('沙箱已恢复。 继续执行。');
+    expect(records[1]?.summary).toContain('/workspace/project');
+  });
+
+  it('结果评估心跳不打断开始与结束配对，并保留两个阶段的完整载荷', () => {
+    resetSeq();
+    const start = Object.freeze(
+      ev('span.outcome_evaluation_start', { processed_at: at(0), options: { goal: 'verified' } }),
+    );
+    const end = Object.freeze(
+      ev('span.outcome_evaluation_end', { processed_at: at(50), result: { passed: true } }),
+    );
+    const records = buildLedger([
+      start,
+      ev('span.outcome_evaluation_ongoing', { processed_at: at(25), progress: 'checking' }),
+      end,
+    ]);
+    expect(records).toHaveLength(2);
+    expect(records[0]).toMatchObject({ key: start.id, durationMs: 50, endAt: BASE + 50 });
+    expect(records[0]?.startRaw).toBe(start);
+    expect(records[0]?.raw).toBe(end);
+    expect(records[1]?.raw.type).toBe('span.outcome_evaluation_ongoing');
+    expect(records[1]?.durationMs).toBe(0);
+  });
+
+  it('不同类型交错与同类型嵌套的 span 可以各自完成配对', () => {
+    resetSeq();
+    const records = buildLedger([
+      ev('span.model_request_start', { processed_at: at(0) }),
+      ev('span.outcome_evaluation_start', { processed_at: at(10) }),
+      ev('span.model_request_start', { processed_at: at(20) }),
+      ev('span.model_request_end', { processed_at: at(30) }),
+      ev('span.outcome_evaluation_end', { processed_at: at(40) }),
+      ev('span.model_request_end', { processed_at: at(50) }),
+    ]);
+    expect(records.map((record) => [record.key, record.durationMs, record.raw.id])).toEqual([
+      ['sevt_1', 50, 'sevt_6'],
+      ['sevt_2', 30, 'sevt_5'],
+      ['sevt_3', 10, 'sevt_4'],
+    ]);
+  });
+
+  it('另一类型的孤立结束事件不会清除正在进行的 span', () => {
+    resetSeq();
+    const records = buildLedger([
+      ev('span.model_request_start', { processed_at: at(0) }),
+      ev('span.outcome_evaluation_end', { processed_at: at(10) }),
+      ev('span.model_request_end', { processed_at: at(20) }),
+    ]);
+    expect(records.map((record) => [record.label, record.durationMs])).toEqual([
+      ['模型请求', 20],
+      ['结果评估结束', 0],
+    ]);
+  });
+});
+
+describe('formatSpanDuration', () => {
+  it.each([
+    [0, '0 毫秒'],
+    [1.6, '2 毫秒'],
+    [59_900, '59.9s'],
+    [60_000, '1m 0s'],
+    [119_499, '1m 59s'],
+    [119_500, '2m 0s'],
+    [3_599_999, '60m 0s'],
+  ])('将 %d 毫秒格式化为 %s，秒数进位后不会显示 60s', (ms, expected) => {
+    expect(formatSpanDuration(ms)).toBe(expected);
   });
 });
 

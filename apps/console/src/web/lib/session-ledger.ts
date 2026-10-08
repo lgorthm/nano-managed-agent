@@ -43,6 +43,8 @@ export interface LedgerRecord {
   toolName?: string;
   /** 原始事件(tool 配对记录指向 tool_use,span 配对记录指向 end 事件),详情面板消费 */
   raw: Record<string, unknown>;
+  /** span 的原始开始事件，保留请求选项等只在开始时出现的载荷。 */
+  startRaw?: Record<string, unknown>;
 }
 
 /** 事件类型 → 类别与泳道;不在表内且非 span.* 的事件不产出记录(session.* 元事件等) */
@@ -139,9 +141,10 @@ function previewJson(value: unknown, max = SUMMARY_MAX_CHARS): string | undefine
   return snippet(text, max);
 }
 
-/** 从 content 块数组或顶层 text/message 提取摘要首行 */
+/** 从字符串 content、内容块数组或顶层 text/message 提取摘要首行 */
 function textDetail(record: Record<string, unknown>): string | undefined {
   const content = record.content;
+  if (typeof content === 'string') return snippet(content);
   if (Array.isArray(content)) {
     for (const block of content) {
       if (
@@ -163,9 +166,10 @@ function textDetail(record: Record<string, unknown>): string | undefined {
 
 export function formatSpanDuration(ms: number): string {
   if (ms <= 0) return '0 毫秒';
-  if (ms < 1000) return `${ms} 毫秒`;
+  if (ms < 1000) return `${Math.round(ms)} 毫秒`;
   if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
-  return `${Math.floor(ms / 60_000)}m ${Math.round((ms % 60_000) / 1000)}s`;
+  const totalSeconds = Math.round(ms / 1000);
+  return `${Math.floor(totalSeconds / 60)}m ${totalSeconds % 60}s`;
 }
 
 /**
@@ -192,7 +196,8 @@ export function buildLedger(events: Array<Record<string, unknown>>): LedgerRecor
   const pairedUseIds = new Set<string>();
   let turn = 0;
   let step = 0;
-  let pendingSpanStart: { type: string; record: LedgerRecord } | null = null;
+  // 按结束类型独立配对；同类 span 使用栈处理嵌套，其他类型与心跳不会覆盖开始记录。
+  const pendingSpansByEndType = new Map<string, LedgerRecord[]>();
 
   events.forEach((event, index) => {
     const type = typeof event.type === 'string' ? event.type : 'event';
@@ -257,9 +262,10 @@ export function buildLedger(events: Array<Record<string, unknown>>): LedgerRecor
       });
       return;
     }
-    if (SPAN_END_OF[type]) {
+    const spanEndType = SPAN_END_OF[type];
+    if (spanEndType) {
       // span 起始:立即产出「进行中」区间记录,保证台账顺序与事件顺序一致;配对结束时回填
-      records.push({
+      const record: LedgerRecord = {
         ...base,
         lane: 'model',
         kind: 'span',
@@ -268,22 +274,22 @@ export function buildLedger(events: Array<Record<string, unknown>>): LedgerRecor
         durationMs: null,
         isError: false,
         step: 0,
-      });
-      // 刚 push 完必然存在,索引访问的类型收窄交给运行时不变式
-      pendingSpanStart = { type, record: records[records.length - 1]! };
+        startRaw: event,
+      };
+      records.push(record);
+      const pending = pendingSpansByEndType.get(spanEndType) ?? [];
+      pending.push(record);
+      pendingSpansByEndType.set(spanEndType, pending);
       return;
     }
     if (type.startsWith('span.')) {
-      const pending =
-        pendingSpanStart && SPAN_END_OF[pendingSpanStart.type] === type ? pendingSpanStart : null;
-      pendingSpanStart = null;
+      const pending = pendingSpansByEndType.get(type)?.pop();
       if (pending) {
         // 回填结束时刻与耗时(记录身份保持为起始事件)
-        pending.record.endAt = at;
-        pending.record.durationMs =
-          at !== null && pending.record.startedAt !== null
-            ? Math.max(0, at - pending.record.startedAt)
-            : null;
+        pending.endAt = at;
+        pending.durationMs =
+          at !== null && pending.startedAt !== null ? Math.max(0, at - pending.startedAt) : null;
+        pending.raw = event;
         return;
       }
       // 孤立 end / ongoing 心跳:退化为瞬时记录

@@ -222,3 +222,771 @@ body::after {
 ::-webkit-scrollbar-corner {
   background: transparent;
 }
+
+/* Trace keeps its role colors and neutral surface scoped to the Session page. */
+.session-detail-shell {
+  --trace-background: #fff;
+  --trace-foreground: #303238;
+  --trace-border: #eef0f3;
+  --trace-muted: #8d939b;
+  --trace-hover: #f7f8fa;
+  --trace-selected: #e9ebee;
+  --trace-user: #5f87ec;
+  --trace-user-tint: #eaf0ff;
+  --trace-context: #58b681;
+  --trace-context-tint: #e8f8ef;
+  --trace-assistant: #8c70b0;
+  --trace-assistant-tint: #f0ebf5;
+  --trace-tool: #dc8523;
+  --trace-tool-tint: #fff5e6;
+  --trace-system: #85898e;
+  --trace-system-tint: #f0f1f2;
+  --trace-error: #c95353;
+  --trace-error-tint: #fff0f0;
+  --trace-code-key: #9362b1;
+  --trace-code-string: #c84838;
+  --trace-code-number: #39769b;
+  --trace-code-literal: #8c70b0;
+}
+.dark .session-detail-shell {
+  --trace-background: #202124;
+  --trace-foreground: #e2e4e9;
+  --trace-border: #34373d;
+  --trace-muted: #9197a2;
+  --trace-hover: #282b31;
+  --trace-selected: #333840;
+  --trace-user: #88a7ff;
+  --trace-user-tint: #2b3856;
+  --trace-context: #79cda1;
+  --trace-context-tint: #263c33;
+  --trace-assistant: #b99ad8;
+  --trace-assistant-tint: #3b3148;
+  --trace-tool: #e9a752;
+  --trace-tool-tint: #453728;
+  --trace-system: #a0a5af;
+  --trace-system-tint: #32353b;
+  --trace-error: #f28b8b;
+  --trace-error-tint: #4a3033;
+  --trace-code-key: #c398dc;
+  --trace-code-string: #e99181;
+  --trace-code-number: #85bce0;
+  --trace-code-literal: #bba1db;
+}
+.session-detail-trace {
+  gap: 0;
+  overflow: hidden;
+  border-radius: 10px;
+  background: var(--trace-background);
+  color: var(--trace-foreground);
+}
+.session-detail-header {
+  flex-shrink: 0;
+  padding: 10px 16px 4px;
+}
+.session-detail-navigation,
+.trace-inspector-tab-list {
+  flex-shrink: 0;
+  width: 100%;
+  height: 36px;
+  justify-content: flex-start;
+  gap: 20px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--trace-border);
+  border-radius: 0;
+  background: transparent;
+}
+.session-detail-navigation > [data-slot="tabs-trigger"],
+.trace-inspector-tab {
+  flex: none;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  color: var(--trace-muted);
+  background: transparent;
+  font-size: 12px;
+  font-weight: 400;
+  box-shadow: none;
+}
+.session-detail-navigation > [data-state="active"],
+.trace-inspector-tab[data-state="active"] {
+  border-color: var(--trace-user);
+  background: transparent;
+  color: var(--trace-user);
+  box-shadow: none;
+}
+.session-stream-error {
+  flex-shrink: 0;
+  padding: 6px 16px;
+  color: var(--trace-error);
+  background: var(--trace-error-tint);
+  font-size: 12px;
+}
+.session-trace {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  background: var(--trace-background);
+  color: var(--trace-foreground);
+}
+
+/* Display options and full-payload search. */
+.trace-toolbar {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  min-height: 30px;
+  padding: 3px 8px;
+  border: 0;
+  border-bottom: 1px solid var(--trace-border);
+  color: var(--trace-muted);
+}
+.trace-toolbar [aria-pressed="true"] {
+  color: var(--trace-foreground);
+}
+.trace-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+.trace-lane-filter {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 6px;
+  font-size: 11px;
+}
+.trace-lane-filter select {
+  width: 46px;
+  padding: 0;
+  border: 0;
+  background: var(--trace-background);
+  color: var(--trace-muted);
+}
+.trace-search {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 160px;
+  height: 23px;
+  padding-left: 6px;
+  border: 1px solid var(--trace-border);
+  border-radius: 5px;
+}
+.trace-search:focus-within {
+  outline: 2px solid color-mix(in srgb, var(--trace-user) 25%, transparent);
+}
+.trace-search input {
+  min-width: 0;
+  height: 21px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--trace-foreground);
+  font-size: 11px;
+  box-shadow: none;
+}
+.trace-search input:focus-visible {
+  outline: 0;
+  box-shadow: none;
+}
+.trace-search input::-webkit-search-cancel-button {
+  display: none;
+}
+
+/* Three compact tracks share the same horizontal projection. */
+.trace-timeline {
+  position: relative;
+  display: flex;
+  flex-shrink: 0;
+  min-width: 0;
+  height: 44px;
+  padding-right: 3px;
+  border-bottom: 1px solid var(--trace-border);
+}
+.trace-timeline-labels {
+  position: relative;
+  flex-shrink: 0;
+  width: 38px;
+  color: var(--trace-muted);
+  font-size: 9px;
+  line-height: 8px;
+}
+.trace-timeline-labels span {
+  position: absolute;
+  right: 4px;
+}
+.trace-timeline-track {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  cursor: crosshair;
+  touch-action: pan-y;
+}
+.trace-timeline-track:focus-visible {
+  outline: 1px solid var(--trace-user);
+  outline-offset: -1px;
+}
+.trace-timeline-panning {
+  cursor: grabbing;
+}
+.trace-timeline-lane {
+  position: absolute;
+  width: 100%;
+  height: 8px;
+}
+.trace-timeline-block {
+  position: absolute;
+  min-width: 3px;
+  height: 8px;
+  background: var(--trace-assistant);
+}
+.trace-timeline-block[data-tone="user"] {
+  background: var(--trace-user);
+}
+.trace-timeline-block[data-tone="context"] {
+  background: var(--trace-context);
+}
+.trace-timeline-block[data-tone="tool"] {
+  background: var(--trace-tool);
+}
+.trace-timeline-block[data-tone="system"] {
+  background: var(--trace-system);
+}
+.trace-timeline-block[data-tone="error"] {
+  background: var(--trace-error);
+}
+.trace-timeline-block[data-selected="true"] {
+  border-radius: 1px;
+  outline: 1px solid var(--trace-user);
+  outline-offset: 1px;
+}
+.trace-timeline-block:hover {
+  filter: brightness(1.1);
+}
+.trace-timeline-block-dimmed {
+  opacity: 0.22;
+}
+.trace-timeline-block-dimmed:hover {
+  opacity: 1;
+}
+.trace-timeline-turn-boundary,
+.trace-timeline-hover-line {
+  position: absolute;
+  inset-block: 0;
+  width: 1px;
+  background: var(--trace-border);
+}
+.trace-timeline-hover-line {
+  background: var(--trace-user);
+  pointer-events: none;
+}
+.trace-timeline-selection {
+  position: absolute;
+  inset-block: 0;
+  border-inline: 1px solid var(--trace-user);
+  background: color-mix(in srgb, var(--trace-user) 9%, transparent);
+  pointer-events: none;
+}
+.trace-timeline-tooltip-anchor {
+  position: absolute;
+  bottom: 0;
+  width: 1px;
+  height: 44px;
+  pointer-events: none;
+}
+.trace-timeline-reset {
+  position: absolute;
+  top: 9px;
+  right: 5px;
+  background: var(--trace-background);
+}
+.trace-timeline-tooltip {
+  font-size: 11px;
+  line-height: 1.5;
+}
+.trace-timeline-empty {
+  padding: 10px 16px;
+  color: var(--trace-muted);
+  font-size: 11px;
+}
+
+/* Only the virtual list and the inspector body scroll. */
+.trace-workspace {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+.trace-main {
+  position: relative;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+.trace-list {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow: auto;
+  outline: none;
+}
+.trace-list:focus-visible {
+  box-shadow: inset 0 0 0 1px var(--trace-user);
+}
+.trace-list-canvas {
+  min-width: 0;
+}
+.trace-row {
+  display: flex;
+  align-items: center;
+  border-left: 2px solid transparent;
+  border-bottom: 1px solid var(--trace-border);
+  color: var(--trace-foreground);
+  font-size: 12px;
+  cursor: pointer;
+}
+.trace-row:hover {
+  background: var(--trace-hover);
+}
+.trace-row-selected,
+.trace-row-selected:hover {
+  border-left-color: var(--trace-user);
+  background: var(--trace-selected);
+}
+.trace-row-outside-focus {
+  opacity: 0.3;
+}
+.trace-row-outside-focus:hover {
+  opacity: 1;
+}
+.trace-row-error {
+  color: var(--trace-error);
+}
+.trace-list:focus-visible .trace-row[data-keyboard-active="true"] {
+  outline: 1px solid var(--trace-user);
+  outline-offset: -1px;
+}
+.trace-turn-rail {
+  position: relative;
+  flex-shrink: 0;
+  width: 36px;
+  height: 100%;
+}
+.trace-turn-line {
+  position: absolute;
+  inset-block: 0;
+  left: 16px;
+  width: 1px;
+  background: var(--trace-user-tint);
+}
+.trace-turn-line[data-turn-start="true"] {
+  top: 50%;
+}
+.trace-turn-line[data-turn-end="true"] {
+  bottom: 50%;
+}
+.trace-turn-marker {
+  position: absolute;
+  top: 2px;
+  left: -2px;
+  width: 36px;
+  padding: 0;
+  border: 0;
+  background: var(--trace-user-tint);
+  color: var(--trace-user);
+  font-size: 8px;
+  line-height: 11px;
+  cursor: pointer;
+}
+.trace-request-dot {
+  position: absolute;
+  top: 12px;
+  left: 14px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--trace-muted);
+}
+.trace-row-content {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+  padding-right: 8px;
+}
+.trace-label {
+  height: 18px;
+  padding: 1px 5px;
+  border: 0;
+  border-radius: 2px;
+  background: var(--trace-system-tint);
+  color: var(--trace-system);
+  font-size: 10px;
+  font-weight: 400;
+  line-height: 16px;
+}
+.trace-label[data-tone="user"] {
+  background: var(--trace-user-tint);
+  color: var(--trace-user);
+}
+.trace-label[data-tone="context"] {
+  background: var(--trace-context-tint);
+  color: var(--trace-context);
+}
+.trace-label[data-tone="assistant"] {
+  background: var(--trace-assistant-tint);
+  color: var(--trace-assistant);
+}
+.trace-label[data-tone="tool"] {
+  background: var(--trace-tool-tint);
+  color: var(--trace-tool);
+}
+.trace-label[data-tone="error"] {
+  background: var(--trace-error-tint);
+  color: var(--trace-error);
+}
+.trace-row-summary {
+  min-width: 0;
+  line-height: 26px;
+}
+.trace-tool-summary {
+  color: var(--trace-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+.trace-collapsed-summary {
+  color: var(--trace-muted);
+  font-size: 11px;
+}
+.trace-step-toggle {
+  flex-shrink: 0;
+  margin-left: auto;
+  color: var(--trace-muted);
+  font-size: 10px;
+  opacity: 0;
+  cursor: pointer;
+}
+.trace-row:hover .trace-step-toggle {
+  opacity: 1;
+}
+.trace-duration-cell {
+  flex-shrink: 0;
+  width: 76px;
+  padding-right: 10px;
+  text-align: right;
+}
+.trace-row-duration {
+  color: var(--trace-muted);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Record-specific tabs use the recording's plain underline navigation. */
+.trace-detail-pane {
+  flex-shrink: 0;
+  width: 360px;
+  min-height: 0;
+  border-left: 5px solid var(--trace-border);
+  background: var(--trace-background);
+}
+.trace-inspector {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-width: 0;
+}
+.trace-inspector-header {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 8px;
+  height: 39px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--trace-border);
+}
+.trace-inspector-position {
+  color: var(--trace-muted);
+  font-size: 10px;
+}
+.trace-inspector-close {
+  margin-left: auto;
+  color: var(--trace-muted);
+}
+.trace-inspector-tabs {
+  flex: 1;
+  gap: 0;
+  min-height: 0;
+}
+.trace-inspector-tab-list {
+  gap: 18px;
+  height: 32px;
+  padding-inline: 12px;
+}
+.trace-inspector-tab {
+  font-size: 11px;
+}
+.trace-inspector-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  gap: 18px;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px;
+  font-size: 12px;
+}
+.trace-inspector-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.trace-inspector-field {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  gap: 8px;
+  line-height: 1.5;
+}
+.trace-inspector-label {
+  color: var(--trace-muted);
+}
+.trace-inspector-value {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.trace-inspector-section {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.trace-inspector-section-title {
+  color: var(--trace-muted);
+  font-size: 11px;
+  font-weight: 400;
+}
+.trace-inspector-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.65;
+}
+.trace-inspector-code {
+  padding: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--trace-foreground);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.55;
+}
+.trace-inspector-empty {
+  color: var(--trace-muted);
+  font-size: 11px;
+  line-height: 1.65;
+}
+.trace-inspector-content,
+.trace-inspector-document {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.trace-inspector-image {
+  max-width: 100%;
+  max-height: 300px;
+  object-fit: contain;
+}
+
+/* The floating composer leaves room at the bottom of the virtual canvas. */
+.trace-composer-area {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  display: flex;
+  justify-content: center;
+  padding: 24px 18px 9px;
+  background: linear-gradient(transparent, var(--trace-background) 30%);
+  pointer-events: none;
+}
+.trace-composer {
+  width: min(100%, 760px);
+  padding: 10px 12px;
+  border: 1px solid var(--trace-border);
+  border-radius: 18px;
+  background: var(--trace-background);
+  box-shadow: 0 2px 16px rgb(0 0 0 / 4%);
+  pointer-events: auto;
+}
+.trace-composer textarea {
+  max-height: 132px;
+  min-height: 40px;
+  padding: 0;
+  resize: none;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--trace-foreground);
+  font-size: 12px;
+  box-shadow: none;
+}
+.trace-composer textarea:focus-visible {
+  outline: 0;
+  box-shadow: none;
+}
+.trace-composer textarea::placeholder {
+  color: var(--trace-muted);
+  opacity: 0.7;
+}
+.trace-composer-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 4px;
+  color: var(--trace-muted);
+}
+.trace-composer-shortcut {
+  font-size: 10px;
+}
+.trace-composer-model {
+  overflow: hidden;
+  max-width: 180px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+}
+.trace-send-button {
+  border-radius: 50%;
+  background: var(--trace-user);
+  color: var(--trace-background);
+  box-shadow: none;
+}
+.trace-send-button:disabled {
+  opacity: 0.45;
+}
+.trace-composer-error {
+  padding-top: 8px;
+  color: var(--trace-error);
+  font-size: 11px;
+}
+.trace-query-error {
+  flex-shrink: 0;
+  padding: 12px;
+}
+.trace-no-matches {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-bottom: 140px;
+}
+.trace-status-bar {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 22px;
+  min-height: 24px;
+  padding: 2px 8px 4px;
+  color: var(--trace-muted);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.trace-status-bar > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.trace-status-bar svg {
+  width: 12px;
+  height: 12px;
+}
+
+@media (min-width: 1600px) {
+  .trace-detail-pane {
+    width: 400px;
+  }
+}
+@media (max-width: 1023px) {
+  .trace-detail-pane {
+    position: absolute;
+    inset: 0 0 0 auto;
+    width: min(400px, 100%);
+    box-shadow: -8px 0 24px rgb(0 0 0 / 6%);
+  }
+  .trace-composer-shortcut {
+    display: none;
+  }
+}
+@media (max-width: 639px) {
+  .session-detail-header {
+    padding: 8px 10px 4px;
+  }
+  .session-detail-navigation {
+    padding-inline: 10px;
+  }
+  .trace-toolbar {
+    flex-wrap: wrap;
+  }
+  .trace-toolbar-actions {
+    flex: 1;
+    justify-content: flex-end;
+  }
+  .trace-lane-filter {
+    margin-left: auto;
+  }
+  .trace-search {
+    width: 110px;
+  }
+  .trace-composer-area {
+    padding-inline: 10px;
+  }
+  .trace-status-bar {
+    gap: 10px;
+    font-size: 9px;
+  }
+  .trace-status-bar > span:last-child {
+    display: none;
+  }
+  .trace-inspector-tab-list {
+    gap: 14px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .trace-timeline-domain {
+    --trace-viewport-transition: 0ms;
+  }
+}
+
+.trace-mobile-inspector {
+  width: calc(100vw - 24px);
+  max-width: 400px;
+  height: min(82svh, 760px);
+  padding: 0;
+  gap: 0;
+  background: var(--trace-background);
+  color: var(--trace-foreground);
+}
+
+/* JSON is rendered as escaped React text, with only token colors added. */
+.trace-json-token[data-token="key"] {
+  color: var(--trace-code-key);
+}
+.trace-json-token[data-token="string"] {
+  color: var(--trace-code-string);
+}
+.trace-json-token[data-token="number"] {
+  color: var(--trace-code-number);
+}
+.trace-json-token[data-token="literal"] {
+  color: var(--trace-code-literal);
+}

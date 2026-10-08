@@ -72,8 +72,12 @@ export function deleteSessionFileResource(sessionId: string, resourceId: string)
 }
 
 /** 历史事件;断线重连时先拉列表再订阅,按事件 id 去重 */
-export function listSessionEvents(sessionId: string, query: SessionEventListQuery = {}) {
-  return glmFetchPage<PersistedEvent>(`${BASE}/${sessionId}/events`, query);
+export function listSessionEvents(
+  sessionId: string,
+  query: SessionEventListQuery = {},
+  signal?: AbortSignal,
+) {
+  return glmFetchPage<PersistedEvent>(`${BASE}/${sessionId}/events`, query, { signal });
 }
 
 export function sendSessionEvents(sessionId: string, input: SendEventsInput) {

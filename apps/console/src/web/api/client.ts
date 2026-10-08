@@ -85,8 +85,12 @@ export async function glmFetchRaw(path: string, init?: RequestInit): Promise<Res
   return res;
 }
 
-export function glmFetchPage<T>(path: string, params: object = {}): Promise<Page<T>> {
-  return glmFetch<Page<T>>(`${path}${qs(params)}`);
+export function glmFetchPage<T>(
+  path: string,
+  params: object = {},
+  init?: RequestInit,
+): Promise<Page<T>> {
+  return glmFetch<Page<T>>(`${path}${qs(params)}`, init);
 }
 
 /** 从 content-disposition 解析文件名;支持 RFC 5987 扩展写法,缺失时返回 null */

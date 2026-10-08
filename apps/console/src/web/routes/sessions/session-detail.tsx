@@ -7,19 +7,8 @@ import type {
   StreamEvent,
 } from '@nano/shared/glm';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  Archive,
-  Ban,
-  Check,
-  Copy,
-  Download,
-  Inbox,
-  Paperclip,
-  Send,
-  Unlink,
-  X,
-} from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Archive, Check, Copy, Download, Paperclip, Unlink } from 'lucide-react';
+import { useState } from 'react';
 import { useParams } from 'react-router';
 import { downloadFile, listFiles } from '@/api/files';
 import {
@@ -27,18 +16,14 @@ import {
   archiveSession,
   deleteSessionFileResource,
   getSession,
-  listSessionEvents,
   listSessionResources,
   sendSessionEvents,
-  subscribeSessionEvents,
 } from '@/api/sessions';
 import { BackLink } from '@/components/back-link';
 import { EmptyState } from '@/components/empty-state';
 import { QueryError } from '@/components/query-error';
 import { RefreshButton } from '@/components/refresh-button';
 import { KeyValueRow, SectionCard } from '@/components/section-card';
-import { SessionLedger, type SessionLedgerHandle } from '@/components/session-ledger';
-import { SessionTimeline } from '@/components/session-timeline';
 import { SessionStatusBadge, StatusBadge } from '@/components/status-badges';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -70,24 +55,10 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Textarea } from '@/components/ui/textarea';
+import { useSessionEvents } from '@/features/session-trace/data/use-session-events';
+import { SessionTrace } from '@/features/session-trace/session-trace';
 import { formatBytes, formatNumber, formatTime, shortId } from '@/lib/format';
 import { saveBlob } from '@/lib/save-blob';
-import {
-  buildLedger,
-  collapseRecords,
-  collapsibleSteps,
-  collapsibleTurns,
-  deriveTimelineSpans,
-  filterRecords,
-  formatSpanDuration,
-  type LedgerLane,
-  recordMatchesSearch,
-  stepKey,
-  type TimelineMode,
-  type TimelineRange,
-  timelineFocusKeys,
-} from '@/lib/session-ledger';
 import { cn } from '@/lib/utils';
 
 /** 下载单个会话文件(挂载或产出):取回 blob 后交给浏览器保存 */
@@ -111,165 +82,6 @@ function DownloadFileButton({ file }: { file: ManagedFile }) {
 }
 
 type EventLike = PersistedEvent | StreamEvent;
-
-/** 事件类型徽章:user 消息走描边、agent 走正向 tint、错误走负向 tint,其余中性 */
-function EventBadge({ type }: { type: string | undefined }) {
-  if (!type) return <StatusBadge tint="tint-neutral">event</StatusBadge>;
-  if (type === 'session.error') return <StatusBadge tint="tint-negative">{type}</StatusBadge>;
-  if (type.startsWith('user.')) {
-    return (
-      <Badge variant="outline" className="font-mono text-[11px] font-normal">
-        {type}
-      </Badge>
-    );
-  }
-  if (type.startsWith('agent.')) {
-    return (
-      <StatusBadge tint="tint-positive" className="font-mono text-[11px] font-normal">
-        {type}
-      </StatusBadge>
-    );
-  }
-  return (
-    <StatusBadge tint="tint-neutral" className="font-mono text-[11px] font-normal">
-      {type}
-    </StatusBadge>
-  );
-}
-
-/** content 块数组 → 富文本渲染(文本/图片/文档),供事件行摘要与详情面板共用 */
-function ContentBlocks({ content }: { content: unknown[] }) {
-  return (
-    <div className="space-y-2">
-      {content.map((block, i) => {
-        if (typeof block !== 'object' || block === null) return null;
-        const b = block as Record<string, unknown>;
-        if (b.type === 'text' && typeof b.text === 'string') {
-          return (
-            <p key={i} className="whitespace-pre-wrap break-words leading-relaxed">
-              {b.text}
-            </p>
-          );
-        }
-        if (b.type === 'image') {
-          const source = b.source as
-            | { type?: string; media_type?: string; data?: string }
-            | undefined;
-          if (source?.type === 'base64' && source.media_type && source.data) {
-            return (
-              <img
-                key={i}
-                src={`data:${source.media_type};base64,${source.data}`}
-                alt={`图片块 ${i + 1}`}
-                className="max-h-48 rounded-md border"
-              />
-            );
-          }
-          return null;
-        }
-        if (b.type === 'document') {
-          return (
-            <p key={i} className="text-muted-foreground text-xs">
-              [文档] {typeof b.title === 'string' ? b.title : `块 ${i + 1}`}
-            </p>
-          );
-        }
-        return (
-          <p key={i} className="text-muted-foreground text-xs">
-            [{String(b.type ?? 'block')}]
-          </p>
-        );
-      })}
-    </div>
-  );
-}
-
-/** 事件详情:类型/时间/Event ID/配对耗时 + 载荷富文本 + 原始 JSON;onClose 省略时隐藏关闭按钮(弹窗场景) */
-function EventDetailPanel({
-  event,
-  duration,
-  onClose,
-}: {
-  event: EventLike;
-  duration?: number;
-  onClose?: () => void;
-}) {
-  const record = event as Record<string, unknown>;
-  const type = record.type as string | undefined;
-  const id = record.id as string | undefined;
-  const hasDuration = duration !== undefined && duration > 0;
-
-  return (
-    <div className="border-border/70 bg-card min-w-0 space-y-4 rounded-lg border p-4 shadow-xs">
-      <div className="flex items-start justify-between gap-2">
-        <EventBadge type={type} />
-        {onClose ? (
-          <Button
-            size="icon"
-            variant="ghost"
-            className="text-muted-foreground size-7"
-            aria-label="关闭详情"
-            onClick={onClose}
-          >
-            <X className="size-3.5" />
-          </Button>
-        ) : null}
-      </div>
-
-      <div className="space-y-2 text-sm">
-        <KeyValueRow label="时间">
-          {formatTime(record.processed_at as string | null | undefined)}
-        </KeyValueRow>
-        {hasDuration ? (
-          <KeyValueRow label="耗时">{formatSpanDuration(duration!)}</KeyValueRow>
-        ) : null}
-        {typeof id === 'string' ? (
-          <KeyValueRow label="Event ID">
-            <span className="font-mono text-xs break-all">{id}</span>
-          </KeyValueRow>
-        ) : null}
-      </div>
-
-      <div className="border-border/70 space-y-3 border-t pt-3 text-sm">
-        <h4 className="text-muted-foreground text-[13px] font-medium tracking-wide">载荷内容</h4>
-        {Array.isArray(record.content) ? (
-          <ContentBlocks content={record.content} />
-        ) : typeof record.name === 'string' ? (
-          <div className="space-y-2">
-            <span className="font-mono text-xs break-all">{String(record.name)}</span>
-            <pre className="bg-muted max-h-56 overflow-auto rounded-md p-2.5 font-mono text-xs leading-relaxed">
-              {JSON.stringify(record.input ?? {}, null, 2)}
-            </pre>
-          </div>
-        ) : typeof record.text === 'string' ? (
-          <p className="whitespace-pre-wrap break-words leading-relaxed">{record.text}</p>
-        ) : typeof record.message === 'string' ? (
-          <p className="whitespace-pre-wrap break-words leading-relaxed">{record.message}</p>
-        ) : record.stop_reason ? (
-          <pre className="bg-muted max-h-56 overflow-auto rounded-md p-2.5 font-mono text-xs leading-relaxed">
-            {JSON.stringify(record.stop_reason, null, 2)}
-          </pre>
-        ) : (
-          <p className="text-muted-foreground text-xs">无可渲染的文本载荷,查看下方原始 JSON。</p>
-        )}
-        {record.is_error === true ? (
-          <StatusBadge tint="tint-negative" className="font-mono text-[11px] font-normal">
-            is_error
-          </StatusBadge>
-        ) : null}
-      </div>
-
-      <details className="group border-border/70 border-t pt-3">
-        <summary className="text-muted-foreground hover:text-foreground cursor-pointer text-xs transition-colors select-none">
-          原始载荷
-        </summary>
-        <pre className="bg-muted mt-1.5 max-h-64 overflow-auto rounded-md p-2.5 font-mono text-xs leading-relaxed">
-          {JSON.stringify(event, null, 2)}
-        </pre>
-      </details>
-    </div>
-  );
-}
 
 function StatCell({ label, value, unit }: { label: string; value: string; unit?: string }) {
   return (
@@ -358,7 +170,15 @@ function ArchiveSessionDialog({ sessionId }: { sessionId: string }) {
 }
 
 /** 挂载已上传的托管文件到会话;mount_path 省略时默认 /mnt/session/uploads/{file_id} */
-function AddSessionFileDialog({ sessionId, disabled }: { sessionId: string; disabled: boolean }) {
+function AddSessionFileDialog({
+  sessionId,
+  disabled,
+  compact = false,
+}: {
+  sessionId: string;
+  disabled: boolean;
+  compact?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const [fileId, setFileId] = useState('');
   const [mountPath, setMountPath] = useState('');
@@ -400,8 +220,16 @@ function AddSessionFileDialog({ sessionId, disabled }: { sessionId: string; disa
 
   return (
     <Dialog open={open} onOpenChange={close}>
-      <Button size="sm" variant="outline" disabled={disabled} onClick={() => setOpen(true)}>
-        <Paperclip /> 挂载文件
+      <Button
+        type="button"
+        size={compact ? 'icon-sm' : 'sm'}
+        variant={compact ? 'ghost' : 'outline'}
+        disabled={disabled}
+        onClick={() => setOpen(true)}
+        aria-label="挂载文件"
+        title="挂载文件"
+      >
+        <Paperclip data-icon="inline-start" /> {compact ? null : '挂载文件'}
       </Button>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
@@ -793,534 +621,104 @@ function ResourcesSection({ sessionId, archived }: { sessionId: string; archived
   );
 }
 
-type SessionTab = 'events' | 'usage' | 'files';
-
-/** 是否 ≥ lg 断点(与 CSS lg: 一致);用于只在移动端挂载事件详情弹窗 */
-function useIsDesktop() {
-  const [isDesktop, setIsDesktop] = useState(() => window.matchMedia('(min-width: 64rem)').matches);
-  useEffect(() => {
-    const mq = window.matchMedia('(min-width: 64rem)');
-    const onChange = (e: MediaQueryListEvent) => setIsDesktop(e.matches);
-    mq.addEventListener('change', onChange);
-    return () => mq.removeEventListener('change', onChange);
-  }, []);
-  return isDesktop;
-}
+type SessionTab = 'trace' | 'usage' | 'files';
 
 export function SessionDetailPage() {
   const { sessionId } = useParams();
-  const queryClient = useQueryClient();
-  const [tab, setTab] = useState<SessionTab>('events');
-  const [live, setLive] = useState(false);
-  const [draft, setDraft] = useState('');
-  const [liveEvents, setLiveEvents] = useState<EventLike[]>([]);
-  const [streamError, setStreamError] = useState<string | null>(null);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [laneFilter, setLaneFilter] = useState<'all' | LedgerLane>('all');
-  const [search, setSearch] = useState('');
-  const [timelineMode, setTimelineMode] = useState<TimelineMode>('sequence');
-  const [focusRange, setFocusRange] = useState<TimelineRange | null>(null);
-  const [collapsedTurns, setCollapsedTurns] = useState<Set<number>>(new Set());
-  const [collapsedSteps, setCollapsedSteps] = useState<Set<string>>(new Set());
-  const isDesktop = useIsDesktop();
-  const ledgerRef = useRef<SessionLedgerHandle>(null);
+  return sessionId ? <SessionDetailContent key={sessionId} sessionId={sessionId} /> : null;
+}
 
+/** The route key isolates all local state when navigating to another session. */
+function SessionDetailContent({ sessionId }: { sessionId: string }) {
+  const [tab, setTab] = useState<SessionTab>('trace');
+  const [live, setLive] = useState(false);
   const sessionQuery = useQuery({
     queryKey: ['sessions', sessionId],
-    queryFn: () => getSession(sessionId!),
-    enabled: sessionId !== undefined,
+    queryFn: () => getSession(sessionId),
   });
-  const eventsQuery = useQuery({
-    queryKey: ['sessions', sessionId, 'events'],
-    queryFn: () => listSessionEvents(sessionId!, { order: 'desc', limit: 100 }),
-    enabled: sessionId !== undefined,
-  });
+  const { events, eventsQuery, streamError } = useSessionEvents(sessionId, live);
 
-  // 历史事件按时间倒序拉取(取最新 100 条),展示时反转为正序
-  const history = useMemo(() => {
-    if (!eventsQuery.data) return [] as PersistedEvent[];
-    return [...eventsQuery.data.data].reverse();
-  }, [eventsQuery.data]);
-
-  // 历史与实时流之间按事件 id 去重(SSE 只推连接后的新事件)
-  const historyIds = useMemo(() => new Set(history.map((e) => e.id)), [history]);
-  const mergedLive = liveEvents.filter((e) => {
-    const id = (e as Record<string, unknown>).id;
-    return typeof id !== 'string' || !historyIds.has(id);
-  });
-
-  const allEvents = useMemo(() => [...history, ...mergedLive], [history, mergedLive]);
-
-  // 台账数据管线:事件 → 记录(turn/step/配对) → 时间线投影 → 过滤 → 折叠行
-  const ledger = useMemo(
-    () => buildLedger(allEvents as Array<Record<string, unknown>>),
-    [allEvents],
-  );
-  const timelineModel = useMemo(
-    () => deriveTimelineSpans(ledger, timelineMode),
-    [ledger, timelineMode],
-  );
-  const ledgerRecords = useMemo(
-    () => filterRecords(ledger, laneFilter, search),
-    [ledger, laneFilter, search],
-  );
-  const ledgerRows = useMemo(
-    () => collapseRecords(ledgerRecords, collapsedTurns, collapsedSteps),
-    [ledgerRecords, collapsedTurns, collapsedSteps],
-  );
-  // 搜索命中集合(不限泳道):台账过滤与时间线高亮共用;无关键词时为 null
-  const searchMatchKeys = useMemo(() => {
-    if (!search.trim()) return null;
-    return new Set(
-      ledger.filter((record) => recordMatchesSearch(record, search)).map((record) => record.key),
-    );
-  }, [ledger, search]);
-  // 选区内 key 集合:驱动台账行「选区外压暗」与聚焦滚动
-  const focusKeys = useMemo(
-    () => (timelineModel && focusRange ? timelineFocusKeys(timelineModel, focusRange) : null),
-    [timelineModel, focusRange],
-  );
-  const collapsibleTurnSet = useMemo(() => collapsibleTurns(ledgerRecords), [ledgerRecords]);
-  const collapsibleStepSet = useMemo(() => collapsibleSteps(ledgerRecords), [ledgerRecords]);
-
-  const selectedEvent = useMemo(
-    () => allEvents.find((event) => (event as Record<string, unknown>).id === selectedId) ?? null,
-    [allEvents, selectedId],
-  );
-  const selectedDuration = useMemo(() => {
-    const record = ledger.find((item) => item.key === selectedId);
-    return record?.durationMs ?? undefined;
-  }, [ledger, selectedId]);
-
-  // 展开 key 所在的 turn/step(时间线/选区定位到被折叠的记录时由台账回调)
-  const revealKey = useCallback(
-    (key: string) => {
-      const record = ledger.find((item) => item.key === key);
-      if (!record) return;
-      setCollapsedSteps((prev) => {
-        const keyToRemove = stepKey(record.turn, record.step);
-        if (!prev.has(keyToRemove)) return prev;
-        const next = new Set(prev);
-        next.delete(keyToRemove);
-        return next;
-      });
-      setCollapsedTurns((prev) => {
-        if (!prev.has(record.turn)) return prev;
-        const next = new Set(prev);
-        next.delete(record.turn);
-        return next;
-      });
-    },
-    [ledger],
-  );
-
-  // 时间线/台账点击选中后滚动到对应行;行被折叠时先展开再滚(展开后 ledgerRows 变化重跑本 effect)
-  useEffect(() => {
-    if (!selectedId || tab !== 'events') return;
-    if (ledgerRows.some((row) => row.record?.key === selectedId)) {
-      ledgerRef.current?.scrollToKey(selectedId);
-    } else {
-      revealKey(selectedId);
-    }
-  }, [selectedId, ledgerRows, tab, revealKey]);
-
-  // 拖选提交后滚动到聚焦行(高于一屏顶对齐,否则居中)
-  useEffect(() => {
-    if (focusRange && focusKeys) ledgerRef.current?.scrollToFocus(focusKeys);
-  }, [focusRange, focusKeys]);
-
-  // 重连协议(§7):先补历史再订阅,按事件 id 去重;断线后指数退避自动重连
-  useEffect(() => {
-    if (!live || !sessionId) return;
-    const controller = new AbortController();
-    let stopped = false;
-    let attempts = 0;
-    void (async () => {
-      while (!stopped && !controller.signal.aborted) {
-        try {
-          await queryClient.invalidateQueries({
-            queryKey: ['sessions', sessionId],
-          });
-          await queryClient.invalidateQueries({
-            queryKey: ['sessions', sessionId, 'events'],
-          });
-          await queryClient.invalidateQueries({
-            queryKey: ['sessions', sessionId, 'files'],
-          });
-          setStreamError(null);
-          await subscribeSessionEvents(
-            sessionId,
-            (event) => {
-              attempts = 0; // 收到事件视为连接健康,重置退避
-              setLiveEvents((prev) => [...prev, event]);
-            },
-            controller.signal,
-          );
-        } catch {
-          // 断线(或主动 abort):走下方的重连等待
-        }
-        if (stopped || controller.signal.aborted) break;
-        const delay = Math.min(1000 * 2 ** Math.min(attempts, 4), 15000);
-        attempts += 1;
-        setStreamError(`实时流断开,约 ${Math.round(delay / 1000)}s 后自动重连(重连前先补拉历史)…`);
-        await new Promise((resolve) => setTimeout(resolve, delay));
-      }
-    })();
-    return () => {
-      stopped = true;
-      controller.abort();
-    };
-  }, [live, sessionId, queryClient]);
-
-  // 进入(或切回)事件流 tab 时恢复贴底;新事件到达的跟随由台账组件内部按贴底状态处理
-  useEffect(() => {
-    if (tab === 'events') ledgerRef.current?.jumpToTail();
-  }, [tab]);
-
-  const sendMutation = useMutation({
-    mutationFn: (text: string) =>
-      sendSessionEvents(sessionId!, {
-        events: [{ type: 'user.message', content: [{ type: 'text', text }] }],
-      }),
-    onSuccess: () => {
-      setDraft('');
-      void queryClient.invalidateQueries({
-        queryKey: ['sessions', sessionId, 'events'],
-      });
-      void queryClient.invalidateQueries({
-        queryKey: ['sessions', sessionId, 'files'],
-      });
-    },
-  });
-
-  const interruptMutation = useMutation({
-    mutationFn: () => sendSessionEvents(sessionId!, { events: [{ type: 'user.interrupt' }] }),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['sessions', sessionId] });
-      void queryClient.invalidateQueries({
-        queryKey: ['sessions', sessionId, 'events'],
-      });
-    },
-  });
-
-  if (sessionId === undefined) return null;
   if (sessionQuery.isPending) return <Skeleton className="h-64 w-full" />;
   if (sessionQuery.isError) return <QueryError error={sessionQuery.error} />;
 
   const session = sessionQuery.data;
   const archived = session.archived_at !== null;
-  const interruptible = !archived && session.status === 'running';
 
   return (
-    // 事件流 tab 下页面根 absolute 定位到 app-layout 容器(padding 对应 inset)的一屏内:
-    // 脱离文档流后高度确定,固有高度不再把页面撑高,工具栏/时间线/输入框固定、仅列表内部滚动。
-    // 其余 tab 保持静态流,内容自然撑开、由 main 滚动。
     <Tabs
       value={tab}
       onValueChange={(value) => setTab(value as SessionTab)}
       className={cn(
-        'flex-1 flex-col gap-4',
-        tab === 'events'
-          ? 'absolute inset-x-3 top-3 bottom-3 md:inset-x-5 md:left-3 md:top-5 md:bottom-5'
-          : 'min-h-full',
+        'session-detail-shell flex-1 flex-col',
+        tab === 'trace'
+          ? 'session-detail-trace absolute inset-3 md:inset-5 md:left-3'
+          : 'min-h-full gap-4',
       )}
     >
       <title>nano console — {session.title ?? shortId(session.id)}</title>
-      {/* 标题与 Agent/环境信息内联在返回链接右侧,与页面级操作同行,压缩头部占高 */}
-      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+      <div className="session-detail-header flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
         <div className="flex min-w-0 flex-1 items-center gap-3">
-          {/* desktopOnly 样式即"始终显示",此处作为面包屑用 */}
           <BackLink to="/sessions" label="返回 Sessions" desktopOnly />
           <h1 className="min-w-0 truncate text-sm font-semibold">
             {session.title ?? shortId(session.id)}
           </h1>
-          <span className="text-muted-foreground hidden min-w-0 truncate text-xs sm:inline">
-            Agent: {session.agent.name} · environment: {shortId(session.environment_id)}
+          <span className="text-muted-foreground hidden min-w-0 truncate text-xs xl:inline">
+            {session.agent.name} · {shortId(session.environment_id)}
           </span>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           <SessionStatusBadge status={session.status} />
           {!archived ? <ArchiveSessionDialog sessionId={session.id} /> : null}
-          <label className="text-muted-foreground flex items-center gap-2 text-sm">
-            <span
-              aria-hidden
-              className={cn(
-                'size-2 rounded-full',
-                live ? 'bg-pine-600 animate-pulse dark:bg-pine-500' : 'bg-muted-foreground/40',
-              )}
-            />
+          <label
+            htmlFor="session-live-events"
+            className="text-muted-foreground flex items-center gap-2 text-xs"
+          >
             实时
-            <Switch checked={live} onCheckedChange={setLive} />
+            <Switch
+              id="session-live-events"
+              checked={live}
+              onCheckedChange={setLive}
+              aria-label="实时事件流"
+            />
           </label>
         </div>
       </div>
-
-      {/* Cloudflare 风格胶囊导航 */}
-      <div className="flex flex-wrap items-center gap-2">
-        <TabsList className="border-border/70 border bg-muted/50">
-          <TabsTrigger value="events">事件流</TabsTrigger>
-          <TabsTrigger value="usage">Token 用量</TabsTrigger>
-          <TabsTrigger value="files">会话文件</TabsTrigger>
-        </TabsList>
-      </div>
-
-      {/* ---------------------------------------------------------------- 事件流(默认 tab)
-          整页限高一屏:工具栏/时间线/输入框固定,仅事件列表内部滚动;新事件仅在贴底时自动跟随 */}
-      <TabsContent value="events" className="flex min-h-0 flex-col gap-3">
+      <TabsList className="session-detail-navigation">
+        <TabsTrigger value="trace">轨迹</TabsTrigger>
+        <TabsTrigger value="usage">Token 用量</TabsTrigger>
+        <TabsTrigger value="files">会话文件</TabsTrigger>
+      </TabsList>
+      <TabsContent
+        value="trace"
+        forceMount
+        className="flex min-h-0 flex-col gap-0 data-[state=inactive]:hidden"
+      >
         {streamError ? (
-          <p className="text-destructive shrink-0 rounded-md border border-border bg-muted/50 px-3 py-2 text-sm">
-            实时流断开:{streamError}
+          <p className="session-stream-error" role="status">
+            {streamError}
           </p>
         ) : null}
-
         <div className="shrink-0">
-          <PendingApprovals
-            sessionId={session.id}
-            archived={archived}
-            events={[...history, ...mergedLive]}
-          />
+          <PendingApprovals sessionId={session.id} archived={archived} events={events} />
         </div>
-
-        {/* 工具栏:泳道筛选 + 搜索 + 计数 + 折叠开关 + 刷新历史;时间线轴取全量,不受筛选影响 */}
-        <div className="flex shrink-0 flex-wrap items-center gap-2">
-          <Select
-            value={laneFilter}
-            onValueChange={(value) => setLaneFilter(value as 'all' | LedgerLane)}
-          >
-            <SelectTrigger className="w-28 text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">全部事件</SelectItem>
-              <SelectItem value="input">输入</SelectItem>
-              <SelectItem value="model">模型</SelectItem>
-              <SelectItem value="tool">工具</SelectItem>
-            </SelectContent>
-          </Select>
-          <Input
-            className="w-48 text-xs"
-            placeholder="搜索类型 / 内容 / ID"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-          <span className="text-muted-foreground ml-auto text-xs tabular-nums">
-            {ledgerRecords.length}/{ledger.length} 条
-          </span>
-          {collapsibleTurnSet.size > 0 || collapsibleStepSet.size > 0 ? (
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-7 px-2 text-xs"
-              onClick={() => {
-                const allCollapsed =
-                  [...collapsibleTurnSet].every((turn) => collapsedTurns.has(turn)) &&
-                  [...collapsibleStepSet].every((key) => collapsedSteps.has(key));
-                if (allCollapsed) {
-                  setCollapsedTurns(new Set());
-                  setCollapsedSteps(new Set());
-                } else {
-                  setCollapsedTurns(new Set(collapsibleTurnSet));
-                  setCollapsedSteps(new Set(collapsibleStepSet));
-                }
-              }}
-            >
-              {[...collapsibleTurnSet].every((turn) => collapsedTurns.has(turn)) &&
-              [...collapsibleStepSet].every((key) => collapsedSteps.has(key))
-                ? '展开全部'
-                : '折叠全部'}
-            </Button>
-          ) : null}
-          <RefreshButton
-            isFetching={eventsQuery.isFetching}
-            onClick={() =>
-              void queryClient.invalidateQueries({
-                queryKey: ['sessions', sessionId, 'events'],
-              })
-            }
-          >
-            刷新历史
-          </RefreshButton>
-        </div>
-
-        {/* 交互式时间线:拖选区间聚焦台账、滚轮缩放、右键平移;模式切换在卡片头部右侧 */}
-        {timelineModel ? (
-          <div className="shrink-0 rounded-lg border bg-card px-4 py-3">
-            <div className="mb-2 flex items-center justify-between gap-2">
-              <span className="text-muted-foreground text-xs font-medium">时间线</span>
-              <div
-                className="flex items-center gap-0.5 rounded-md border p-0.5"
-                role="group"
-                aria-label="时间线模式"
-              >
-                {(['sequence', 'duration'] as const).map((value) => (
-                  <button
-                    key={value}
-                    type="button"
-                    aria-pressed={timelineMode === value}
-                    className={cn(
-                      'rounded-[5px] px-2 py-0.5 text-xs transition-colors',
-                      timelineMode === value
-                        ? 'bg-background border shadow-xs'
-                        : 'text-muted-foreground hover:text-foreground',
-                    )}
-                    onClick={() => setTimelineMode(value)}
-                  >
-                    {value === 'sequence' ? '顺序' : '耗时'}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <SessionTimeline
-              model={timelineModel}
-              mode={timelineMode}
-              range={focusRange}
-              onRangeChange={setFocusRange}
-              selectedKey={selectedId}
-              searchMatchKeys={searchMatchKeys}
-              laneFilter={laneFilter}
-              onItemSelect={setSelectedId}
-              onItemFocus={setSelectedId}
-            />
-          </div>
-        ) : null}
-
-        <div className="flex min-h-0 flex-1 gap-4">
-          {/* flex 容器:内部台账滚动容器靠 grow 撑满剩余高度,普通 block 会让 grow 失效导致无法滚动 */}
-          <div className="border-border/70 flex min-h-0 min-w-0 grow flex-col overflow-hidden rounded-lg border bg-card">
-            {eventsQuery.isError ? (
-              <div className="p-4">
-                <QueryError error={eventsQuery.error} />
-              </div>
-            ) : history.length === 0 && mergedLive.length === 0 && !eventsQuery.isPending ? (
-              <EmptyState
-                icon={Inbox}
-                title="暂无事件"
-                description="这个会话还没有任何事件;在下方发送一条 user.message 就能看到事件流跑起来。"
-              />
-            ) : eventsQuery.isPending ? (
-              <div className="space-y-4 p-4">
-                <Skeleton className="h-12 w-full" />
-                <Skeleton className="h-12 w-full" />
-                <Skeleton className="h-12 w-full" />
-              </div>
-            ) : ledgerRows.length === 0 ? (
-              <p className="text-muted-foreground py-8 text-center text-sm">
-                没有匹配筛选条件的事件。
-              </p>
-            ) : (
-              <SessionLedger
-                ref={ledgerRef}
-                rows={ledgerRows}
-                selectedKey={selectedId}
-                focusKeys={focusKeys}
-                onSelect={setSelectedId}
-                onToggleTurn={(turn) =>
-                  setCollapsedTurns((prev) => {
-                    const next = new Set(prev);
-                    if (next.has(turn)) next.delete(turn);
-                    else next.add(turn);
-                    return next;
-                  })
-                }
-                onToggleStep={(turn, step) =>
-                  setCollapsedSteps((prev) => {
-                    const key = stepKey(turn, step);
-                    const next = new Set(prev);
-                    if (next.has(key)) next.delete(key);
-                    else next.add(key);
-                    return next;
-                  })
-                }
-                onRevealKey={revealKey}
-              />
-            )}
-          </div>
-
-          {/* 事件详情:桌面端右栏独立滚动;移动端走下方弹窗 */}
-          <aside className="hidden w-[21rem] shrink-0 min-h-0 overflow-y-auto lg:block">
-            {selectedEvent ? (
-              <EventDetailPanel
-                event={selectedEvent}
-                duration={selectedDuration}
-                onClose={() => setSelectedId(null)}
-              />
-            ) : (
-              <div className="text-muted-foreground rounded-lg border border-dashed p-4 text-center text-xs">
-                点击时间线块或台账行查看事件详情
-              </div>
-            )}
-          </aside>
-        </div>
-
-        {/* 输入框:作为 flex 尾项常驻视口底部,不随列表滚动 */}
-        <div className="border-border/70 shrink-0 rounded-xl border bg-card p-3 shadow-xs">
-          <Textarea
-            rows={2}
-            value={draft}
-            disabled={archived}
-            placeholder={archived ? '会话已归档(只读),不能发送消息' : '发送 user.message 给会话…'}
-            onChange={(e) => setDraft(e.target.value)}
-            className="max-h-44 min-h-10 resize-none overflow-y-auto border-0 px-1 py-1 shadow-none focus-visible:border-transparent focus-visible:ring-0 dark:bg-transparent"
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && draft.trim() && !archived) {
-                sendMutation.mutate(draft.trim());
-              }
-            }}
-          />
-          <div className="flex items-center justify-between gap-2 pt-1.5">
-            <span className="text-muted-foreground hidden font-mono text-xs sm:inline">
-              ⌘/Ctrl + Enter 发送
-            </span>
-            <div className="flex items-center gap-2">
-              {interruptible ? (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={interruptMutation.isPending}
-                  onClick={() => interruptMutation.mutate()}
-                >
-                  <Ban /> {interruptMutation.isPending ? '打断中…' : '打断'}
-                </Button>
-              ) : null}
-              <Button
-                size="sm"
-                disabled={archived || !draft.trim() || sendMutation.isPending}
-                onClick={() => sendMutation.mutate(draft.trim())}
-              >
-                <Send /> {sendMutation.isPending ? '发送中…' : '发送'}
-              </Button>
-            </div>
-          </div>
-          {sendMutation.isError ? (
-            <p className="text-destructive pt-2 text-sm">{(sendMutation.error as Error).message}</p>
-          ) : null}
-        </div>
-      </TabsContent>
-
-      {/* 移动端事件详情弹窗(桌面端用右栏 aside),仅小屏挂载避免遮罩压暗页面 */}
-      {!isDesktop ? (
-        <Dialog
-          open={selectedEvent !== null}
-          onOpenChange={(open) => {
-            if (!open) setSelectedId(null);
+        <SessionTrace
+          active={tab === 'trace'}
+          session={session}
+          events={events}
+          loading={eventsQuery.isPending}
+          error={eventsQuery.error}
+          refreshing={eventsQuery.isFetching}
+          onRefresh={() => {
+            void eventsQuery.refetch();
           }}
-        >
-          <DialogContent className="max-h-[85svh] overflow-x-hidden overflow-y-auto sm:max-w-lg">
-            <DialogHeader>
-              <DialogTitle>事件详情</DialogTitle>
-              <DialogDescription className="sr-only">查看事件载荷与元信息</DialogDescription>
-            </DialogHeader>
-            {selectedEvent ? (
-              <EventDetailPanel event={selectedEvent} duration={selectedDuration} />
-            ) : null}
-          </DialogContent>
-        </Dialog>
-      ) : null}
-
+          attachmentAction={
+            <AddSessionFileDialog sessionId={session.id} disabled={archived} compact />
+          }
+        />
+      </TabsContent>
       <TabsContent value="usage" className="flex flex-col gap-4">
         <UsageSection session={session} />
       </TabsContent>
-
       <TabsContent value="files" className="flex flex-col">
         <ResourcesSection sessionId={session.id} archived={archived} />
       </TabsContent>
